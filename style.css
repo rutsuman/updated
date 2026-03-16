@@ -160,12 +160,12 @@ html, body {
 }
 
 
-/* Debug: show hotspots*/
+/* Debug: show hotspots
 .hotspot.debug {
     background: rgba(224, 50, 50, 0.461);
-}
+}*/
 
-/* Grid overlay*/
+/* Grid overlay
 #map-container::after {
     content: "";
     position: absolute;
@@ -179,7 +179,7 @@ html, body {
     background-size: 10% 10%;
     pointer-events: none;
     z-index: 0;
-}
+}*/
 
 /*=============================
 Dropdown MENU content
