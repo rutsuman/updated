@@ -160,27 +160,6 @@ html, body {
 }
 
 
-/* Debug: show hotspots
-.hotspot.debug {
-    background: rgba(224, 50, 50, 0.461);
-}*/
-
-/* Grid overlay
-#map-container::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image:
-        linear-gradient(to right, rgba(255, 255, 255, 0.402) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.402) 1px, transparent 1px);
-    background-size: 10% 10%;
-    pointer-events: none;
-    z-index: 0;
-}*/
-
 /*=============================
 Dropdown MENU content
 =============================*/
