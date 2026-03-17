@@ -483,6 +483,7 @@ const pathQuests = {
     { title: "Chaos Sealed in Color", id: "quest36", style: "mvp" },
     { title: "Bastions of Light and Stone", id: "quest66", style: "mvp" },
     { title: "The Painted Visage", id: "quest69", style: "mvp" },
+    { title: "The Tones of the Abyss", id: "quest80", style: "mvp" },
   ],
   sketcherPath: [
     { title: "The Threat of the East", id: "quest30", style: "mvp" },
@@ -491,8 +492,6 @@ const pathQuests = {
     { title: "The Fashionista's Sketchbook", id: "quest75", style: "mvp" },
     { title: "The Mirror of the Soul-Eater", id: "quest78", style: "mvp" },
     { title: "The Beast of Thornhollow", id: "quest79", style: "mvp" },
-
-
   ],
   watercoloursPath: [
     { title: "The Silent Objects Trial", id: "quest16", style: "mvp" },
