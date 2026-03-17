@@ -1500,6 +1500,95 @@
   "accepted": false,
   "acceptedAt": null
 },
+  "quest80": {
+    "path": ["Painter Path"],
+    "difficulty": 3,
+    "title": "The Tones of the Abyss",
+    "rationale": "<h2>The Tones of the Abyss</h2><p><strong>Why it's important:</strong><br>Monochromatic painting strips away the complexity of color, forcing the artist to focus entirely on value, contrast, and form. By working with a single color (or tones of black and white), students develop a deeper understanding of how light creates volume, how contrast directs attention, and how subtle value shifts can suggest depth and atmosphere. This foundational skill translates directly to all painting and drawing, regardless of medium or palette. The limitation becomes a teacher—revealing whether the artist truly understands light or has been hiding behind color.</p><p><strong>Skills developed:</strong></p><ul><li>Mastery of value range from lightest light to darkest dark</li><li>Understanding how light models form on any surface</li><li>Creating depth and atmosphere through value alone</li><li>Rendering texture with limited palette</li><li>Compositional balance through value weight</li><li>Mood creation through value choices</li></ul><p>This quest demonstrates mastery of value, light logic, and the ability to create compelling imagery without relying on color.</p>",
+    "description": "In a pub you meet Old Marin, the last surviving sailor to witness a sea creature and live, finally agrees to speak.\n\n'I saw it rise,' he whispers. 'Not all at once. First the water changed, then the tentacles. Not thrashing, just... rising. Each one thicker than our fishing boats, covered in scars. And the eye. God help me, the eye.'\n\nHe presses a worn sketch into your hands: a quick drawing he made that night, decades ago, from memory. 'This is all I have. But you... you're a painter. You understand light and shadow. I need you to prove you understand this, not by painting the Kraken, but by painting anything, but paint it in the language of the deep. Only value. Only light and shadow. Show me you see the world the way the Kraken does.",
+    "requirements": [
+      "Create a monochromatic painting using only one color (plus black and white to create values).",
+      "Choose ANY subject matter (portrait, still life, landscape, figure, etc.)",
+      "Demonstrate a full range of value from pure white (highlights) to deep black (shadows)",
+      "Use value to create convincing form and three-dimensionality",
+      "Show clear light logic (consistent light source, cast shadows where appropriate)",
+      "Create depth and atmosphere through value control",
+      "Render any textures present using value alone"],
+    "rubric": {
+      "overall": "The Tones of the Abyss (MVP)",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Value Control & Technique",
+          "levels": {
+            "4": "Exceptional value control; seamless transitions from lightest lights to darkest darks; values are purposeful and create strong form and mood throughout.",
+            "3": "Good value range with mostly smooth transitions; clear understanding of light and shadow with minor inconsistencies.",
+            "2": "Limited value range or uneven transitions; some areas appear flat or values don't clearly define form.",
+            "1": "Poor value control; minimal range; shading is chaotic or absent; form is unclear."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Form & Light Logic",
+          "levels": {
+            "4": "Masterful rendering of form through value; light source is consistent and intentional; shadows and highlights work together to create convincing three-dimensionality.",
+            "3": "Good form development; light logic is mostly consistent with clear highlights and shadows.",
+            "2": "Some form development; light logic is inconsistent or unclear in places.",
+            "1": "Poor form development; no clear light source; form is flat or confusing."
+          }
+        },
+        {
+          "code": "Art.FA.CR.3.1.IA",
+          "name": "Depth & Atmosphere",
+          "levels": {
+            "4": "Exceptional use of value to create depth and atmosphere; spatial relationships are clear and mood is strongly conveyed.",
+            "3": "Good depth and atmosphere; spatial relationships are readable with minor issues.",
+            "2": "Some attempt at depth but atmosphere is inconsistent or unclear.",
+            "1": "Little sense of depth or atmosphere; image feels flat."
+          }
+        },
+        {
+          "code": "Art.FA.CN.10.1.IA",
+          "name": "Composition & Intentionality",
+          "levels": {
+            "4": "Exceptional composition; value weights are balanced intentionally to guide the viewer's eye; subject choice and execution show thoughtful artistic decisions.",
+            "3": "Good composition with clear focal point and balanced values.",
+            "2": "Adequate composition; some issues with value balance or focal point clarity.",
+            "1": "Poor composition; no clear organization or intentional value placement."
+          }
+        }
+      ]
+    },
+    "links": [
+      {
+        "type": "Monochromatic painting tutorial",
+        "url": "https://www.youtube.com/watch?v=cDzcoyeaRKI"
+      },
+      {
+        "type": "Understanding value in painting",
+        "url": "https://www.youtube.com/watch?v=bqu1VQh7ZLw"
+      },
+      {
+        "type": "Value painting demonstration",
+        "url": "https://www.youtube.com/watch?v=vMr6eimcolc"
+      },
+      {
+        "type": "Creating atmosphere with value",
+        "url": "https://www.youtube.com/watch?v=40QYTUuxTFo"
+      }
+    ],
+    "reward": "",
+    "character": "charimage/char80.gif",
+    "style": "mvp",
+    "prerequisites": ["quest1", "quest5", "quest6"],
+    "completed": false,
+    "timer": {
+      "allottedMinutes": 600
+    },
+    "accepted": false,
+    "acceptedAt": null
+  },
+
 
 
 
