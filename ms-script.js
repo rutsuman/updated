@@ -2655,7 +2655,7 @@ async function getTeacherStandardsWithDescriptions(questId) {
         .from('teachers')
         .select('id, name')
         .eq('class_code', profile.teacher_code)
-        .single();
+        .maybeSingle();
     
     if (teacherError || !teacher) {
         console.log("Teacher not found for code:", profile.teacher_code);
@@ -2792,7 +2792,7 @@ async function getTeacherStandardsForQuest(questId) {
         .from('teachers')
         .select('id, name')
         .eq('class_code', profile.teacher_code)
-        .single();
+        .maybeSingle();
     
     if (teacherError || !teacher) {
         console.log("Teacher not found for code:", profile.teacher_code);
@@ -4195,7 +4195,7 @@ async function getCustomTimerForQuest(questId) {
             .from('teachers')
             .select('id')
             .eq('class_code', profile.teacher_code)
-            .single();
+            .maybeSingle();
         
         if (teacherError || !teacher) return null;
         
