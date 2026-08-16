@@ -600,54 +600,67 @@ function debugStudentProfile() {
 // LOGIN / LOGOUT
 // ==============================================
 async function handleLoginSubmit() {
-  const email = document.getElementById("login-email").value;
-  const password = document.getElementById("login-password").value;
-  const messageEl = document.getElementById("login-message");
-  
-  if (!email || !password) {
-    if (messageEl) messageEl.textContent = "Please enter email and password";
-    return;
-  }
-  
-  if (messageEl) messageEl.textContent = "Logging in...";
-  
-  const { data, error } = await window.supabase.auth.signInWithPassword({
-    email: email,
-    password: password
-  });
-  
-  if (error) {
-    if (messageEl) messageEl.textContent = error.message;
-  } else {
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
+    const messageEl = document.getElementById("login-message");
+    
+    if (!email || !password) {
+        if (messageEl) messageEl.textContent = "Please enter email and password";
+        return;
+    }
+    
+    if (messageEl) messageEl.textContent = "Logging in...";
+    
+    const { data, error } = await window.supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+    });
+    
+    if (error) {
+        if (messageEl) messageEl.textContent = error.message;
+        return;
+    }
+    
+    // ✅ NEW: Check student's grade level
+    const { data: profile, error: profileError } = await window.supabase
+        .from('profiles')
+        .select('grade_level')
+        .eq('id', data.user.id)
+        .single();
+    
+    if (profileError) {
+        if (messageEl) messageEl.textContent = 'Error checking student profile';
+        return;
+    }
+    
+    // ✅ NEW: Redirect MS students to the MS portal
+    if (profile?.grade_level === 'ms') {
+        messageEl.textContent = 'This is the High School portal. Please use the Middle School portal.';
+        await window.supabase.auth.signOut();
+        setTimeout(() => {
+            window.location.href = 'ms-index.html';
+        }, 1500);
+        return;
+    }
+    
+    // ✅ HS student - continue with login
     currentUserId = data.user.id;
     
     document.getElementById("welcome-overlay").style.display = "none";
 
     // Check if teacher updated quests while student was logged out
-            await checkQuestCacheValidity();
-            
-            if (!quests || Object.keys(quests).length === 0) {
-              messageEl.textContent = "Loading quests...";
-              await new Promise((resolve) => {
-                const checkQuests = setInterval(() => {
-                  if (quests && Object.keys(quests).length > 0) {
-                    clearInterval(checkQuests);
-                    resolve();
-                  }
-                }, 100);
-              });
-            }
+    await checkQuestCacheValidity();
     
     if (!quests || Object.keys(quests).length === 0) {
-      messageEl.textContent = "Loading quests...";
-      await new Promise((resolve) => {
-        const checkQuests = setInterval(() => {
-          if (quests && Object.keys(quests).length > 0) {
-            clearInterval(checkQuests);
-            resolve();
-          }
-        }, 100);
-      });
+        messageEl.textContent = "Loading quests...";
+        await new Promise((resolve) => {
+            const checkQuests = setInterval(() => {
+                if (quests && Object.keys(quests).length > 0) {
+                    clearInterval(checkQuests);
+                    resolve();
+                }
+            }, 100);
+        });
     }
     
     messageEl.textContent = "Loading your data...";
@@ -657,10 +670,10 @@ async function handleLoginSubmit() {
     checkForNewQuests();
     
     setTimeout(() => {
-      setupRealtimeRefresh();
+        setupRealtimeRefresh();
     }, 1000);
-  }
 }
+
 async function logout() {
     console.log("Logout started...");
     
