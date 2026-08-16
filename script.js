@@ -3122,11 +3122,27 @@ async function renderNCASStandardsTable(tbody) {
         }
     }
     
-    const { data: progress } = await window.supabase
+        // ✅ Get the current user ID with safety check
+    const userId = window.currentUserId || (await getCurrentUserId());
+    
+    // ✅ SAFETY CHECK - if no userId, show empty state and return
+    if (!userId) {
+        console.log("No user ID found, cannot render NCAS standards table");
+        tbody.innerHTML = '<tr><td colspan="3">Please log in to view standards</td></tr>';
+        return;
+    }
+    
+    const { data: progress, error } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', window.currentUserId || (await getCurrentUserId()))
+        .eq('user_id', userId)
         .maybeSingle();
+    
+    if (error) {
+        console.error("Error loading progress:", error);
+        tbody.innerHTML = '<tr><td colspan="3">Error loading standards</td></tr>';
+        return;
+    }
     
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -3212,10 +3228,18 @@ async function renderIBStandardsTable(tbody) {
         }
     }
     
-    const { data: progress } = await window.supabase
+  // ✅ Get the current user ID with safety check
+    const userId = window.currentUserId || (await getCurrentUserId());
+    if (!userId) {
+        console.log("No user ID found, cannot render IB standards table");
+        tbody.innerHTML = '<tr><td colspan="3">Please log in to view standards</td></tr>';
+        return;
+    }
+    
+    const { data: progress, error } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', window.currentUserId || (await getCurrentUserId()))
+        .eq('user_id', userId)
         .maybeSingle();
     
     const questGrades = progress?.quest_grades || {};
@@ -3313,10 +3337,18 @@ async function renderIGCSESTandardsTable(tbody) {
         }
     }
     
-    const { data: progress } = await window.supabase
+    // ✅ Get the current user ID with safety check
+    const userId = window.currentUserId || (await getCurrentUserId());
+    if (!userId) {
+        console.log("No user ID found, cannot render IGCSE standards table");
+        tbody.innerHTML = '<tr><td colspan="3">Please log in to view standards</td></tr>';
+        return;
+    }
+    
+    const { data: progress, error } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', currentUserId || (await getCurrentUserId()))
+        .eq('user_id', userId)
         .maybeSingle();
     
     const questGrades = progress?.quest_grades || {};
@@ -3572,6 +3604,13 @@ async function renderRadarChart() {
     const canvas = document.getElementById("radar-chart");
     const tooltip = document.getElementById("radar-tooltip");
     if (!canvas) return;
+    
+        // ✅ Get the current user ID with safety check
+    const userId = window.currentUserId || (await getCurrentUserId());
+    if (!userId) {
+        console.log("No user ID found, cannot render radar chart");
+        return;
+    }
 
     const framework = await detectTeacherFramework();
     const isIB = framework === 'ib-myp';
