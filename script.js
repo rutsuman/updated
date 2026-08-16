@@ -1540,7 +1540,7 @@ async function loadStudentDataFromCloud() {
         .from('student_progress')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
     
     if (error) {
         if (error.code === 'PGRST116') {
@@ -3126,7 +3126,7 @@ async function renderNCASStandardsTable(tbody) {
         .from('student_progress')
         .select('quest_grades, completed_quests')
         .eq('user_id', window.currentUserId || (await getCurrentUserId()))
-        .single();
+        .maybeSingle();
     
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -3216,7 +3216,7 @@ async function renderIBStandardsTable(tbody) {
         .from('student_progress')
         .select('quest_grades, completed_quests')
         .eq('user_id', window.currentUserId || (await getCurrentUserId()))
-        .single();
+        .maybeSingle();
     
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -3317,7 +3317,7 @@ async function renderIGCSESTandardsTable(tbody) {
         .from('student_progress')
         .select('quest_grades, completed_quests')
         .eq('user_id', currentUserId || (await getCurrentUserId()))
-        .single();
+        .maybeSingle();
     
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -3474,7 +3474,7 @@ async function computeIBDomainGrades() {
         .from('student_progress')
         .select('quest_grades, completed_quests')
         .eq('user_id', currentUserId || (await getCurrentUserId()))
-        .single();
+        .maybeSingle();
     
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -3524,7 +3524,7 @@ async function computeIGCSEDomainGrades() {
         .from('student_progress')
         .select('quest_grades, completed_quests')
         .eq('user_id', currentUserId || (await getCurrentUserId()))
-        .single();
+        .maybeSingle();
     
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -4495,7 +4495,7 @@ async function loadQuestCalendarData() {
         .from('student_progress')
         .select('completed_quests, quest_grades, quest_accepted, quest_start_times')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
     
     if (error) {
         console.error("Error loading progress:", error);
