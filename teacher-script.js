@@ -234,6 +234,83 @@ function escapeHtml(str) {
     });
 }
 
+// ==============================================
+// ACTIVE QUEST FLOATING BUTTON
+// ==============================================
+
+function updateActiveQuestButton() {
+    const button = document.getElementById('floating-active-quest');
+    const timerSpan = document.getElementById('active-quest-timer');
+    
+    if (!button || !timerSpan) return;
+    
+    // Find the active quest (accepted but not completed)
+    let activeQuestId = null;
+    for (const [questId, isAccepted] of Object.entries(questAccepted)) {
+        if (isAccepted === true && !completedQuests[questId]) {
+            activeQuestId = questId;
+            break;
+        }
+    }
+    
+    if (!activeQuestId) {
+        // No active quest - hide the button
+        button.style.display = 'none';
+        return;
+    }
+    
+    // Show the button
+    button.style.display = 'flex';
+    button.dataset.questId = activeQuestId;
+    
+    // Calculate remaining time
+    const remaining = calculateRemainingMinutes(activeQuestId);
+    const quest = quests[activeQuestId];
+    
+    // Get total minutes
+    let totalMinutes = quest?.timer?.allottedMinutes || 75;
+    const customTimer = getCustomTimerForQuestSync(activeQuestId);
+    const classDuration = getClassDurationSync();
+    if (customTimer !== null) {
+        totalMinutes = customTimer * classDuration;
+    }
+    
+    // Format timer display
+    if (remaining <= 0) {
+        timerSpan.textContent = '⏰ TIME UP!';
+        button.classList.add('times-up');
+        button.classList.remove('warning');
+    } else if ((remaining / totalMinutes) * 100 <= 30) {
+        timerSpan.textContent = formatTime(remaining, true);
+        button.classList.add('warning');
+        button.classList.remove('times-up');
+    } else {
+        timerSpan.textContent = formatTime(remaining, true);
+        button.classList.remove('warning', 'times-up');
+    }
+}
+
+// Click handler for the active quest button
+function setupActiveQuestButton() {
+    const button = document.getElementById('floating-active-quest');
+    if (!button) return;
+    
+    // Remove any existing listener to avoid duplicates
+    const newButton = button.cloneNode(true);
+    button.parentNode.replaceChild(newButton, button);
+    
+    newButton.addEventListener('click', function() {
+        const questId = this.dataset.questId;
+        if (questId) {
+            // Close any open overlays first
+            const questOverlay = document.getElementById('quest-overlay');
+            if (questOverlay) questOverlay.style.display = 'none';
+            
+            // Open the active quest
+            openQuest(questId);
+        }
+    });
+}
 // ==========================
 // GET QUESTS WITH MS SUPPORT
 // ==========================
@@ -4730,9 +4807,139 @@ async function generateResultsPDF(contestId) {
     const startDate = new Date(contest.start_date).toLocaleDateString();
     const endDate = new Date(contest.end_date).toLocaleDateString();
     
-    // Rest of PDF generation code remains the same...
-    // (The full function is very long, but the logic is unchanged)
 }
+
+// ==============================================
+// QUEST SEARCH FUNCTIONALITY
+// ==============================================
+
+function setupQuestSearch() {
+    const searchInput = document.getElementById('quest-search-input');
+    const resultsContainer = document.getElementById('quest-search-results');
+    
+    if (!searchInput || !resultsContainer) return;
+    
+    let searchTimeout = null;
+    
+    searchInput.addEventListener('input', function() {
+        const searchTerm = this.value.trim().toLowerCase();
+        
+        // Clear previous timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+        
+        // If search term is empty, hide results and show accordion
+        if (searchTerm.length === 0) {
+            resultsContainer.style.display = 'none';
+            resultsContainer.innerHTML = '';
+            showAllQuestAccordions();
+            return;
+        }
+        
+        // Debounce search to avoid performance issues
+        searchTimeout = setTimeout(async () => {
+            await performQuestSearch(searchTerm);
+        }, 300);
+    });
+    
+    // Close results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.quest-search-container')) {
+            resultsContainer.style.display = 'none';
+        }
+    });
+}
+
+async function performQuestSearch(searchTerm) {
+    const resultsContainer = document.getElementById('quest-search-results');
+    if (!resultsContainer) return;
+    
+    // Get all quests
+    const allQuests = await getAllQuestsForTeacher();
+    const results = [];
+    
+    // Search through all quests
+    for (const [questId, quest] of Object.entries(allQuests)) {
+        if (!quest || !quest.title) continue;
+        
+        const title = quest.title.toLowerCase();
+        if (title.includes(searchTerm)) {
+            results.push({
+                id: questId,
+                title: quest.title,
+                path: Array.isArray(quest.path) ? quest.path.join(', ') : quest.path || 'Unknown',
+                isMVP: quest.style === 'mvp',
+                isCustom: quest.is_custom === true
+            });
+        }
+    }
+    
+    // Sort results by title
+    results.sort((a, b) => a.title.localeCompare(b.title));
+    
+    // Display results
+    if (results.length === 0) {
+        resultsContainer.innerHTML = `<div class="no-results">No quests found matching "${searchTerm}"</div>`;
+        resultsContainer.style.display = 'block';
+        hideAllQuestAccordions();
+        return;
+    }
+    
+    let html = '';
+    results.forEach(result => {
+        const badge = result.isMVP ? '<span class="search-result-badge mvp">👑 MVP</span>' : 
+                      result.isCustom ? '<span class="search-result-badge">📝 Custom</span>' : '';
+        html += `
+            <div class="search-result-item" data-quest-id="${result.id}">
+                <div>
+                    <span class="search-result-title">${escapeHtml(result.title)}</span>
+                    <div class="search-result-path">${escapeHtml(result.path)}</div>
+                </div>
+                ${badge}
+            </div>
+        `;
+    });
+    
+    resultsContainer.innerHTML = html;
+    resultsContainer.style.display = 'block';
+    hideAllQuestAccordions();
+    
+    // Add click handlers to results
+    resultsContainer.querySelectorAll('.search-result-item').forEach(item => {
+        item.addEventListener('click', async function() {
+            const questId = this.dataset.questId;
+            if (questId) {
+                resultsContainer.style.display = 'none';
+                const allQuests = await getAllQuestsForTeacher();
+                openQuestDetailsPanel(questId, allQuests);
+            }
+        });
+    });
+}
+
+function hideAllQuestAccordions() {
+    const container = document.getElementById('quests-accordion-container');
+    if (container) {
+        // Store current state but hide all accordions
+        const items = container.querySelectorAll('.quest-accordion-item');
+        items.forEach(item => {
+            item.style.display = 'none';
+        });
+    }
+}
+
+function showAllQuestAccordions() {
+    const container = document.getElementById('quests-accordion-container');
+    if (container) {
+        const items = container.querySelectorAll('.quest-accordion-item');
+        items.forEach(item => {
+            item.style.display = 'block';
+        });
+    }
+}
+
+
 
 // ==========================
 // CLASSROOM MANAGEMENT
@@ -9969,6 +10176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         originalLoadStudentDetails(userId, studentName);
     };
     
+    setupQuestSearch();
     initTermsModal();
     setupMainTabs();
     initWorkModal();
