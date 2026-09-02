@@ -10,7 +10,6 @@
 <body>
 
 <div id="map-container">
-    <div id="map-warning-overlay" class="map-overlay"></div>
     <img id="map-image" src="map.jpg" alt="World Map">
 
 
@@ -104,12 +103,17 @@
 
 
  </div>
-<!-- Floating Navigation for Maps 2 & 3 (Gallery only) -->
-<div id="floating-nav" class="floating-nav" style="display: none;">
-    <div class="floating-nav-item" id="floating-gallery" title="View Art Gallery">
-        🖼️Gallery 
+<!-- Floating Navigation for Gallery -->
+    <div id="floating-nav" class="floating-nav" style="display: flex;">
+        <div class="floating-nav-item" id="floating-gallery" title="View Art Gallery">
+            🖼️ Gallery
+        </div>
     </div>
-</div>
+
+    <!-- Active Quest Timer Button (no container needed) -->
+    <div class="floating-nav-item" id="floating-active-quest" title="Active Quest" style="display: none;">
+        ⏱️ <span id="active-quest-timer">--:--</span>
+    </div>
 <!----------------------------------------- Dropdown menu container ----------------------------------------------->
 <div id="dropdown-container">
     <select id="path-selector">
