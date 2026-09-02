@@ -11,7 +11,6 @@
 
 <!-- ✅ SINGLE SCROLLABLE MAP CONTAINER -->
 <div id="map-container" class="ms-map-container">
-    <div id="map-warning-overlay" class="map-overlay"></div>
     
     <!-- Single map image (one large scrollable map) -->
     <img id="map-image" src="ms-map.jpg" alt="Middle School Art Map">
@@ -116,11 +115,16 @@
 <!-- ============================================= -->
 <!-- FLOATING NAVIGATION (always visible)         -->
 <!-- ============================================= -->
-<div id="floating-nav" class="floating-nav" style="display: flex;">
-    <div class="floating-nav-item" id="floating-gallery" title="View Art Gallery">
-        🖼️ Gallery
+    <div id="floating-nav" class="floating-nav" style="display: flex;">
+        <div class="floating-nav-item" id="floating-gallery" title="View Art Gallery">
+            🖼️ Gallery
+        </div>
     </div>
-</div>
+
+    <!-- Active Quest Timer Button (no container needed) -->
+    <div class="floating-nav-item" id="floating-active-quest" title="Active Quest" style="display: none;">
+        ⏱️ <span id="active-quest-timer">--:--</span>
+    </div>
 
 <!-- ============================================= -->
 <!-- DROPDOWN MENU CONTAINER (no map switcher)    -->
