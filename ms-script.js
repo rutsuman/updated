@@ -39,6 +39,10 @@ let cachedQuests = null;
 let cachedCustomTimer = null;
 let cachedClassDuration = null;
 let cachedTimerQuestId = null;
+let _lastDisplayedTime = '';
+let _lastActiveQuestId = null;
+let _animationFrameId = null;
+let _lastUpdateTime = 0;
 const QUEST_CACHE_VERSION = '2026-05-25-v1';
 const QUEST_CACHE_KEY = 'cachedQuests';
 const QUEST_CACHE_VERSION_KEY = 'cachedQuestsVersion';
@@ -121,6 +125,144 @@ const IGCSE_MAPPING = {
 };
 
 // ==============================================
+// ACTIVE QUEST FLOATING BUTTON
+// ==============================================
+
+function updateActiveQuestButton(timestamp) {
+    // Skip update if tab is not visible (optional optimization)
+    if (document.hidden) {
+        _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
+        return;
+    }
+    
+    // Throttle: only update every second (even with requestAnimationFrame)
+    if (timestamp && timestamp - _lastUpdateTime < 1000) {
+        _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
+        return;
+    }
+    _lastUpdateTime = timestamp || Date.now();
+    
+    const button = document.getElementById('floating-active-quest');
+    const timerSpan = document.getElementById('active-quest-timer');
+    
+    if (!button || !timerSpan) {
+        _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
+        return;
+    }
+    
+    // Find the active quest (accepted but not completed)
+    let activeQuestId = null;
+    for (const [questId, isAccepted] of Object.entries(questAccepted)) {
+        if (isAccepted === true && !completedQuests[questId]) {
+            activeQuestId = questId;
+            break;
+        }
+    }
+    
+    // If no active quest, hide button and stop updates
+    if (!activeQuestId) {
+        if (button.style.display !== 'none') {
+            button.style.display = 'none';
+        }
+        // Stop the animation loop if no active quest
+        if (_animationFrameId) {
+            cancelAnimationFrame(_animationFrameId);
+            _animationFrameId = null;
+        }
+        return;
+    }
+    
+    // Show the button
+    button.style.display = 'flex';
+    button.dataset.questId = activeQuestId;
+    
+    // Calculate remaining time
+    const remaining = calculateRemainingMinutes(activeQuestId);
+    const quest = quests[activeQuestId];
+    
+    // Get total minutes
+    let totalMinutes = quest?.timer?.allottedMinutes || 75;
+    const customTimer = getCustomTimerForQuestSync(activeQuestId);
+    const classDuration = getClassDurationSync();
+    if (customTimer !== null) {
+        totalMinutes = customTimer * classDuration;
+    }
+    
+    // Format timer display
+    let timeString;
+    let warningClass = '';
+    let timesUpClass = '';
+    
+    if (remaining <= 0) {
+        timeString = '⏰ TIME UP!';
+        timesUpClass = 'times-up';
+    } else if ((remaining / totalMinutes) * 100 <= 30) {
+        timeString = formatTime(remaining, true);
+        warningClass = 'warning';
+    } else {
+        timeString = formatTime(remaining, true);
+    }
+    
+    // ✅ Only update DOM if something changed
+    if (timeString !== _lastDisplayedTime) {
+        timerSpan.textContent = timeString;
+        _lastDisplayedTime = timeString;
+    }
+    
+    // Update classes
+    button.classList.remove('warning', 'times-up');
+    if (timesUpClass) button.classList.add(timesUpClass);
+    if (warningClass) button.classList.add(warningClass);
+    
+    // Continue the animation loop
+    _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
+}
+
+
+function setupActiveQuestButton() {
+    const button = document.getElementById('floating-active-quest');
+    if (!button) return;
+    
+    // Remove any existing listener to avoid duplicates
+    const newButton = button.cloneNode(true);
+    button.parentNode.replaceChild(newButton, button);
+    
+    newButton.addEventListener('click', function() {
+        const questId = this.dataset.questId;
+        if (questId) {
+            // Close any open overlays first
+            const questOverlay = document.getElementById('quest-overlay');
+            if (questOverlay) questOverlay.style.display = 'none';
+            
+            // Open the active quest
+            openQuest(questId);
+        }
+    });
+}
+
+function startActiveQuestTimerUpdates() {
+    // Clear any existing animation frame
+    if (_animationFrameId) {
+        cancelAnimationFrame(_animationFrameId);
+        _animationFrameId = null;
+    }
+    
+    // Reset state
+    _lastDisplayedTime = '';
+    _lastUpdateTime = 0;
+    
+    // Update the button immediately
+    updateActiveQuestButton(Date.now());
+}
+function stopActiveQuestTimerUpdates() {
+    if (_animationFrameId) {
+        cancelAnimationFrame(_animationFrameId);
+        _animationFrameId = null;
+    }
+    _lastDisplayedTime = '';
+}
+
+// ==============================================
 // LOCAL STORAGE HELPERS
 // ==============================================
 function loadEarnedBadges() {
@@ -147,6 +289,85 @@ function loadStudentWorks() {
 
 function saveStudentWorks() {
   localStorage.setItem("studentWorks", JSON.stringify(studentWorks));
+}
+
+
+// ==============================================
+// ACTIVE QUEST FLOATING BUTTON
+// ==============================================
+
+function updateActiveQuestButton() {
+    const button = document.getElementById('floating-active-quest');
+    const timerSpan = document.getElementById('active-quest-timer');
+    
+    if (!button || !timerSpan) return;
+    
+    // Find the active quest (accepted but not completed)
+    let activeQuestId = null;
+    for (const [questId, isAccepted] of Object.entries(questAccepted)) {
+        if (isAccepted === true && !completedQuests[questId]) {
+            activeQuestId = questId;
+            break;
+        }
+    }
+    
+    if (!activeQuestId) {
+        // No active quest - hide the button
+        button.style.display = 'none';
+        return;
+    }
+    
+    // Show the button
+    button.style.display = 'flex';
+    button.dataset.questId = activeQuestId;
+    
+    // Calculate remaining time
+    const remaining = calculateRemainingMinutes(activeQuestId);
+    const quest = quests[activeQuestId];
+    
+    // Get total minutes
+    let totalMinutes = quest?.timer?.allottedMinutes || 75;
+    const customTimer = getCustomTimerForQuestSync(activeQuestId);
+    const classDuration = getClassDurationSync();
+    if (customTimer !== null) {
+        totalMinutes = customTimer * classDuration;
+    }
+    
+    // Format timer display
+    if (remaining <= 0) {
+        timerSpan.textContent = '⏰ TIME UP!';
+        button.classList.add('times-up');
+        button.classList.remove('warning');
+    } else if ((remaining / totalMinutes) * 100 <= 30) {
+        timerSpan.textContent = formatTime(remaining, true);
+        button.classList.add('warning');
+        button.classList.remove('times-up');
+    } else {
+        timerSpan.textContent = formatTime(remaining, true);
+        button.classList.remove('warning', 'times-up');
+    }
+}
+
+// Click handler for the active quest button
+function setupActiveQuestButton() {
+    const button = document.getElementById('floating-active-quest');
+    if (!button) return;
+    
+    // Remove any existing listener to avoid duplicates
+    const newButton = button.cloneNode(true);
+    button.parentNode.replaceChild(newButton, button);
+    
+    newButton.addEventListener('click', function() {
+        const questId = this.dataset.questId;
+        if (questId) {
+            // Close any open overlays first
+            const questOverlay = document.getElementById('quest-overlay');
+            if (questOverlay) questOverlay.style.display = 'none';
+            
+            // Open the active quest
+            openQuest(questId);
+        }
+    });
 }
 
 // ==============================================
@@ -664,6 +885,7 @@ async function handleLoginSubmit() {
         await loadScheduleForStudent();
         updateProfileUI();
         checkForNewQuests();
+        startActiveQuestTimerUpdates();
         
         setTimeout(() => {
             setupRealtimeRefresh();
@@ -677,7 +899,7 @@ async function handleLoginSubmit() {
 
 async function logout() {
     console.log("Logout started...");
-    
+    stopActiveQuestTimerUpdates();
     try {
         const { error } = await window.supabase.auth.signOut();
         
@@ -1021,6 +1243,10 @@ function markQuestCompleteFromWork(questId) {
       saveQuestAccepted();
     }
   }
+  
+  // ✅ Update the button and stop the timer
+  updateActiveQuestButton();
+  stopActiveQuestTimerUpdates();
   
   updateBadgesAfterQuest();
   
@@ -3883,6 +4109,9 @@ function initializeQuestTimers() {
     }
   }
   checkAllQuestWarnings();
+  updateActiveQuestButton();
+  startActiveQuestTimerUpdates();
+  
 }
 
 function startQuestTimer(questId) {
@@ -4018,6 +4247,26 @@ function updateTimerDisplay(questId) {
     return remaining;
 }
 
+// ==============================================
+// START ACTIVE QUEST TIMER UPDATES
+// ==============================================
+
+function startActiveQuestTimerUpdates() {
+    // Clear any existing interval
+    if (window._activeQuestTimerInterval) {
+        clearInterval(window._activeQuestTimerInterval);
+        window._activeQuestTimerInterval = null;
+    }
+    
+    // Update the button immediately
+    updateActiveQuestButton();
+    
+    // Then update every second
+    window._activeQuestTimerInterval = setInterval(() => {
+        updateActiveQuestButton();
+    }, 1000);
+}
+
 function acceptQuest(questId) {
   const quest = quests[questId];
   if (!quest || !quest.timer) return;
@@ -4063,6 +4312,11 @@ function acceptQuest(questId) {
     startQuestTimer(questId);
     saveQuestData();
     
+    // ✅ Update the active quest button
+    updateActiveQuestButton();
+    // ✅ Start the optimized timer updates
+    startActiveQuestTimerUpdates();
+    
     const finishedWorkBtn = document.getElementById("finished-work-btn");
     const linksContainer = document.getElementById("quest-links");
     
@@ -4093,7 +4347,6 @@ function acceptQuest(questId) {
     updateTimerDisplay(questId);
   }
 }
-
 function resetQuestTimer(questId) {
   delete questStartTimes[questId];
   delete questAccepted[questId];
@@ -8215,6 +8468,8 @@ document.addEventListener("DOMContentLoaded", () => {
     initArtBattleHotspot();
     initArtBattleClose();
     initSubmissionModal();
+    setupActiveQuestButton();
+    updateActiveQuestButton();
     
     // ==============================================
     // STEP 3: Hotspot positioning (waits for map image to load properly)
