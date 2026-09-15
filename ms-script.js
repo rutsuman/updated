@@ -1,11 +1,39 @@
 // ==============================================
-// MS-SCRIPT.JS - Middle School Version
-// Single scrollable map with MS standards
+// ==============================================
+// ARTHEIM - MS STUDENT SCRIPT
+// COMPLETE OPTIMIZED VERSION (Single Scrollable Map)
+// ==============================================
 // ==============================================
 
 // ==============================================
-// GLOBAL VARIABLES
+// SECTION 1: GLOBAL STATE & CACHE MANAGEMENT
 // ==============================================
+
+// --- Global State Object (For caching) ---
+const AppState = {
+    studentData: {
+        completedQuests: null,
+        questGrades: null,
+        questAccepted: null,
+        questStartTimes: null,
+        earnedBadges: null,
+        selfAssessments: null,
+        loaded: false,
+        lastLoadTime: null
+    },
+    teacherData: {
+        customTimers: {},
+        classDuration: 75,
+        loaded: false
+    },
+    questRelationships: {
+        leadsTo: {},      // questId -> [questIds that have it as prerequisite]
+        prerequisites: {} // questId -> [prerequisite questIds]
+    },
+    relationshipsBuilt: false
+};
+
+// --- Original Global Variables ---
 let isAddingHotspots = false;
 let rubricLocked = {};
 // MS: Single map only - no map switching
@@ -18,7 +46,7 @@ let questStartTimes = loadQuestStartTimes(); // Load saved start times
 let questAccepted = loadQuestAccepted(); // Track which quests have been accepted
 let questRewards = loadQuestRewards() || {}; // Reward system
 let studentWorks = loadStudentWorks();
-let hotspotPositions = {}; // keep track of the positions of the hotsposts for different screen sizes
+let hotspotPositions = {}; // keep track of the positions of the hotspots for different screen sizes
 let activeQuestId = null; // Will store the ID of the currently active quest
 let badgesData = null; // Will store loaded badges from JSON
 let earnedBadges = loadEarnedBadges(); // Object with badge IDs as keys
@@ -33,9 +61,10 @@ let helpModal = null;
 let helpBtn = null;
 let closeBtn = null;
 let realtimeSubscription = null;
-let seenNewQuests = []
+let seenNewQuests = loadSeenNewQuests();
 let currentUserId = null;
 let cachedQuests = null;
+let cachedQuestsIncludeCustom = false;
 let cachedCustomTimer = null;
 let cachedClassDuration = null;
 let cachedTimerQuestId = null;
@@ -43,6 +72,9 @@ let _lastDisplayedTime = '';
 let _lastActiveQuestId = null;
 let _animationFrameId = null;
 let _lastUpdateTime = 0;
+let isSavingWork = false;
+let selfAssessments = {}; // Holds student self-assessments per quest
+let _selfAssessmentPending = false; // Flag for auto-triggering self-assessment
 const QUEST_CACHE_VERSION = '2026-05-25-v1';
 const QUEST_CACHE_KEY = 'cachedQuests';
 const QUEST_CACHE_VERSION_KEY = 'cachedQuestsVersion';
@@ -54,13 +86,73 @@ let cachedScheduleData = {  // Cache schedule data for the student's class
     frequencyDays: []     // Array of days (0-6) that are class days
 };
 let currentContestForSubmission = null;
-// let raceRefreshInterval = null; This will auto refresh the race when the startRaceAutoRefresh function is activated.
 window.raceJitterInterval = null;
 
+// --- Cache Invalidation Functions ---
+function invalidateStudentDataCache() {
+    AppState.studentData.loaded = false;
+    AppState.studentData.lastLoadTime = null;
+    console.log("Student data cache invalidated");
+}
+
+function invalidateTeacherDataCache() {
+    AppState.teacherData.loaded = false;
+    AppState.teacherData.customTimers = {};
+    console.log("Teacher data cache invalidated");
+}
+
+function invalidateAllCaches() {
+    invalidateStudentDataCache();
+    invalidateTeacherDataCache();
+    console.log("All caches invalidated");
+}
 
 // ==============================================
-// PREVENT HTML MISTAKES BY TEACHERS
+// SECTION 2: QUEST RELATIONSHIP BUILDER
 // ==============================================
+
+function buildQuestRelationships() {
+    if (AppState.relationshipsBuilt && Object.keys(AppState.questRelationships.leadsTo).length > 0) {
+        return; // Already built
+    }
+    
+    console.log("Building quest relationships...");
+    const questKeys = Object.keys(quests);
+    
+    // Reset
+    AppState.questRelationships.leadsTo = {};
+    AppState.questRelationships.prerequisites = {};
+    
+    for (const questId of questKeys) {
+        const quest = quests[questId];
+        if (!quest) continue;
+        
+        // Store prerequisites
+        if (quest.prerequisites && quest.prerequisites.length) {
+            AppState.questRelationships.prerequisites[questId] = quest.prerequisites;
+            
+            // Build reverse lookup (leads to)
+            for (const prereqId of quest.prerequisites) {
+                if (!AppState.questRelationships.leadsTo[prereqId]) {
+                    AppState.questRelationships.leadsTo[prereqId] = [];
+                }
+                if (!AppState.questRelationships.leadsTo[prereqId].includes(questId)) {
+                    AppState.questRelationships.leadsTo[prereqId].push(questId);
+                }
+            }
+        } else {
+            AppState.questRelationships.prerequisites[questId] = [];
+        }
+    }
+    
+    AppState.relationshipsBuilt = true;
+    console.log("Quest relationships built successfully");
+}
+
+// ==============================================
+// SECTION 3: PREVENT HTML MISTAKES BY TEACHERS
+// ==============================================
+
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
@@ -72,8 +164,9 @@ function escapeHtml(str) {
 }
 
 // ==============================================
-// MS STANDARD NAMES (Updated from HS)
+// SECTION 4: STANDARD NAMES (MS VERSION)
 // ==============================================
+
 const STANDARD_NAMES = {
     "VA:Cr1.2.7a": "Goal Setting & Collaboration",
     "VA:Cr2.1.7a": "Skill Development",
@@ -125,7 +218,7 @@ const IGCSE_MAPPING = {
 };
 
 // ==============================================
-// ACTIVE QUEST FLOATING BUTTON
+// SECTION 5: ACTIVE QUEST FLOATING BUTTON
 // ==============================================
 
 function updateActiveQuestButton(timestamp) {
@@ -203,7 +296,7 @@ function updateActiveQuestButton(timestamp) {
         timeString = formatTime(remaining, true);
     }
     
-    // ✅ Only update DOM if something changed
+    // Only update DOM if something changed
     if (timeString !== _lastDisplayedTime) {
         timerSpan.textContent = timeString;
         _lastDisplayedTime = timeString;
@@ -217,7 +310,6 @@ function updateActiveQuestButton(timestamp) {
     // Continue the animation loop
     _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
 }
-
 
 function setupActiveQuestButton() {
     const button = document.getElementById('floating-active-quest');
@@ -254,6 +346,7 @@ function startActiveQuestTimerUpdates() {
     // Update the button immediately
     updateActiveQuestButton(Date.now());
 }
+
 function stopActiveQuestTimerUpdates() {
     if (_animationFrameId) {
         cancelAnimationFrame(_animationFrameId);
@@ -263,8 +356,9 @@ function stopActiveQuestTimerUpdates() {
 }
 
 // ==============================================
-// LOCAL STORAGE HELPERS
+// SECTION 6: LOCAL STORAGE HELPERS
 // ==============================================
+
 function loadEarnedBadges() {
     const data = localStorage.getItem("earnedBadges");
     return data ? JSON.parse(data) : {};
@@ -275,364 +369,371 @@ function saveEarnedBadges() {
 }
 
 function loadStudentWorks() {
-  const data = localStorage.getItem("studentWorks");
-  if (data) {
-    try {
-      return JSON.parse(data);
-    } catch (e) {
-      console.error("Error parsing studentWorks:", e);
-      return {};
+    const data = localStorage.getItem("studentWorks");
+    if (data) {
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.error("Error parsing studentWorks:", e);
+            return {};
+        }
     }
-  }
-  return {};
+    return {};
 }
 
 function saveStudentWorks() {
-  localStorage.setItem("studentWorks", JSON.stringify(studentWorks));
+    localStorage.setItem("studentWorks", JSON.stringify(studentWorks));
 }
 
-
-// ==============================================
-// ACTIVE QUEST FLOATING BUTTON
-// ==============================================
-
-function updateActiveQuestButton() {
-    const button = document.getElementById('floating-active-quest');
-    const timerSpan = document.getElementById('active-quest-timer');
-    
-    if (!button || !timerSpan) return;
-    
-    // Find the active quest (accepted but not completed)
-    let activeQuestId = null;
-    for (const [questId, isAccepted] of Object.entries(questAccepted)) {
-        if (isAccepted === true && !completedQuests[questId]) {
-            activeQuestId = questId;
-            break;
-        }
-    }
-    
-    if (!activeQuestId) {
-        // No active quest - hide the button
-        button.style.display = 'none';
-        return;
-    }
-    
-    // Show the button
-    button.style.display = 'flex';
-    button.dataset.questId = activeQuestId;
-    
-    // Calculate remaining time
-    const remaining = calculateRemainingMinutes(activeQuestId);
-    const quest = quests[activeQuestId];
-    
-    // Get total minutes
-    let totalMinutes = quest?.timer?.allottedMinutes || 75;
-    const customTimer = getCustomTimerForQuestSync(activeQuestId);
-    const classDuration = getClassDurationSync();
-    if (customTimer !== null) {
-        totalMinutes = customTimer * classDuration;
-    }
-    
-    // Format timer display
-    if (remaining <= 0) {
-        timerSpan.textContent = '⏰ TIME UP!';
-        button.classList.add('times-up');
-        button.classList.remove('warning');
-    } else if ((remaining / totalMinutes) * 100 <= 30) {
-        timerSpan.textContent = formatTime(remaining, true);
-        button.classList.add('warning');
-        button.classList.remove('times-up');
-    } else {
-        timerSpan.textContent = formatTime(remaining, true);
-        button.classList.remove('warning', 'times-up');
-    }
+function loadSeenNewQuests() {
+    const data = localStorage.getItem("seenNewQuests");
+    return data ? JSON.parse(data) : [];
 }
 
-// Click handler for the active quest button
-function setupActiveQuestButton() {
-    const button = document.getElementById('floating-active-quest');
-    if (!button) return;
-    
-    // Remove any existing listener to avoid duplicates
-    const newButton = button.cloneNode(true);
-    button.parentNode.replaceChild(newButton, button);
-    
-    newButton.addEventListener('click', function() {
-        const questId = this.dataset.questId;
-        if (questId) {
-            // Close any open overlays first
-            const questOverlay = document.getElementById('quest-overlay');
-            if (questOverlay) questOverlay.style.display = 'none';
-            
-            // Open the active quest
-            openQuest(questId);
-        }
-    });
+function saveSeenNewQuests() {
+    localStorage.setItem("seenNewQuests", JSON.stringify(seenNewQuests));
 }
 
 // ==============================================
-// WORK OVERLAY SYSTEM
+// SECTION 7: WORK OVERLAY SYSTEM
 // ==============================================
+
 function handlePreviewClick(e) {
-  e.stopPropagation();
-  
-  const preview = document.getElementById("image-preview");
-  if (!preview || !preview.src || preview.src === "") return;
-  
-  const overlay = document.getElementById("work-overlay");
-  const questId = overlay?.dataset.questId;
-  
-  if (questId && studentWorks[questId]) {
-    const work = studentWorks[questId];
-    const quest = quests[questId];
-    openFullscreenFromWork(work, quest);
-  } else {
-    openFullscreenImageSimple(preview.src);
-  }
+    e.stopPropagation();
+    
+    const preview = document.getElementById("image-preview");
+    if (!preview || !preview.src || preview.src === "") return;
+    
+    const overlay = document.getElementById("work-overlay");
+    const questId = overlay?.dataset.questId;
+    
+    if (questId && studentWorks[questId]) {
+        const work = studentWorks[questId];
+        const quest = quests[questId];
+        openFullscreenFromWork(work, quest);
+    } else {
+        openFullscreenImageSimple(preview.src);
+    }
 }
 
 function saveWorkData() {
-  const overlay = document.getElementById("work-overlay");
-  const questId = overlay.dataset.questId;
-  
-  if (!questId) {
-    alert("Error: No quest associated with this work.");
-    return;
-  }
-
-  const title = document.getElementById("work-title").value;
-  const size = document.getElementById("work-size").value;
-  const media = document.getElementById("work-media").value;
-  const description = document.getElementById("work-description").value;
-  const imageInput = document.getElementById("work-image");
-  const imageFile = imageInput.files[0];
-  
-  const workData = {
-    title: title,
-    size: size,
-    media: media,
-    description: description,
-    lastModified: new Date().toISOString()
-  };
-  
-  studentWorks[questId] = {
-    ...workData,
-    image: imageFile ? "pending" : ""
-  };
-  saveStudentWorks();
-  
-  saveWorkToCloud(questId, workData, imageFile).then(success => {
-    if (success) {
-      alert("🎨 Work saved to cloud successfully!");
-      const galleryOverlay = document.getElementById("gallery-overlay");
-      if (galleryOverlay && galleryOverlay.style.display === "flex") {
-        renderGalleryItems();
-      }
-    } else {
-      alert("Work saved locally only. Cloud save failed.");
+    // Prevent multiple simultaneous saves
+    if (isSavingWork) {
+        console.log("Save already in progress, ignoring duplicate call");
+        return;
     }
-  });
+    
+    const overlay = document.getElementById("work-overlay");
+    const questId = overlay.dataset.questId;
+    
+    if (!questId) {
+        alert("Error: No quest associated with this work.");
+        return;
+    }
+
+    // Check if this quest is already saved (prevent resubmission)
+    if (studentWorks[questId] && studentWorks[questId].image && studentWorks[questId].image !== "pending") {
+        const confirmResave = confirm("You have already saved work for this quest. Do you want to replace it?");
+        if (!confirmResave) {
+            return;
+        }
+    }
+
+    const title = document.getElementById("work-title").value;
+    const size = document.getElementById("work-size").value;
+    const media = document.getElementById("work-media").value;
+    const description = document.getElementById("work-description").value;
+    const imageInput = document.getElementById("work-image");
+    const imageFile = imageInput.files[0];
+    
+    // Validate required fields
+    if (!title) {
+        alert("Please enter a title for your work.");
+        return;
+    }
+    
+    if (!imageFile) {
+        alert("Please upload an image of your work.");
+        return;
+    }
+    
+    // Check file size
+    if (imageFile.size > 5 * 1024 * 1024) {
+        alert("Image is very large (over 5MB). It will be compressed but may take a moment.");
+    }
+    
+    // Set lock
+    isSavingWork = true;
+    
+    const workData = {
+        title: title,
+        size: size,
+        media: media,
+        description: description,
+        lastModified: new Date().toISOString()
+    };
+    
+    // Store in local studentWorks
+    studentWorks[questId] = {
+        ...workData,
+        image: "pending"
+    };
+    saveStudentWorks();
+    
+    // Show saving indicator
+    const saveBtn = document.querySelector(".save-work");
+    if (saveBtn) {
+        saveBtn.textContent = "Saving...";
+        saveBtn.disabled = true;
+    }
+    
+    // Use a unique upload ID to prevent duplicates
+    const uploadId = `${questId}_${Date.now()}`;
+    
+    saveWorkToCloud(questId, workData, imageFile, uploadId).then(async success => {
+        if (saveBtn) {
+            saveBtn.textContent = "Save";
+            saveBtn.disabled = false;
+        }
+        
+        // Release lock
+        isSavingWork = false;
+        
+        if (success) {
+            alert("🎨 Work saved successfully!");
+            closeWorkOverlay();
+            
+            // AUTO-TRIGGER SELF-ASSESSMENT
+            window._selfAssessmentPending = true;
+            
+            setTimeout(() => {
+                openRubricPopup(questId, true);
+            }, 400);
+            
+            // Refresh gallery if visible
+            const galleryOverlay = document.getElementById("gallery-overlay");
+            if (galleryOverlay && galleryOverlay.style.display === "flex") {
+                renderGalleryItems();
+            }
+        } else {
+            alert("Work saved locally only. Please try saving to cloud again later.");
+        }
+    }).catch(err => {
+        isSavingWork = false;
+        if (saveBtn) {
+            saveBtn.textContent = "Save";
+            saveBtn.disabled = false;
+        }
+        alert("Error saving work. Please try again.");
+        console.error("Save error:", err);
+    });
 }
 
 async function deleteWorkImage() {
-  const preview = document.getElementById("image-preview");
-  const overlay = document.getElementById("work-overlay");
-  const questId = overlay.dataset.questId;
-  
-  console.log("Deleting quest ID:", questId);
-  
-  if (!questId) {
-    console.error("No quest ID found");
-    return;
-  }
-  
-  if (!confirm("Are you sure you want to delete this work completely? All title, description, and image will be removed.")) {
-    return;
-  }
-  
-  const { data: { session } } = await window.supabase.auth.getSession();
-  if (session) {
-    const { error } = await window.supabase
-      .from('student_works')
-      .delete()
-      .eq('quest_id', questId)
-      .eq('user_id', session.user.id);
+    const preview = document.getElementById("image-preview");
+    const overlay = document.getElementById("work-overlay");
+    const questId = overlay.dataset.questId;
     
-    if (error) {
-      console.error("Error deleting from cloud:", error);
-      alert("Failed to delete from cloud");
-      return;
-    } else {
-      console.log("Work deleted from cloud");
+    console.log("Deleting quest ID:", questId);
+    
+    if (!questId) {
+        console.error("No quest ID found");
+        return;
     }
-  }
-  
-  if (studentWorks[questId]) {
-    delete studentWorks[questId];
-    console.log("Deleted from local studentWorks, now has:", Object.keys(studentWorks));
-  }
-  
-  saveStudentWorks();
-  await loadCloudWorksIntoGallery();
-  
-  if (preview) {
-    preview.src = "";
-    preview.style.display = "none";
-  }
-  
-  document.getElementById("work-title").value = "";
-  document.getElementById("work-size").value = "";
-  document.getElementById("work-media").value = "";
-  document.getElementById("work-description").value = "";
-  
-  const imageInput = document.getElementById("work-image");
-  if (imageInput) {
-    imageInput.value = "";
-  }
-  
-  const galleryOverlay = document.getElementById("gallery-overlay");
-  if (galleryOverlay && galleryOverlay.style.display === "flex") {
-    await renderGalleryItems();
-  }
-  
-  alert("Work deleted successfully!");
-  closeWorkOverlay();
+    
+    if (!confirm("Are you sure you want to delete this work completely? All title, description, and image will be removed.")) {
+        return;
+    }
+    
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (session) {
+        const { error } = await window.supabase
+            .from('student_works')
+            .delete()
+            .eq('quest_id', questId)
+            .eq('user_id', session.user.id);
+        
+        if (error) {
+            console.error("Error deleting from cloud:", error);
+            alert("Failed to delete from cloud");
+            return;
+        } else {
+            console.log("Work deleted from cloud");
+        }
+    }
+    
+    if (studentWorks[questId]) {
+        delete studentWorks[questId];
+        console.log("Deleted from local studentWorks, now has:", Object.keys(studentWorks));
+    }
+    
+    saveStudentWorks();
+    await loadCloudWorksIntoGallery();
+    
+    if (preview) {
+        preview.src = "";
+        preview.style.display = "none";
+    }
+    
+    document.getElementById("work-title").value = "";
+    document.getElementById("work-size").value = "";
+    document.getElementById("work-media").value = "";
+    document.getElementById("work-description").value = "";
+    
+    const imageInput = document.getElementById("work-image");
+    if (imageInput) {
+        imageInput.value = "";
+    }
+    
+    const galleryOverlay = document.getElementById("gallery-overlay");
+    if (galleryOverlay && galleryOverlay.style.display === "flex") {
+        await renderGalleryItems();
+    }
+    
+    alert("Work deleted successfully!");
+    closeWorkOverlay();
 }
 
 function initializeWorkOverlay() {
-  const finishedWorkBtn = document.getElementById("finished-work-btn");
-  if (finishedWorkBtn) {
-    finishedWorkBtn.removeAttribute("onclick");
-    finishedWorkBtn.addEventListener("click", function(e) {
-      e.preventDefault();
-      if (!currentQuestId) {
-        alert("Please open a quest first to add your work.");
-        return;
-      }
-      openWorkOverlay(currentQuestId);
-    });
-  } else {
-    console.warn("Finished Work button not found in DOM");
-  }
+    const finishedWorkBtn = document.getElementById("finished-work-btn");
+    if (finishedWorkBtn) {
+        finishedWorkBtn.removeAttribute("onclick");
+        finishedWorkBtn.addEventListener("click", function(e) {
+            e.preventDefault();
+            if (!currentQuestId) {
+                alert("Please open a quest first to add your work.");
+                return;
+            }
+            openWorkOverlay(currentQuestId);
+        });
+    } else {
+        console.warn("Finished Work button not found in DOM");
+    }
 
-  const closeButtons = document.querySelectorAll("#work-overlay .close-overlay, #work-overlay button[onclick='closeWorkOverlay()']");
-  closeButtons.forEach(btn => {
-    btn.removeAttribute("onclick");
-    btn.addEventListener("click", function(e) {
-      e.preventDefault();
-      closeWorkOverlay();
+    const closeButtons = document.querySelectorAll("#work-overlay .close-overlay, #work-overlay button[onclick='closeWorkOverlay()']");
+    closeButtons.forEach(btn => {
+        btn.removeAttribute("onclick");
+        btn.addEventListener("click", function(e) {
+            e.preventDefault();
+            closeWorkOverlay();
+        });
     });
-  });
 
-  const deleteBtn = document.getElementById("delete-work-image");
-  if (deleteBtn) {
-    deleteBtn.removeAttribute("onclick");
-    deleteBtn.addEventListener("click", function(e) {
-      e.preventDefault();
-      deleteWorkImage();
-    });
-  }
+    const deleteBtn = document.getElementById("delete-work-image");
+    if (deleteBtn) {
+        deleteBtn.removeAttribute("onclick");
+        deleteBtn.addEventListener("click", function(e) {
+            e.preventDefault();
+            deleteWorkImage();
+        });
+    }
 
-  const imageInput = document.getElementById("work-image");
-  if (imageInput) {
-    imageInput.addEventListener("change", function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-        alert("File is too large. Please select an image under 5MB.");
-        return;
-      }
-      if (!file.type.startsWith("image/")) {
-        alert("Please select an image file.");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = function(event) {
-        const preview = document.getElementById("image-preview");
-        if (preview) {
-          preview.src = event.target.result;
-          preview.style.display = "block";
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-  }
+    const imageInput = document.getElementById("work-image");
+    if (imageInput) {
+        imageInput.addEventListener("change", function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 5 * 1024 * 1024) {
+                alert("File is too large. Please select an image under 5MB.");
+                return;
+            }
+            if (!file.type.startsWith("image/")) {
+                alert("Please select an image file.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const preview = document.getElementById("image-preview");
+                if (preview) {
+                    preview.src = event.target.result;
+                    preview.style.display = "block";
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+    }
 
-  const saveBtn = document.querySelector(".save-work");
-  if (saveBtn) {
-    saveBtn.addEventListener("click", function(e) {
-      e.preventDefault();
-      saveWorkData();
-    });
-  }
+    const saveBtn = document.querySelector(".save-work");
+    if (saveBtn) {
+        saveBtn.addEventListener("click", function(e) {
+            e.preventDefault();
+            saveWorkData();
+        });
+    }
 }
 
 function openFullscreenFromWork(work, quest) {
-  const overlay = document.getElementById("fullscreen-image-overlay");
-  const fullscreenImg = document.getElementById("fullscreen-image");
-  const titleEl = document.getElementById("fullscreen-title");
-  const detailsEl = document.getElementById("fullscreen-details");
-  const descriptionEl = document.getElementById("fullscreen-description");
-  
-  if (!overlay || !fullscreenImg) return;
-  
-  fullscreenImg.src = work.image;
-  titleEl.textContent = work.title || quest?.title || "Artwork";
-  
-  let details = [];
-  if (quest && quest.title) details.push(`Quest: ${quest.title}`);
-  if (work.size) details.push(`Size: ${work.size}`);
-  if (work.media) details.push(`Media: ${work.media}`);
-  if (work.lastModified) {
-    const date = new Date(work.lastModified);
-    details.push(`Last modified: ${date.toLocaleDateString()}`);
-  }
-  detailsEl.textContent = details.join(" • ");
-  descriptionEl.textContent = work.description || (quest?.description ? `Quest: ${quest.description}` : "No description");
-  
-  overlay.style.display = "flex";
-  overlay.currentWork = work;
-  overlay.currentQuest = quest;
-  
-  const escHandler = function(e) {
-    if (e.key === "Escape") {
-      closeFullscreenImage();
-      document.removeEventListener("keydown", escHandler);
+    const overlay = document.getElementById("fullscreen-image-overlay");
+    const fullscreenImg = document.getElementById("fullscreen-image");
+    const titleEl = document.getElementById("fullscreen-title");
+    const detailsEl = document.getElementById("fullscreen-details");
+    const descriptionEl = document.getElementById("fullscreen-description");
+    
+    if (!overlay || !fullscreenImg) return;
+    
+    fullscreenImg.src = work.image;
+    titleEl.textContent = work.title || quest?.title || "Artwork";
+    
+    let details = [];
+    if (quest && quest.title) details.push(`Quest: ${quest.title}`);
+    if (work.size) details.push(`Size: ${work.size}`);
+    if (work.media) details.push(`Media: ${work.media}`);
+    if (work.lastModified) {
+        const date = new Date(work.lastModified);
+        details.push(`Last modified: ${date.toLocaleDateString()}`);
     }
-  };
-  document.addEventListener("keydown", escHandler);
-  overlay.escHandler = escHandler;
+    detailsEl.textContent = details.join(" • ");
+    descriptionEl.textContent = work.description || (quest?.description ? `Quest: ${quest.description}` : "No description");
+    
+    overlay.style.display = "flex";
+    overlay.currentWork = work;
+    overlay.currentQuest = quest;
+    
+    const escHandler = function(e) {
+        if (e.key === "Escape") {
+            closeFullscreenImage();
+            document.removeEventListener("keydown", escHandler);
+        }
+    };
+    document.addEventListener("keydown", escHandler);
+    overlay.escHandler = escHandler;
 }
 
 function openFullscreenImageSimple(imageSrc) {
-  const overlay = document.getElementById("fullscreen-image-overlay");
-  const fullscreenImg = document.getElementById("fullscreen-image");
-  const titleEl = document.getElementById("fullscreen-title");
-  const detailsEl = document.getElementById("fullscreen-details");
-  const descriptionEl = document.getElementById("fullscreen-description");
-  
-  if (!overlay || !fullscreenImg) return;
-  
-  fullscreenImg.src = imageSrc;
-  titleEl.textContent = "Image Preview";
-  detailsEl.textContent = "";
-  descriptionEl.textContent = "";
-  
-  overlay.style.display = "flex";
-  
-  const escHandler = function(e) {
-    if (e.key === "Escape") {
-      closeFullscreenImage();
-      document.removeEventListener("keydown", escHandler);
-    }
-  };
-  document.addEventListener("keydown", escHandler);
-  overlay.escHandler = escHandler;
+    const overlay = document.getElementById("fullscreen-image-overlay");
+    const fullscreenImg = document.getElementById("fullscreen-image");
+    const titleEl = document.getElementById("fullscreen-title");
+    const detailsEl = document.getElementById("fullscreen-details");
+    const descriptionEl = document.getElementById("fullscreen-description");
+    
+    if (!overlay || !fullscreenImg) return;
+    
+    fullscreenImg.src = imageSrc;
+    titleEl.textContent = "Image Preview";
+    detailsEl.textContent = "";
+    descriptionEl.textContent = "";
+    
+    overlay.style.display = "flex";
+    
+    const escHandler = function(e) {
+        if (e.key === "Escape") {
+            closeFullscreenImage();
+            document.removeEventListener("keydown", escHandler);
+        }
+    };
+    document.addEventListener("keydown", escHandler);
+    overlay.escHandler = escHandler;
+}
+
+function closeWorkOverlay() {
+    const overlay = document.getElementById("work-overlay");
+    if (overlay) overlay.style.display = "none";
 }
 
 // ==============================================
-// TEACHER FRAMEWORK DETECTION
+// SECTION 8: TEACHER FRAMEWORK DETECTION
 // ==============================================
+
 // Detect which framework the teacher is using
 async function detectTeacherFramework() {
     const profile = loadStudentProfile();
@@ -670,16 +771,8 @@ function getQuestsFileForFramework(framework) {
 }
 
 // ==============================================
-// NEW QUEST ANNOUNCEMENT SYSTEM
+// SECTION 9: NEW QUEST ANNOUNCEMENT SYSTEM
 // ==============================================
-function loadSeenNewQuests() {
-    const data = localStorage.getItem("seenNewQuests");
-    return data ? JSON.parse(data) : [];
-}
-
-function saveSeenNewQuests() {
-    localStorage.setItem("seenNewQuests", JSON.stringify(seenNewQuests));
-}
 
 function findNewQuests() {
     if (!quests || Object.keys(quests).length === 0) {
@@ -777,31 +870,32 @@ function initializeNewQuestSystem() {
 }
 
 // ==============================================
-// STUDENT PROFILE
+// SECTION 10: STUDENT PROFILE
 // ==============================================
+
 function saveStudentProfile(profile) {
-  localStorage.setItem("studentProfile", JSON.stringify(profile));
+    localStorage.setItem("studentProfile", JSON.stringify(profile));
 }
 
 function loadStudentProfile() {
-  const data = localStorage.getItem("studentProfile");
-  return data ? JSON.parse(data) : null;
+    const data = localStorage.getItem("studentProfile");
+    return data ? JSON.parse(data) : null;
 }
 
 function updateProfileUI() {
-  const profile = loadStudentProfile();
-  if (!profile) return;
+    const profile = loadStudentProfile();
+    if (!profile) return;
 
-  const avatar = document.getElementById("student-avatar");
-  const name = document.getElementById("student-name");
-  const profileBtn = document.querySelector(".profile-btn"); 
-  const profileBtnImg = profileBtn ? profileBtn.querySelector("img") : null;
+    const avatar = document.getElementById("student-avatar");
+    const name = document.getElementById("student-name");
+    const profileBtn = document.querySelector(".profile-btn"); 
+    const profileBtnImg = profileBtn ? profileBtn.querySelector("img") : null;
 
-  if (avatar) avatar.src = profile.character;
-  if (name) name.innerText = profile.name;
-  if (profileBtnImg) {
-    profileBtnImg.src = profile.character;
-  }
+    if (avatar) avatar.src = profile.character;
+    if (name) name.innerText = profile.name;
+    if (profileBtnImg) {
+        profileBtnImg.src = profile.character;
+    }
 }
 
 function debugStudentProfile() {
@@ -814,8 +908,9 @@ function debugStudentProfile() {
 }
 
 // ==============================================
-// LOGIN / LOGOUT
+// SECTION 11: LOGIN / LOGOUT
 // ==============================================
+
 async function handleLoginSubmit() {
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
@@ -839,7 +934,7 @@ async function handleLoginSubmit() {
             return;
         }
         
-        // ✅ Check student's grade level
+        // Check student's grade level
         const { data: profile, error: profileError } = await window.supabase
             .from('profiles')
             .select('grade_level')
@@ -851,7 +946,7 @@ async function handleLoginSubmit() {
             return;
         }
         
-        // ✅ Redirect HS students to the HS portal
+        // Redirect HS students to the HS portal
         if (profile?.grade_level === 'hs') {
             messageEl.textContent = 'This is the Middle School portal. Please use the High School portal.';
             await window.supabase.auth.signOut();
@@ -861,7 +956,7 @@ async function handleLoginSubmit() {
             return;
         }
         
-        // ✅ MS student - continue with login
+        // MS student - continue with login
         currentUserId = data.user.id;
         document.getElementById('welcome-overlay').style.display = 'none';
 
@@ -881,7 +976,7 @@ async function handleLoginSubmit() {
         }
         
         messageEl.textContent = "Loading your data...";
-        await loadStudentDataFromCloud();
+        await loadStudentDataFromCloud(true); // Force fresh load on login
         await loadScheduleForStudent();
         updateProfileUI();
         checkForNewQuests();
@@ -920,6 +1015,10 @@ async function logout() {
         questAccepted = {};
         questStartTimes = {};
         earnedBadges = {};
+        selfAssessments = {};
+        
+        // Clear caches too
+        invalidateAllCaches();
         
         console.log("Logged out successfully - all data cleared");
         
@@ -933,10 +1032,8 @@ async function logout() {
 }
 
 // ==============================================
-// MS: SINGLE MAP CONFIG (No map switching)
+// SECTION 12: MAP CONFIG & HELPERS (MS - SINGLE MAP)
 // ==============================================
-// MS: Single map only - no MAPS object with multiple maps
-// All hotspots are on a single scrollable map
 
 function getMapForQuest(questId) {
     // MS: All quests are on the single map
@@ -944,8 +1041,9 @@ function getMapForQuest(questId) {
 }
 
 // ==============================================
-// SUMMATIVE PATH MENU
+// SECTION 13: SUMMATIVE PATH MENU
 // ==============================================
+
 const pathQuests = {
   paintersPath: [
     { title: "Trial of the Modern Masters", id: "quest4", style: "mvp" },
@@ -986,8 +1084,9 @@ const pathQuests = {
 };
 
 // ==============================================
-// HOTSPOT POSITIONING
+// SECTION 14: HOTSPOT POSITIONING
 // ==============================================
+
 function initializeHotspotPositions() {
   document.querySelectorAll(".hotspot").forEach(hotspot => {
     const id = hotspot.dataset.city;
@@ -1049,7 +1148,7 @@ function updateHotspotPositions() {
     if (position) {
       hotspot.style.left = position.left;
       hotspot.style.top = position.top;
-      hotspot.style.transform = "translate(-50%, -50%)";  // ✅ Remove scale
+      hotspot.style.transform = "translate(-50%, -50%)";
       // MS: All hotspots always visible
       hotspot.style.display = "block";
       hotspot.style.zIndex = "1000";
@@ -1058,8 +1157,9 @@ function updateHotspotPositions() {
 }
 
 // ==============================================
-// FLOATING NAVIGATION
+// SECTION 15: FLOATING NAVIGATION
 // ==============================================
+
 function initializeFloatingNavigation() {
     const floatingGallery = document.getElementById("floating-gallery");
     
@@ -1071,36 +1171,43 @@ function initializeFloatingNavigation() {
 }
 
 // ==============================================
-// MS: BIND HOTSPOTS (Simplified - no map switching)
+// SECTION 16: BIND HOTSPOTS (MS - SIMPLIFIED)
 // ==============================================
+
 function bindHotspots() {
   document.querySelectorAll(".hotspot").forEach(hotspot => {
     const cityId = hotspot.dataset.city;
     
-    // Check if it's a custom quest (starts with "custom_")
-     if (cityId.startsWith('custom_')) {
+    // Prevent duplicate listeners by cloning the element
+    // (cloneNode strips all existing event listeners)
+    const freshHotspot = hotspot.cloneNode(true);
+    hotspot.parentNode.replaceChild(freshHotspot, hotspot);
+    
+    // Now attach exactly ONE listener to the fresh element
+    if (cityId.startsWith('custom_')) {
       console.log("FOUND CUSTOM QUEST HOTSPOT:", cityId);
-      hotspot.addEventListener("click", () => {
+      freshHotspot.addEventListener("click", () => {
         console.log("Custom quest clicked:", cityId);
         openQuest(cityId);
       });
     }
     else if (quests[cityId]?.style === "mvp") {
-      hotspot.classList.add("mvp-hotspot");
-      hotspot.addEventListener("click", () => {
-        // MS: No map switching - just open the quest
+      freshHotspot.classList.add("mvp-hotspot");
+      freshHotspot.addEventListener("click", () => {
         openQuest(cityId);
       });
     }
     else {
-      hotspot.addEventListener("click", () => {
-        // MS: No map switching - just open the quest
+      freshHotspot.addEventListener("click", () => {
         openQuest(cityId);
       });
     }
   });
 }
 
+// ==============================================
+// SECTION 17: UPDATE HOTSPOT VISIBILITY (SINGLE MAP)
+// ==============================================
 
 // MS: Simplified - all hotspots always visible
 function updateHotspotVisibility() {
@@ -1121,186 +1228,225 @@ function updateHotspotVisibility() {
 }
 
 // ==============================================
-// OPEN QUEST
+// SECTION 18: OPEN QUEST (OPTIMIZED)
 // ==============================================
+
 async function openQuest(cityId) {
-  await loadStudentDataFromCloud();
-  await cacheTimerValuesForQuest(cityId);
-  
-  if (cityId === "gallery") {
-    openGallery();
-    return;
-  }
-  
-  // MS: No map switching needed - all quests on single map
-  // Just open the quest directly
-
-  const quest = quests[cityId];
-  if (!quest) return;
-
-  currentQuestId = cityId;
-  const questBox = document.getElementById("quest-box");
-  questBox.className = "";
-  
-  // Remove existing custom class
-  questBox.classList.remove("custom-quest");
-  
-  // Add custom class if this is a teacher-created quest
-  if (quest.teacher_quest === true || quest.is_custom === true) {
-    questBox.classList.add("custom-quest");
-  }
-  
-  if (quest.style) questBox.classList.add(quest.style);
-  if (completedQuests[cityId]) questBox.classList.add("completed");
-
-  document.getElementById("quest-title").innerText = quest.title || "";
-  document.getElementById("quest-rationale").innerHTML = `<a href="#" onclick="openRationalePopup('${cityId}')">Rationale</a>`;
-  document.getElementById("quest-text").innerText = quest.description || "";
-  document.getElementById("quest-character").src = quest.character || "";
-  document.getElementById("quest-rubric").innerHTML = `<a href="#" onclick="openRubricPopup('${cityId}')">Rubric</a>`;
-
-  const rewardCoins = calculateQuestRewardCoins(cityId);
-  questRewards[cityId] = rewardCoins;
-  document.getElementById("quest-reward").innerHTML = rewardCoins ? `<strong>${rewardCoins} 💰</strong>` : "—";
-
-  updateProfileRewards();
-  
-  const pathContainer = document.getElementById("quest-paths");
-  if (pathContainer) {
-    pathContainer.innerHTML = Array.isArray(quest.path) && quest.path.length ? quest.path.join(", ") : "No path assigned";
-  }
-
-  const prereqContainer = document.getElementById("quest-prereq-leads-prereq");
-  if (prereqContainer) {
-    prereqContainer.innerHTML = quest.prerequisites && quest.prerequisites.length
-      ? quest.prerequisites.map(id => {
-          const completed = completedQuests[id] ? '<span class="prereq-check"> ✔</span>' : '';
-          return `<li><a href="#" onclick="openQuest('${id}')">${quests[id].title}</a>${completed}</li>`;
-        }).join('')
-      : "<li>None</li>";
-  }
-
-  setupTimerControls(cityId);
-
-  const reqBox = document.getElementById("quest-requirements");
-  if (reqBox) {
-    reqBox.innerHTML = "";
-    if (Array.isArray(quest.requirements)) {
-      const ul = document.createElement("ul");
-      quest.requirements.forEach(r => { const li = document.createElement("li"); li.textContent = r; ul.appendChild(li); });
-      reqBox.appendChild(ul);
+    // Fast path: if everything is already loaded, render immediately
+    const isDataReady = AppState.studentData.loaded && 
+                        (Date.now() - AppState.studentData.lastLoadTime < 30000) &&
+                        Object.keys(quests).length > 0;
+    
+    // Build relationships only once (synchronous, cheap)
+    buildQuestRelationships();
+    
+    if (cityId === "gallery") {
+        openGallery();
+        return;
     }
-  }
+    
+    const quest = quests[cityId];
+    if (!quest) return;
 
-  const linksEl = document.getElementById("quest-links");
-  if (linksEl) {
-    linksEl.innerHTML = Array.isArray(quest.links)
-      ? quest.links.map((l,i) => `<li><a href="${l.url || '#'}" target="_blank">${l.type || 'Sample'} ${i+1}</a></li>`).join("")
-      : "";
-  }
-
-  const starsContainer = document.querySelector("#quest-box .difficulty .stars");
-  if (starsContainer) {
-    starsContainer.innerHTML = "";
-    const difficulty = quest.difficulty || 0;
-    for (let i = 1; i <= 3; i++) {
-      const star = document.createElement("span");
-      star.className = i <= difficulty ? "star solid" : "star outline";
-      star.innerText = "★";
-      starsContainer.appendChild(star);
+    currentQuestId = cityId;
+    const questBox = document.getElementById("quest-box");
+    questBox.className = "";
+    questBox.classList.remove("custom-quest");
+    
+    if (quest.teacher_quest === true || quest.is_custom === true) {
+        questBox.classList.add("custom-quest");
     }
-  }
+    if (quest.style) questBox.classList.add(quest.style);
+    if (completedQuests[cityId]) questBox.classList.add("completed");
 
-  const leadsContainer = document.getElementById("quest-prereq-leads-to");
-  if (leadsContainer) {
-    const leads = Object.entries(quests)
-      .filter(([id, q]) => q.prerequisites && q.prerequisites.includes(cityId));
+    // === RENDER EVERYTHING SYNCHRONOUSLY FIRST (instant) ===
+    document.getElementById("quest-title").innerText = quest.title || "";
+    document.getElementById("quest-rationale").innerHTML = `<a href="#" onclick="openRationalePopup('${cityId}')">Rationale</a>`;
+    document.getElementById("quest-text").innerText = quest.description || "";
+    document.getElementById("quest-character").src = quest.character || "";
+    document.getElementById("quest-rubric").innerHTML = `<a href="#" onclick="openRubricPopup('${cityId}')">Rubric</a>`;
 
-    if (leads.length > 0) {
-      leadsContainer.innerHTML = leads.map(([id, quest]) => {
-        const completed = completedQuests[id] ? '<span class="prereq-check"> ✔</span>' : '';
-        return `<li><a href="#" onclick="openQuest('${id}')">${quest.title}</a>${completed}</li>`;
-      }).join('');
-    } else {
-      leadsContainer.innerHTML = "<li>None</li>";
+    const rewardCoins = calculateQuestRewardCoins(cityId);
+    questRewards[cityId] = rewardCoins;
+    document.getElementById("quest-reward").innerHTML = rewardCoins ? `<strong>${rewardCoins} 💰</strong>` : "—";
+
+    updateProfileRewards();
+    
+    const pathContainer = document.getElementById("quest-paths");
+    if (pathContainer) {
+        pathContainer.innerHTML = Array.isArray(quest.path) && quest.path.length ? quest.path.join(", ") : "No path assigned";
     }
-  }
-  
-  updateRestrictedElementsVisibility(cityId);
-  document.getElementById("quest-overlay").style.display = "block";
+
+    // Prerequisites (synchronous from pre-built cache)
+    const prereqContainer = document.getElementById("quest-prereq-leads-prereq");
+    if (prereqContainer) {
+        const prereqIds = AppState.questRelationships.prerequisites[cityId] || [];
+        prereqContainer.innerHTML = prereqIds.length
+            ? prereqIds.map(id => {
+                const q = quests[id];
+                if (!q) return '';
+                const completed = completedQuests[id] ? '<span class="prereq-check"> ✔</span>' : '';
+                return `<li><a href="#" onclick="openQuest('${id}')">${q.title}</a>${completed}</li>`;
+            }).join('')
+            : "<li>None</li>";
+    }
+
+    // Timer controls (synchronous with cached values)
+    setupTimerControlsSync(cityId);
+
+    const reqBox = document.getElementById("quest-requirements");
+    if (reqBox) {
+        reqBox.innerHTML = "";
+        if (Array.isArray(quest.requirements)) {
+            const ul = document.createElement("ul");
+            quest.requirements.forEach(r => { 
+                const li = document.createElement("li"); 
+                li.textContent = r; 
+                ul.appendChild(li); 
+            });
+            reqBox.appendChild(ul);
+        }
+    }
+
+    const linksEl = document.getElementById("quest-links");
+    if (linksEl) {
+        linksEl.innerHTML = Array.isArray(quest.links)
+            ? quest.links.map((l,i) => `<li><a href="${l.url || '#'}" target="_blank">${l.type || 'Sample'} ${i+1}</a></li>`).join("")
+            : "";
+    }
+
+    const starsContainer = document.querySelector("#quest-box .difficulty .stars");
+    if (starsContainer) {
+        starsContainer.innerHTML = "";
+        const difficulty = quest.difficulty || 0;
+        for (let i = 1; i <= 3; i++) {
+            const star = document.createElement("span");
+            star.className = i <= difficulty ? "star solid" : "star outline";
+            star.innerText = "★";
+            starsContainer.appendChild(star);
+        }
+    }
+
+    // Leads to (synchronous)
+    const leadsContainer = document.getElementById("quest-prereq-leads-to");
+    if (leadsContainer) {
+        const leadsIds = AppState.questRelationships.leadsTo[cityId] || [];
+        if (leadsIds.length > 0) {
+            leadsContainer.innerHTML = leadsIds.map(id => {
+                const q = quests[id];
+                if (!q) return '';
+                const completed = completedQuests[id] ? '<span class="prereq-check"> ✔</span>' : '';
+                return `<li><a href="#" onclick="openQuest('${id}')">${q.title}</a>${completed}</li>`;
+            }).join('');
+        } else {
+            leadsContainer.innerHTML = "<li>None</li>";
+        }
+    }
+    
+    // Show overlay IMMEDIATELY
+    document.getElementById("quest-overlay").style.display = "block";
+    
+    // === THEN do async work in background (doesn't block UI) ===
+    updateRestrictedElementsVisibilitySync(cityId);
+    
+    // Only fetch from cloud if cache is stale
+    if (!isDataReady) {
+        loadStudentDataFromCloud(false).then(() => {
+            // Refresh restricted elements after data loads
+            updateRestrictedElementsVisibilitySync(cityId);
+        }).catch(err => console.error("Background load error:", err));
+    }
+    
+    // Only fetch timer values if not cached
+    if (cachedTimerQuestId !== cityId || cachedClassDuration === null) {
+        cacheTimerValuesForQuest(cityId).then(() => {
+            // Update timer display after cache is ready
+            if (currentQuestId === cityId) {
+                setupTimerControlsSync(cityId);
+                updateTimerDisplay(cityId);
+            }
+        }).catch(err => console.error("Timer cache error:", err));
+    }
 }
+
+// ==============================================
+// ==============================================
+// SECTION 19: QUEST COMPLETION & DATA
+// ==============================================
 
 function markQuestCompleteFromWork(questId) {
-  const quest = quests[questId];
-  if (!quest) return;
-  
-  completedQuests[questId] = true;
-  
-  if (activeQuestId === questId) {
-    activeQuestId = null;
-    if (questAccepted[questId]) {
-      questAccepted[questId] = false;
-      saveQuestAccepted();
+    const quest = quests[questId];
+    if (!quest) return;
+    
+    completedQuests[questId] = true;
+    
+    if (activeQuestId === questId) {
+        activeQuestId = null;
+        if (questAccepted[questId]) {
+            questAccepted[questId] = false;
+            saveQuestAccepted();
+        }
     }
-  }
-  
-  // ✅ Update the button and stop the timer
-  updateActiveQuestButton();
-  stopActiveQuestTimerUpdates();
-  
-  updateBadgesAfterQuest();
-  
-  if (currentQuestId === questId) {
-    const questBox = document.getElementById("quest-box");
-    if (questBox) questBox.classList.add("completed");
-    const questCheck = document.getElementById("quest-check");
-    if (questCheck) questCheck.checked = true;
-    const timerDisplay = document.getElementById("timer-display");
-    if (timerDisplay) timerDisplay.textContent = "Completed";
-  }
-  
-  saveQuestData();
-  
-  if (questAccepted[questId]) {
-    stopQuestTimer(questId);
-    questAccepted[questId] = false;
-    saveQuestAccepted();
-  }
+    
+    // Update the button and stop the timer
+    updateActiveQuestButton();
+    stopActiveQuestTimerUpdates();
+    
+    updateBadgesAfterQuest();
+    
+    if (currentQuestId === questId) {
+        const questBox = document.getElementById("quest-box");
+        if (questBox) questBox.classList.add("completed");
+        const questCheck = document.getElementById("quest-check");
+        if (questCheck) questCheck.checked = true;
+        const timerDisplay = document.getElementById("timer-display");
+        if (timerDisplay) timerDisplay.textContent = "Completed";
+    }
+    
+    saveQuestData();
+    
+    if (questAccepted[questId]) {
+        stopQuestTimer(questId);
+        questAccepted[questId] = false;
+        saveQuestAccepted();
+    }
+    
+    // Invalidate cache since data changed
+    invalidateStudentDataCache();
 }
 
-// ==============================================
-// SAVE / LOAD QUEST DATA
-// ==============================================
 function saveQuestData() { 
-  localStorage.setItem("completedQuests", JSON.stringify(completedQuests)); 
+    localStorage.setItem("completedQuests", JSON.stringify(completedQuests)); 
 }
 
 function loadQuestData() { 
-  const saved = localStorage.getItem("completedQuests"); 
-  return saved ? JSON.parse(saved) : {}; 
+    const saved = localStorage.getItem("completedQuests"); 
+    return saved ? JSON.parse(saved) : {}; 
 }
 
 // ==============================================
-// CLOSE QUEST
+// SECTION 20: CLOSE QUEST
 // ==============================================
+
 function closeQuest() {
-  if (currentQuestId && questTimers[currentQuestId]) {
-    stopQuestTimer(currentQuestId);
-  }
-  
-  document.getElementById("quest-overlay").style.display = "none";
-  const pathSel = document.getElementById("path-selector");
-  const mvpSel = document.getElementById("mvp-quests");
-  if (pathSel) pathSel.value = "";
-  if (mvpSel) {
-    mvpSel.style.display = "none";
-    mvpSel.innerHTML = '<option value="">Select MVP Quest</option>';
-  }
+    if (currentQuestId && questTimers[currentQuestId]) {
+        stopQuestTimer(currentQuestId);
+    }
+    
+    document.getElementById("quest-overlay").style.display = "none";
+    const pathSel = document.getElementById("path-selector");
+    const mvpSel = document.getElementById("mvp-quests");
+    if (pathSel) pathSel.value = "";
+    if (mvpSel) {
+        mvpSel.style.display = "none";
+        mvpSel.innerHTML = '<option value="">Select MVP Quest</option>';
+    }
 }
 
 // ==============================================
-// FORGOT PASSWORD
+// SECTION 21: FORGOT PASSWORD
 // ==============================================
+
 function setupForgotPassword() {
     const forgotLink = document.getElementById('forgot-password-link');
     const modal = document.getElementById('forgot-password-modal');
@@ -1362,18 +1508,16 @@ function setupForgotPassword() {
     });
 }
 
-// ==========================
-// INVITATION HANDLING
-// ==========================
+// ==============================================
+// SECTION 22: INVITATION HANDLING
+// ==============================================
 
-// Check for invite token on page load
 async function checkForInvitation() {
     const urlParams = new URLSearchParams(window.location.search);
     const inviteToken = urlParams.get('invite');
     
     if (!inviteToken) return null;
     
-    // Check if token is valid
     const { data: invitation, error } = await window.supabase
         .from('student_invitations')
         .select('*')
@@ -1386,7 +1530,6 @@ async function checkForInvitation() {
         return null;
     }
     
-    // Check expiration
     if (new Date(invitation.expires_at) < new Date()) {
         console.log("Invitation has expired");
         return null;
@@ -1395,17 +1538,15 @@ async function checkForInvitation() {
     return invitation;
 }
 
-// Auto-fill teacher code when invite token is present
 async function applyInvitationToForm() {
     const invitation = await checkForInvitation();
     if (invitation) {
         const teacherCodeInput = document.getElementById('student-teacher-code');
         if (teacherCodeInput) {
             teacherCodeInput.value = invitation.teacher_code;
-            teacherCodeInput.disabled = true; // Prevent editing
+            teacherCodeInput.disabled = true;
             teacherCodeInput.style.opacity = '0.7';
             
-            // Add a note to the form
             const note = document.createElement('p');
             note.style.color = '#4caf50';
             note.style.fontSize = '12px';
@@ -1416,7 +1557,6 @@ async function applyInvitationToForm() {
     }
 }
 
-// Mark invitation as used after successful account creation
 async function markInvitationAsUsed(invitationToken) {
     if (!invitationToken) return;
     
@@ -1427,225 +1567,224 @@ async function markInvitationAsUsed(invitationToken) {
 }
 
 // ==============================================
-// STUDENT SETUP (CHARACTERS)
+// SECTION 23: STUDENT SETUP (CHARACTERS)
 // ==============================================
+
 let characters = [];
 
 function initializeStudentSetup() {
-  const profile = loadStudentProfile();
-  if (profile && profile.name) {
-    updateProfileUI();
-    return;
-  }
-  showWelcomeOverlay();
+    const profile = loadStudentProfile();
+    if (profile && profile.name) {
+        updateProfileUI();
+        return;
+    }
+    showWelcomeOverlay();
 }
 
 function showWelcomeOverlay() {
-  const welcomeOverlay = document.getElementById("welcome-overlay");
-  if (welcomeOverlay) welcomeOverlay.style.display = "flex";
+    const welcomeOverlay = document.getElementById("welcome-overlay");
+    if (welcomeOverlay) welcomeOverlay.style.display = "flex";
 }
 
 function showStudentSetupOverlay() {
-  const overlay = document.getElementById("student-setup-overlay");
-  if (!overlay) return;
-  
-  overlay.style.display = "flex";
-  
-  // Check for invitation token and auto-fill teacher code
-  applyInvitationToForm();
-  
-  const submitBtn = document.getElementById("student-create-account-btn");
-  const nameInput = document.getElementById("student-name-input");
-  const emailInput = document.getElementById("student-email-input");
-  const passwordInput = document.getElementById("student-password-input");
-  const confirmPasswordInput = document.getElementById("student-confirm-password-input");
-  const teacherCodeInput = document.getElementById("student-teacher-code");
-  const characterDiv = document.getElementById("character-selection");
-  const charactersList = document.getElementById("characters-list");
-
-  if (!submitBtn || !nameInput || !emailInput || !passwordInput || !confirmPasswordInput || !teacherCodeInput) return;
-
-  const newSubmitBtn = submitBtn.cloneNode(true);
-  submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-  
-  newSubmitBtn.addEventListener("click", async () => {
-    const name = nameInput.value.trim();
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-    const confirmPassword = confirmPasswordInput.value;
-    const teacherCode = teacherCodeInput.value.trim();
-    const messageEl = document.getElementById("setup-message");
+    const overlay = document.getElementById("student-setup-overlay");
+    if (!overlay) return;
     
-    // ✅ VALIDATION CHECKS FIRST
-    if (!name || !email || !password || !confirmPassword) {
-      if (messageEl) messageEl.textContent = "Please fill in all fields";
-      return;
-    }
+    overlay.style.display = "flex";
     
-    if (password.length < 6) {
-      if (messageEl) messageEl.textContent = "Password must be at least 6 characters";
-      return;
-    }
+    // Check for invitation token and auto-fill teacher code
+    applyInvitationToForm();
     
-    if (password !== confirmPassword) {
-      if (messageEl) messageEl.textContent = "Passwords do not match";
-      return;
-    }
+    const submitBtn = document.getElementById("student-create-account-btn");
+    const nameInput = document.getElementById("student-name-input");
+    const emailInput = document.getElementById("student-email-input");
+    const passwordInput = document.getElementById("student-password-input");
+    const confirmPasswordInput = document.getElementById("student-confirm-password-input");
+    const teacherCodeInput = document.getElementById("student-teacher-code");
+    const characterDiv = document.getElementById("character-selection");
+    const charactersList = document.getElementById("characters-list");
+
+    if (!submitBtn || !nameInput || !emailInput || !passwordInput || !confirmPasswordInput || !teacherCodeInput) return;
+
+    const newSubmitBtn = submitBtn.cloneNode(true);
+    submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
     
-    if (!teacherCode) {
-      if (messageEl) messageEl.textContent = "Please enter your teacher code";
-      return;
-    }
-
-    // ✅ GET TEACHER DATA ONCE (includes both max_students and class_code)
-    const { data: teacherData, error: teacherError } = await window.supabase
-      .from('teachers')
-      .select('id, class_code, max_students')
-      .eq('class_code', teacherCode)
-      .single();
-
-    if (teacherError || !teacherData) {
-      if (messageEl) messageEl.textContent = "Invalid teacher code. Please ask your teacher for the correct code.";
-      return;
-    }
-
-    // ✅ STUDENT LIMIT CHECK (using RPC function that bypasses RLS)
-    const { data: canAdd, error: canAddError } = await window.supabase
-        .rpc('can_add_student', { teacher_code_param: teacherCode });
-
-    if (canAddError) {
-        console.error("Error checking student capacity:", canAddError);
-        // Continue anyway - database trigger will catch it
-    } else if (!canAdd) {
-        const maxStudents = teacherData.max_students || 50;
-        if (messageEl) {
-            messageEl.textContent = `This teacher has reached the maximum of ${maxStudents} students. Please contact your teacher.`;
-            messageEl.style.color = '#000000';
+    newSubmitBtn.addEventListener("click", async () => {
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        const confirmPassword = confirmPasswordInput.value;
+        const teacherCode = teacherCodeInput.value.trim();
+        const messageEl = document.getElementById("setup-message");
+        
+        if (!name || !email || !password || !confirmPassword) {
+            if (messageEl) messageEl.textContent = "Please fill in all fields";
+            return;
         }
-        return;
-    }
-    const teacherId = teacherData.id;
+        
+        if (password.length < 6) {
+            if (messageEl) messageEl.textContent = "Password must be at least 6 characters";
+            return;
+        }
+        
+        if (password !== confirmPassword) {
+            if (messageEl) messageEl.textContent = "Passwords do not match";
+            return;
+        }
+        
+        if (!teacherCode) {
+            if (messageEl) messageEl.textContent = "Please enter your teacher code";
+            return;
+        }
 
-    if (messageEl) messageEl.textContent = "Creating account...";
-    
-    const { data, error } = await window.supabase.auth.signUp({
-      email: email,
-      password: password,
-      options: { data: { display_name: name } }
-    });
-    
-    if (error) {
-      if (messageEl) messageEl.textContent = error.message;
-      return;
-    }
-    
-    const { error: profileError } = await window.supabase
-      .from('profiles')
-      .upsert({
-        id: data.user.id,
-        name: name,
-        avatar_url: "profile.png",
-        email: email,
-        teacher_id: teacherId,
-        teacher_code: teacherCode
-      });
-    
-    if (profileError) console.error("Error saving profile:", profileError);
-    
-    const profile = { name: name, character: "profile.png" };
-    saveStudentProfile(profile);
-    updateProfileUI();
-    
-    const { error: loginError } = await window.supabase.auth.signInWithPassword({
-      email: email,
-      password: password
-    });
-    
-    if (loginError) {
-      if (messageEl) messageEl.textContent = "Account created! Please login.";
-      setTimeout(() => {
-        showWelcomeOverlay();
-        document.getElementById("login-email").value = email;
-      }, 2000);
-      return;
-    }
-    
-    nameInput.disabled = true;
-    emailInput.disabled = true;
-    passwordInput.disabled = true;
-    confirmPasswordInput.disabled = true;
-    teacherCodeInput.disabled = true;
-    newSubmitBtn.style.display = "none";
-    
-    if (characterDiv) characterDiv.style.display = "block";
-    loadCharacterSelectionForProfile(charactersList);
-  });
+        // Get teacher data
+        const { data: teacherData, error: teacherError } = await window.supabase
+            .from('teachers')
+            .select('id, class_code, max_students')
+            .eq('class_code', teacherCode)
+            .single();
 
-  fetch("characters/characters.json")
-    .then(res => res.json())
-    .then(data => {
-      characters = data.characters || [];
-      if (charactersList) charactersList.innerHTML = "";
-      characters.forEach(char => {
-        const card = document.createElement("div");
-        card.className = "character-card";
-        card.innerHTML = `<img src="${char.image}" alt="${char.name}" /><div class="character-name">${char.name}</div>`;
-        card.addEventListener("click", () => selectCharacter(char));
-        if (charactersList) charactersList.appendChild(card);
-      });
+        if (teacherError || !teacherData) {
+            if (messageEl) messageEl.textContent = "Invalid teacher code. Please ask your teacher for the correct code.";
+            return;
+        }
+
+        // Student limit check
+        const { data: canAdd, error: canAddError } = await window.supabase
+            .rpc('can_add_student', { teacher_code_param: teacherCode });
+
+        if (canAddError) {
+            console.error("Error checking student capacity:", canAddError);
+        } else if (!canAdd) {
+            const maxStudents = teacherData.max_students || 50;
+            if (messageEl) {
+                messageEl.textContent = `This teacher has reached the maximum of ${maxStudents} students. Please contact your teacher.`;
+                messageEl.style.color = '#000000';
+            }
+            return;
+        }
+        
+        const teacherId = teacherData.id;
+
+        if (messageEl) messageEl.textContent = "Creating account...";
+        
+        const { data, error } = await window.supabase.auth.signUp({
+            email: email,
+            password: password,
+            options: { data: { display_name: name } }
+        });
+        
+        if (error) {
+            if (messageEl) messageEl.textContent = error.message;
+            return;
+        }
+        
+        const { error: profileError } = await window.supabase
+            .from('profiles')
+            .upsert({
+                id: data.user.id,
+                name: name,
+                avatar_url: "profile.png",
+                email: email,
+                teacher_id: teacherId,
+                teacher_code: teacherCode
+            });
+        
+        if (profileError) console.error("Error saving profile:", profileError);
+        
+        const profile = { name: name, character: "profile.png" };
+        saveStudentProfile(profile);
+        updateProfileUI();
+        
+        const { error: loginError } = await window.supabase.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+        
+        if (loginError) {
+            if (messageEl) messageEl.textContent = "Account created! Please login.";
+            setTimeout(() => {
+                showWelcomeOverlay();
+                document.getElementById("login-email").value = email;
+            }, 2000);
+            return;
+        }
+        
+        nameInput.disabled = true;
+        emailInput.disabled = true;
+        passwordInput.disabled = true;
+        confirmPasswordInput.disabled = true;
+        teacherCodeInput.disabled = true;
+        newSubmitBtn.style.display = "none";
+        
+        if (characterDiv) characterDiv.style.display = "block";
+        loadCharacterSelectionForProfile(charactersList);
     });
+
+    fetch("characters/characters.json")
+        .then(res => res.json())
+        .then(data => {
+            characters = data.characters || [];
+            if (charactersList) charactersList.innerHTML = "";
+            characters.forEach(char => {
+                const card = document.createElement("div");
+                card.className = "character-card";
+                card.innerHTML = `<img src="${char.image}" alt="${char.name}" /><div class="character-name">${char.name}</div>`;
+                card.addEventListener("click", () => selectCharacter(char));
+                if (charactersList) charactersList.appendChild(card);
+            });
+        });
 }
 
 async function selectCharacter(character) {
-  const nameInput = document.getElementById("student-name-input");
-  const teacherCodeInput = document.getElementById("student-teacher-code");
-  
-  const name = nameInput ? nameInput.value.trim() : "";
-  const teacherCode = teacherCodeInput ? teacherCodeInput.value.trim() : "";
-  
-  if (!teacherCode) {
-    alert("Please enter your teacher code before selecting a character.");
-    return;
-  }
-  
-  const profile = {
-    name: name,
-    character: character.image,
-    teacher_code: teacherCode,
-    class_id: null  // Initially null, will be set by teacher
-  };
-
-  saveStudentProfile(profile);
-  updateProfileUI();
-  await loadTeacherNameForProfile();
-
-  const { data: { session } } = await window.supabase.auth.getSession();
-  if (session) {
-    await window.supabase
-      .from('profiles')
-      .upsert({
-        id: session.user.id,
+    const nameInput = document.getElementById("student-name-input");
+    const teacherCodeInput = document.getElementById("student-teacher-code");
+    
+    const name = nameInput ? nameInput.value.trim() : "";
+    const teacherCode = teacherCodeInput ? teacherCodeInput.value.trim() : "";
+    
+    if (!teacherCode) {
+        alert("Please enter your teacher code before selecting a character.");
+        return;
+    }
+    
+    const profile = {
         name: name,
-        avatar_url: character.image,
-        email: session.user.email,
+        character: character.image,
         teacher_code: teacherCode,
         class_id: null
-      });
-  }
+    };
 
-  // Check for and mark invitation as used
-  const urlParams = new URLSearchParams(window.location.search);
-  const inviteToken = urlParams.get('invite');
-  if (inviteToken) {
-    await markInvitationAsUsed(inviteToken);
-  }
+    saveStudentProfile(profile);
+    updateProfileUI();
+    await loadTeacherNameForProfile();
 
-  const setupOverlay = document.getElementById("student-setup-overlay");
-  if (setupOverlay) setupOverlay.style.display = "none";
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (session) {
+        await window.supabase
+            .from('profiles')
+            .upsert({
+                id: session.user.id,
+                name: name,
+                avatar_url: character.image,
+                email: session.user.email,
+                teacher_code: teacherCode,
+                class_id: null
+            });
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteToken = urlParams.get('invite');
+    if (inviteToken) {
+        await markInvitationAsUsed(inviteToken);
+    }
+
+    const setupOverlay = document.getElementById("student-setup-overlay");
+    if (setupOverlay) setupOverlay.style.display = "none";
 }
 
 // ==============================================
-// CLOUD SAVE/LOAD FUNCTIONS
+// SECTION 24: CLOUD SAVE/LOAD FUNCTIONS (OPTIMIZED)
 // ==============================================
 
 async function saveStudentDataToCloud() {
@@ -1686,199 +1825,224 @@ async function saveStudentDataToCloud() {
     return true;
 }
 
-async function loadStudentDataFromCloud() {
-  isLoadingFromCloud = true;
-  console.log("Starting to load from cloud...");
-  
-  try {
-    const { data: { session } } = await window.supabase.auth.getSession();
-    if (!session) {
-        console.log("Not logged in, cannot load from cloud");
-        return false;
+async function loadStudentDataFromCloud(forceRefresh = false) {
+    // CHECK CACHE FIRST (the big optimization)
+    if (!forceRefresh && AppState.studentData.loaded && AppState.studentData.lastLoadTime) {
+        const cacheAge = Date.now() - AppState.studentData.lastLoadTime;
+        // Cache valid for 30 seconds - enough to prevent repeated loads during rapid quest openings
+        if (cacheAge < 30000) {
+            console.log("Using CACHED student data (age: " + Math.round(cacheAge/1000) + "s)");
+            // Restore from cache to globals
+            completedQuests = AppState.studentData.completedQuests || {};
+            questGrades = AppState.studentData.questGrades || {};
+            questAccepted = AppState.studentData.questAccepted || {};
+            questStartTimes = AppState.studentData.questStartTimes || {};
+            earnedBadges = AppState.studentData.earnedBadges || {};
+            selfAssessments = AppState.studentData.selfAssessments || {};
+            return true;
+        } else {
+            console.log("Cache expired, loading fresh data");
+        }
     }
     
-    const userId = session.user.id;
-    console.log("Loading data for user:", userId);
+    isLoadingFromCloud = true;
+    console.log("Starting to load from cloud...");
     
-    const { data, error } = await window.supabase
-        .from('student_progress')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-    
-    if (error) {
-        if (error.code === 'PGRST116') {
-            console.log("No existing progress data found for this student - clearing local data");
-            // Clear all local progress data since cloud has none
-            completedQuests = {};
-            questGrades = {};
-            questRewards = {};
-            earnedBadges = {};
-            questAccepted = {};
-            questStartTimes = {};
-            seenNewQuests = [];
-
-            // Stop all running timers
-            for (const questId in questTimers) {
-                clearInterval(questTimers[questId]);
-                delete questTimers[questId];
-            }
-            
-            saveQuestData();
-            saveQuestGrades();
-            saveQuestRewards();
-            saveEarnedBadges();
-            saveQuestAccepted();
-            saveQuestStartTimes();
-            saveSeenNewQuests();
-        } else {
-            console.error("Error loading from cloud:", error);
+    try {
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (!session) {
+            console.log("Not logged in, cannot load from cloud");
+            isLoadingFromCloud = false;
+            return false;
         }
-    } else if (data) {
-        // Check if the data is effectively empty (all empty objects)
-        const isEmpty = (!data.completed_quests || Object.keys(data.completed_quests).length === 0) &&
-                        (!data.quest_grades || Object.keys(data.quest_grades).length === 0) &&
-                        (!data.quest_accepted || Object.keys(data.quest_accepted).length === 0) &&
-                        (!data.quest_start_times || Object.keys(data.quest_start_times).length === 0);
         
-        if (isEmpty) {
-            console.log("Progress data is effectively empty - clearing local data");
-            completedQuests = {};
-            questGrades = {};
-            questRewards = {};
-            earnedBadges = {};
-            questAccepted = {};
-            questStartTimes = {};
-            seenNewQuests = [];
+        const userId = session.user.id;
+        console.log("Loading data for user:", userId);
+        
+        const { data, error } = await window.supabase
+            .from('student_progress')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+        
+        if (error) {
+            if (error.code === 'PGRST116') {
+                console.log("No existing progress data found for this student - clearing local data");
+                completedQuests = {};
+                questGrades = {};
+                questRewards = {};
+                earnedBadges = {};
+                questAccepted = {};
+                questStartTimes = {};
+                seenNewQuests = [];
+                selfAssessments = {};
 
-             // Stop all running timers
-            for (const questId in questTimers) {
-                clearInterval(questTimers[questId]);
-                delete questTimers[questId];
-            }
-            
-            saveQuestData();
-            saveQuestGrades();
-            saveQuestRewards();
-            saveEarnedBadges();
-            saveQuestAccepted();
-            saveQuestStartTimes();
-            saveSeenNewQuests();
-            checkAllQuestWarnings();
-            // Update UI
-            if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
-            if (typeof renderRadarChart === 'function') renderRadarChart();
-            if (typeof updateProfileRewards === 'function') updateProfileRewards();
-            
-            console.log("Local data cleared due to empty cloud data");
-            // Skip the rest of the data processing
-        } else {
-            console.log("Progress data loaded successfully!");
-            console.log("  - completed_quests:", data.completed_quests);
-            console.log("  - quest_grades:", data.quest_grades);
-            console.log("  - quest_rewards:", data.quest_rewards);
-            console.log("  - earned_badges:", data.earned_badges);
-            
-            if (data.completed_quests) completedQuests = data.completed_quests;
-            if (data.quest_grades) questGrades = data.quest_grades;
-            if (data.quest_rewards) questRewards = data.quest_rewards;
-            if (data.earned_badges) {
-                const mergedBadges = { ...data.earned_badges, ...earnedBadges };
-                earnedBadges = mergedBadges;
-                saveEarnedBadges();
-            }
-            if (data.seen_new_quests) seenNewQuests = data.seen_new_quests;
-            
-            // ALWAYS set these - use empty object if cloud has null/undefined
-            questAccepted = data.quest_accepted || {};
-            questStartTimes = data.quest_start_times || {};
-            
-            saveQuestAccepted();
-            saveQuestStartTimes();
-            
-            saveQuestData();
-            if (typeof saveQuestGrades === 'function') saveQuestGrades();
-            if (typeof saveQuestRewards === 'function') saveQuestRewards();
-            if (typeof saveQuestAccepted === 'function') saveQuestAccepted();
-            saveEarnedBadges();
-            saveSeenNewQuests();
-            
-            if (currentQuestId && document.getElementById("quest-overlay").style.display === "block") {
-                console.log("Refreshing current quest UI for:", currentQuestId);
-                setupTimerControls(currentQuestId);
+                for (const questId in questTimers) {
+                    clearInterval(questTimers[questId]);
+                    delete questTimers[questId];
+                }
                 
-                const acceptBtn = document.getElementById("quest-accept");
-                if (acceptBtn) {
-                    const isAccepted = questAccepted[currentQuestId] === true;
-                    if (isAccepted) {
-                        acceptBtn.disabled = true;
-                        acceptBtn.textContent = "Accepted";
-                    } else {
-                        acceptBtn.disabled = false;
-                        acceptBtn.textContent = "Accept Quest";
+                saveQuestData();
+                saveQuestGrades();
+                saveQuestRewards();
+                saveEarnedBadges();
+                saveQuestAccepted();
+                saveQuestStartTimes();
+                saveSeenNewQuests();
+            } else {
+                console.error("Error loading from cloud:", error);
+            }
+        } else if (data) {
+            const isEmpty = (!data.completed_quests || Object.keys(data.completed_quests).length === 0) &&
+                            (!data.quest_grades || Object.keys(data.quest_grades).length === 0) &&
+                            (!data.quest_accepted || Object.keys(data.quest_accepted).length === 0) &&
+                            (!data.quest_start_times || Object.keys(data.quest_start_times).length === 0);
+            
+            if (isEmpty) {
+                console.log("Progress data is effectively empty - clearing local data");
+                completedQuests = {};
+                questGrades = {};
+                questRewards = {};
+                earnedBadges = {};
+                questAccepted = {};
+                questStartTimes = {};
+                seenNewQuests = [];
+                selfAssessments = {};
+
+                for (const questId in questTimers) {
+                    clearInterval(questTimers[questId]);
+                    delete questTimers[questId];
+                }
+                
+                saveQuestData();
+                saveQuestGrades();
+                saveQuestRewards();
+                saveEarnedBadges();
+                saveQuestAccepted();
+                saveQuestStartTimes();
+                saveSeenNewQuests();
+                checkAllQuestWarnings();
+                
+                if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
+                if (typeof renderRadarChart === 'function') renderRadarChart();
+                if (typeof updateProfileRewards === 'function') updateProfileRewards();
+            } else {
+                console.log("Progress data loaded successfully!");
+                
+                if (data.completed_quests) completedQuests = data.completed_quests;
+                if (data.quest_grades) questGrades = data.quest_grades;
+                if (data.quest_rewards) questRewards = data.quest_rewards;
+                if (data.earned_badges) {
+                    const mergedBadges = { ...data.earned_badges, ...earnedBadges };
+                    earnedBadges = mergedBadges;
+                    saveEarnedBadges();
+                }
+                if (data.seen_new_quests) seenNewQuests = data.seen_new_quests;
+                
+                // SELF-ASSESSMENTS
+                if (data.self_assessments) {
+                    selfAssessments = data.self_assessments;
+                    window.selfAssessments = data.self_assessments;
+                    localStorage.setItem('selfAssessments', JSON.stringify(selfAssessments));
+                    console.log("Self-assessments loaded:", Object.keys(selfAssessments).length, "quests");
+                } else {
+                    selfAssessments = {};
+                    window.selfAssessments = {};
+                }
+                
+                questAccepted = data.quest_accepted || {};
+                questStartTimes = data.quest_start_times || {};
+                
+                saveQuestAccepted();
+                saveQuestStartTimes();
+                saveQuestData();
+                if (typeof saveQuestGrades === 'function') saveQuestGrades();
+                if (typeof saveQuestRewards === 'function') saveQuestRewards();
+                saveEarnedBadges();
+                saveSeenNewQuests();
+                
+                if (currentQuestId && document.getElementById("quest-overlay").style.display === "block") {
+                    console.log("Refreshing current quest UI for:", currentQuestId);
+                    setupTimerControls(currentQuestId);
+                    
+                    const acceptBtn = document.getElementById("quest-accept");
+                    if (acceptBtn) {
+                        const isAccepted = questAccepted[currentQuestId] === true;
+                        if (isAccepted) {
+                            acceptBtn.disabled = true;
+                            acceptBtn.textContent = "Accepted";
+                        } else {
+                            acceptBtn.disabled = false;
+                            acceptBtn.textContent = "Accept Quest";
+                        }
                     }
                 }
+                
+                if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
+                if (typeof renderRadarChart === 'function') renderRadarChart();
+                if (typeof updateProfileRewards === 'function') updateProfileRewards();
+                if (typeof recalculateAllQuestRewards === 'function') recalculateAllQuestRewards();
+                
+                if (currentQuestId && document.getElementById("rubric-overlay").style.display === "flex") {
+                    console.log("Refreshing open rubric for quest:", currentQuestId);
+                    openRubricPopup(currentQuestId);
+                }
+                
+                if (document.getElementById("profile-overlay").style.display === "flex") {
+                    if (typeof renderBadges === 'function') renderBadges();
+                }
             }
-            
-            // These functions need to be defined (will be in later chunk)
-            if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
-            if (typeof renderRadarChart === 'function') renderRadarChart();
-            if (typeof updateProfileRewards === 'function') updateProfileRewards();
-            if (typeof recalculateAllQuestRewards === 'function') recalculateAllQuestRewards();
-            
-            if (currentQuestId && document.getElementById("rubric-overlay").style.display === "flex") {
-                console.log("Refreshing open rubric for quest:", currentQuestId);
-                openRubricPopup(currentQuestId);
-            }
-            
-            if (document.getElementById("profile-overlay").style.display === "flex") {
-                if (typeof renderBadges === 'function') renderBadges();
-            }
-            
-            console.log("All displays updated with cloud data");
         }
+        
+        const { data: profileData, error: profileError } = await window.supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (profileData && profileData.name) {
+            const profile = {
+                name: profileData.name,
+                character: profileData.avatar_url || "profile.png",
+                teacher_code: profileData.teacher_code,
+                class_id: profileData.class_id  
+            };
+            saveStudentProfile(profile);
+            updateProfileUI();
+        }
+
+        // UPDATE CACHE
+        AppState.studentData.completedQuests = { ...completedQuests };
+        AppState.studentData.questGrades = { ...questGrades };
+        AppState.studentData.questAccepted = { ...questAccepted };
+        AppState.studentData.questStartTimes = { ...questStartTimes };
+        AppState.studentData.earnedBadges = { ...earnedBadges };
+        AppState.studentData.selfAssessments = { ...selfAssessments };
+        AppState.studentData.loaded = true;
+        AppState.studentData.lastLoadTime = Date.now();
+        console.log("Student data cached for 30 seconds");
+
+    } catch (err) {
+        console.error("Error in loadStudentDataFromCloud:", err);
+    } finally {
+        isLoadingFromCloud = false;
+        console.log("Finished loading from cloud");
     }
     
-    const { data: profileData, error: profileError } = await window.supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-    if (profileData && profileData.name) {
-        const profile = {
-            name: profileData.name,
-            character: profileData.avatar_url || "profile.png",
-            teacher_code: profileData.teacher_code,
-            class_id: profileData.class_id  
-        };
-        saveStudentProfile(profile);
-        updateProfileUI();
-        console.log("Profile loaded from cloud:", profile.name);
-        console.log("Class ID saved:", profileData.class_id);
-    }
-
-  } catch (err) {
-    console.error("Error in loadStudentDataFromCloud:", err);
-  } finally {
-    isLoadingFromCloud = false;
-    console.log("Finished loading from cloud");
-  }
-  
-  return true;
+    return true;
 }
 
 async function manualRefreshGrades() {
     console.log("Manually refreshing grades...");
-    await loadStudentDataFromCloud();
+    await loadStudentDataFromCloud(true); // Force refresh
     alert("Data refreshed! Check your rubric and profile.");
 }
 
 // ==============================================
-// WORK CLOUD SAVE
+// SECTION 25: WORK CLOUD SAVE
 // ==============================================
 
-async function saveWorkToCloud(questId, workData, imageFile) {
+async function saveWorkToCloud(questId, workData, imageFile, uploadId = null) {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
         console.log("Not logged in");
@@ -1888,7 +2052,9 @@ async function saveWorkToCloud(questId, workData, imageFile) {
     const userId = session.user.id;
     let imageUrl = null;
     
-    // Upload image if a file was provided
+    // Use uploadId if provided, else generate one
+    const finalUploadId = uploadId || `${questId}_${Date.now()}`;
+    
     if (imageFile) {
         // COMPRESS THE IMAGE FIRST
         let fileToUpload = imageFile;
@@ -1897,7 +2063,6 @@ async function saveWorkToCloud(questId, workData, imageFile) {
                 fileToUpload = await compressImage(imageFile, 1024, 0.85);
             } catch (error) {
                 console.error("Error compressing image:", error);
-                // Continue with original file if compression fails
             }
         }
         
@@ -1905,7 +2070,7 @@ async function saveWorkToCloud(questId, workData, imageFile) {
         const { data, error } = await window.supabase.storage
             .from('student-works')
             .upload(fileName, fileToUpload, {
-                cacheControl: '86400', // Cache for 1 day
+                cacheControl: '86400',
                 upsert: true
             });
         
@@ -1919,7 +2084,7 @@ async function saveWorkToCloud(questId, workData, imageFile) {
         }
     }
     
-    // First, check if a record already exists
+    // Check if a record already exists
     const { data: existingData } = await window.supabase
         .from('student_works')
         .select('id')
@@ -1930,7 +2095,6 @@ async function saveWorkToCloud(questId, workData, imageFile) {
     let error;
     
     if (existingData) {
-        // UPDATE existing record
         const updateData = {
             image_url: imageUrl,
             title: workData.title,
@@ -1951,7 +2115,6 @@ async function saveWorkToCloud(questId, workData, imageFile) {
         
         error = updateError;
     } else {
-        // INSERT new record
         const { error: insertError } = await window.supabase
             .from('student_works')
             .insert({
@@ -1995,8 +2158,9 @@ function autoSaveToCloud() {
 }
 
 // ==============================================
-// PATH DROPDOWN HANDLER
+// SECTION 26: PATH DROPDOWN HANDLER
 // ==============================================
+
 function handlePathChange() {
   const path = this.value;
   const mvpSelector = document.getElementById("mvp-quests");
@@ -2023,8 +2187,9 @@ function handlePathChange() {
 }
 
 // ==============================================
-// SEARCH ENGINE (FUZZY) - MS: No map switching
+// SECTION 27: SEARCH ENGINE (FUZZY)
 // ==============================================
+
 const searchInput = document.getElementById("quest-search");
 const searchResults = document.getElementById("quest-search-results");
 
@@ -2057,8 +2222,6 @@ if (searchInput) {
 
       div.onclick = () => {
         // MS: No map switching needed - single map
-        // Just open the quest directly
-        scale = 1;
         const mapViewport = document.getElementById("map-viewport");
         if (mapViewport) mapViewport.style.transform = "scale(1)";
 
@@ -2099,8 +2262,9 @@ function fuzzySearchQuests(term) {
 }
 
 // ==============================================
-// RATIONALE POPUP LOGIC
+// SECTION 28: RATIONALE POPUP LOGIC
 // ==============================================
+
 function openRationalePopup(questId) {
   const quest = quests[questId];
   if (!quest || !quest.rationale) return;
@@ -2113,7 +2277,6 @@ function openRationalePopup(questId) {
   }
   
   if (overlay) {
-    // Force these styles to override the welcome-overlay class
     overlay.style.display = "flex";
     overlay.style.backgroundColor = "rgba(0, 0, 0, 0.85)";
     overlay.style.position = "fixed";
@@ -2128,6 +2291,7 @@ function openRationalePopup(questId) {
 
   playUnrollSound();
 }
+
 function closeRationalePopup() {
   document.getElementById("rationale-overlay").style.display = "none";
 }
@@ -2153,10 +2317,9 @@ function initializeRationaleOverlay() {
 }
 
 // ==============================================
-// ACHIEVEMENTS DATA
+// SECTION 29: ACHIEVEMENTS DATA
 // ==============================================
-// MS: Achievement quest lists remain the same
-// but will use MS quest IDs when available
+
 const achievementsData = [
   {
     title: "The Master of Perspective",
@@ -2246,8 +2409,9 @@ const achievementsData = [
 ];
 
 // ==============================================
-// ACHIEVEMENTS OVERLAY FUNCTIONS
+// SECTION 30: ACHIEVEMENTS OVERLAY FUNCTIONS
 // ==============================================
+
 function openAchievementsOverlay() {
   const rationaleOverlay = document.getElementById("rationale-overlay");
   if (rationaleOverlay && rationaleOverlay.style.display === "flex") {
@@ -2378,7 +2542,7 @@ function renderAchievementsList() {
 }
 
 // ==============================================
-// PATHFINDER SYSTEM
+// SECTION 31: PATHFINDER SYSTEM
 // ==============================================
 
 async function loadPathfinderQuestions() {
@@ -2654,12 +2818,12 @@ async function initializePathfinder() {
 }
 
 // ==============================================
-// ACHIEVEMENTS INITIALIZATION
+// SECTION 32: ACHIEVEMENTS INITIALIZATION
 // ==============================================
+
 function initializeAchievementsSystem() {
   const achievementsBtn = document.getElementById("achievements-btn");
   if (achievementsBtn) {
-    // Remove any existing listeners to avoid duplicates
     const newBtn = achievementsBtn.cloneNode(true);
     achievementsBtn.parentNode.replaceChild(newBtn, achievementsBtn);
     newBtn.addEventListener("click", openAchievementsOverlay);
@@ -2673,239 +2837,572 @@ function initializeAchievementsSystem() {
   }
 }
 
-// ==========================
-// RUBRIC POPUP - DISPLAY
-// ==========================
-async function openRubricPopup(cityId) {
-  const { data: { session } } = await window.supabase.auth.getSession();
-  if (!session) {
-    console.log("User not logged in - cannot load rubric");
-    return;
-  }
-  const overlay = document.getElementById("rubric-overlay");
-  const content = document.getElementById("rubric-content");
-  const title = document.getElementById("rubric-title");
+// ==============================================
+// SECTION 33: RUBRIC POPUP - DISPLAY (WITH SELF-ASSESSMENT SUPPORT)
+// ==============================================
 
-  document.getElementById("quest-overlay").style.display = "none";
-
-  const quest = quests[cityId];
-  if (!quest || !quest.rubric) return;
-
-  currentQuestId = cityId;
-  title.textContent = quest.rubric.overall || quest.title;
-
-  // Detect which framework the teacher is using
-  const framework = await detectTeacherFramework();
-  const isIGCSE = framework === 'igcse';
-  const isIB = framework === 'ib-myp';
-  
-  // ✅ Get teacher-selected standards for this quest
-  const selectedStandards = await getTeacherStandardsForQuest(cityId);
-  
-  // Check which format we have
-  const hasIB = quest.rubric.criteria && Array.isArray(quest.rubric.criteria) && quest.rubric.criteria.length > 0;
-  const hasNCAS = quest.rubric.standards && Array.isArray(quest.rubric.standards) && quest.rubric.standards.length > 0;
-  const hasIGCSE = quest.rubric.assessment_objectives && Array.isArray(quest.rubric.assessment_objectives) && quest.rubric.assessment_objectives.length > 0;
-  
-  let itemsToShow = [];
-  let gradeLevels = [];
-  let headerLabel = '';
-  let isMVP = quest.style === "mvp";
-  
-  // ✅ Determine which format to use
-  if (hasNCAS) {
-    // NCAS format (MS and HS standards)
-    itemsToShow = quest.rubric.standards;
-    gradeLevels = ['4', '3', '2', '1'];
-    headerLabel = 'Standard';
-  } else if (hasIB) {
-    // IB format (criteria)
-    itemsToShow = quest.rubric.criteria;
-    gradeLevels = ['7-8', '5-6', '3-4', '1-2'];
-    headerLabel = 'Criterion';
-  } else if (hasIGCSE) {
-    // IGCSE format
-    itemsToShow = quest.rubric.assessment_objectives;
-    gradeLevels = ['A*-A', 'B-C', 'D-E', 'F-G'];
-    headerLabel = 'Assessment Objective';
-  } else {
-    // No rubric items found
-    content.innerHTML = `<div class="rubric-empty-message">
-      <p>📋 No rubric items found for this quest.</p>
-      <p>Please contact your teacher.</p>
-    </div>`;
-    overlay.style.display = "flex";
-    
-    const closeBtn = document.getElementById("close-rubric");
-    if (closeBtn) {
-      closeBtn.onclick = () => {
-        overlay.style.display = "none";
-        document.getElementById("quest-overlay").style.display = "flex";
-      };
+async function openRubricPopup(cityId, isSelfAssessment = false) {
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (!session) {
+        console.log("User not logged in - cannot load rubric");
+        return;
     }
-    return;
-  }
-  
-  // ✅ Get teacher's saved descriptions for this quest
-  const teacherStandards = await getTeacherStandardsWithDescriptions(cityId);
-  const savedDescriptions = teacherStandards?.rubric_descriptions || null;
-  
-  // ✅ Merge saved descriptions with itemsToShow
-  if (savedDescriptions) {
-    itemsToShow = itemsToShow.map(item => {
-      const desc = savedDescriptions[item.code];
-      if (desc) {
-        const mergedLevels = {};
-        gradeLevels.forEach(level => {
-          mergedLevels[level] = desc[level] || item.levels?.[level] || "";
-        });
-        return {
-          ...item,
-          levels: mergedLevels
-        };
-      }
-      return item;
+    
+    const overlay = document.getElementById("rubric-overlay");
+    const content = document.getElementById("rubric-content");
+    const title = document.getElementById("rubric-title");
+    const closeBtn = document.getElementById("close-rubric");
+    
+    document.getElementById("quest-overlay").style.display = "none";
+    
+    const quest = quests[cityId];
+    if (!quest || !quest.rubric) {
+        console.error("Quest or rubric not found");
+        return;
+    }
+    
+    currentQuestId = cityId;
+    title.textContent = quest.rubric.overall || quest.title;
+    
+    const isSelfAssessmentMode = isSelfAssessment || window._selfAssessmentPending;
+    
+    const framework = await detectTeacherFramework();
+    const isIGCSE = framework === 'igcse';
+    const isIB = framework === 'ib-myp';
+    const isNCAS = framework === 'ncas';
+    
+    const selectedStandards = await getTeacherStandardsForQuest(cityId);
+    
+    const isNCASFormat = quest.rubric.standards && Array.isArray(quest.rubric.standards);
+    const isIBFormat = quest.rubric.criteria && Array.isArray(quest.rubric.criteria);
+    const isIGCSEFormat = quest.rubric.assessment_objectives && Array.isArray(quest.rubric.assessment_objectives);
+    
+    let itemsToShow = [];
+    let gradeLevels = [];
+    let headerLabel = '';
+    let isMVP = quest.style === "mvp";
+    let gradeOptions = [];
+    let gradeMapping = {};
+    let column = isMVP ? "mvpGrade" : "grade";
+    
+    if (isNCASFormat) {
+        itemsToShow = quest.rubric.standards;
+        gradeLevels = ['4', '3', '2', '1'];
+        headerLabel = 'Standard';
+        gradeOptions = [
+            { value: '4', label: '4 - Excellent' },
+            { value: '3.5', label: '3.5 - Strong' },
+            { value: '3', label: '3 - Good' },
+            { value: '2.5', label: '2.5 - Developing' },
+            { value: '2', label: '2 - Satisfactory' },
+            { value: '1.5', label: '1.5 - Limited' },
+            { value: '1', label: '1 - Beginning' }
+        ];
+        gradeMapping = { '4': 4, '3.5': 3.5, '3': 3, '2.5': 2.5, '2': 2, '1.5': 1.5, '1': 1 };
+    } else if (isIBFormat) {
+        itemsToShow = quest.rubric.criteria;
+        gradeLevels = ['7-8', '5-6', '3-4', '1-2'];
+        headerLabel = 'Criterion';
+        gradeOptions = [
+            { value: '7-8', label: '7-8 - Excellent' },
+            { value: '5-6', label: '5-6 - Good' },
+            { value: '3-4', label: '3-4 - Satisfactory' },
+            { value: '1-2', label: '1-2 - Limited' }
+        ];
+        gradeMapping = { '7-8': 7.5, '5-6': 5.5, '3-4': 3.5, '1-2': 1.5 };
+    } else if (isIGCSEFormat) {
+        itemsToShow = quest.rubric.assessment_objectives;
+        gradeLevels = ['A*-A', 'B-C', 'D-E', 'F-G'];
+        headerLabel = 'Assessment Objective';
+        gradeOptions = [
+            { value: 'A*', label: 'A* - Outstanding' },
+            { value: 'A', label: 'A - Excellent' },
+            { value: 'B', label: 'B - Good' },
+            { value: 'C', label: 'C - Satisfactory' },
+            { value: 'D', label: 'D - Limited' },
+            { value: 'E', label: 'E - Basic' },
+            { value: 'F', label: 'F - Weak' },
+            { value: 'G', label: 'G - Very Weak' }
+        ];
+        gradeMapping = { 'A*': 8, 'A': 7, 'B': 6, 'C': 5, 'D': 4, 'E': 3, 'F': 2, 'G': 1 };
+    }
+    
+    if (selectedStandards && selectedStandards.length > 0) {
+        itemsToShow = itemsToShow.filter(item => selectedStandards.includes(item.code));
+    }
+    
+    if (itemsToShow.length === 0) {
+        content.innerHTML = `<div class="rubric-empty-message">
+            <p>📋 No ${headerLabel}s Selected</p>
+            <p>Your teacher has not selected any ${headerLabel}s for this quest yet.</p>
+            <p>Please check back later or contact your teacher.</p>
+        </div>`;
+        overlay.style.display = "flex";
+        if (closeBtn) {
+            closeBtn.style.display = 'block';
+            closeBtn.onclick = () => {
+                overlay.style.display = "none";
+                document.getElementById("quest-overlay").style.display = "flex";
+            };
+        }
+        return;
+    }
+    
+    // Fetch work image (for both modes - shows the student's submitted work)
+    let workImageUrl = null;
+    const { data: workData } = await window.supabase
+        .from('student_works')
+        .select('image_url')
+        .eq('user_id', session.user.id)
+        .eq('quest_id', cityId)
+        .maybeSingle();
+    if (workData?.image_url) {
+        workImageUrl = workData.image_url;
+    }
+    
+    // Get existing self-assessment for this quest
+    let selfAssessment = {};
+    if (window.selfAssessments && window.selfAssessments[cityId]) {
+        selfAssessment = window.selfAssessments[cityId];
+    } else if (selfAssessments && selfAssessments[cityId]) {
+        selfAssessment = selfAssessments[cityId];
+    }
+    
+    let html = '';
+    
+    if (workImageUrl) {
+        html += `
+            <div class="self-assessment-header" style="display: flex; gap: 20px; align-items: center; margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                <div class="self-assessment-image">
+                    <img src="${workImageUrl}" alt="Your work" style="max-width: 150px; max-height: 150px; border-radius: 8px; border: 2px solid #ffd700; object-fit: cover;">
+                </div>
+                <div class="self-assessment-info">
+                    ${isSelfAssessmentMode ? `
+                        <h3 style="color: #ffd700; margin: 0;">📝 Self-Assessment Required</h3>
+                        <p style="color: #f0e6d2; margin: 5px 0;">Review your work and honestly assess your performance.</p>
+                        <p style="color: #ffd700; font-size: 14px; font-style: italic;">"The artist who judges their own work grows faster than any teacher can teach."</p>
+                    ` : `
+                        <h3 style="color: #ffd700; margin: 0;">📋 Your Work</h3>
+                        <p style="color: #f0e6d2; margin: 5px 0;">Review your submitted work before viewing the rubric.</p>
+                    `}
+                </div>
+            </div>
+        `;
+    } else if (isSelfAssessmentMode) {
+        html += `
+            <div class="self-assessment-header" style="margin-bottom: 15px; padding: 10px; background: rgba(255, 0, 0, 0.15); border-radius: 8px; border: 1px solid rgba(255, 0, 0, 0.3);">
+                <p style="color: #ff8888; margin: 0;">⚠️ No work image found. Please submit your work before self-assessment.</p>
+            </div>
+        `;
+    }
+    
+    html += `
+        <div class="rubric-display-note" style="background: #2d2a94; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
+            ${isSelfAssessmentMode ? '📋 Select the grade you believe you deserve for each standard. Be honest!' : '📋 This rubric shows how your teacher will evaluate your work. Grades will appear here after your teacher reviews your submission.'}
+        </div>
+        <table class="rubric-table">
+            <thead>
+                <tr>
+                    <th style="min-width: 120px;">${headerLabel}</th>
+                    <th>${gradeLevels[0]}</th>
+                    <th>${gradeLevels[1]}</th>
+                    <th>${gradeLevels[2]}</th>
+                    <th>${gradeLevels[3]}</th>
+                    <th style="min-width: ${isSelfAssessmentMode ? '180px' : '100px'};">
+                        ${isSelfAssessmentMode ? 'My Assessment' : 'Your Grade'}
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    let allSelected = true;
+    const columnType = isMVP ? "mvpGrade" : "grade";
+    
+    itemsToShow.forEach(item => {
+        const teacherGrade = questGrades[cityId]?.[columnType]?.[item.code] ?? "";
+        const selfGrade = selfAssessment[item.code] || "";
+        const hasTeacherGrade = teacherGrade !== "";
+        const hasSelfGrade = selfGrade !== "";
+        
+        // Determine which level to highlight for teacher (yellow)
+        let teacherHighlightLevel = null;
+        if (hasTeacherGrade) {
+            let gradeNum = parseFloat(teacherGrade);
+            if (isIGCSE) {
+                teacherHighlightLevel = gradeNum ? Math.ceil(gradeNum / 2) : null;
+            } else if (isIB) {
+                const bandNum = parseFloat(teacherGrade);
+                if (bandNum >= 7) teacherHighlightLevel = 4;
+                else if (bandNum >= 5) teacherHighlightLevel = 3;
+                else if (bandNum >= 3) teacherHighlightLevel = 2;
+                else if (bandNum >= 1) teacherHighlightLevel = 1;
+            } else {
+                if (gradeNum >= 4) teacherHighlightLevel = 4;
+                else if (gradeNum >= 3) teacherHighlightLevel = 3;
+                else if (gradeNum >= 2) teacherHighlightLevel = 2;
+                else if (gradeNum >= 1) teacherHighlightLevel = 1;
+            }
+        }
+        
+        // Determine which level to highlight for self-assessment (teal)
+        let selfHighlightLevel = null;
+        if (hasSelfGrade) {
+            let selfNum = parseFloat(selfGrade);
+            if (isIGCSE) {
+                const gradeMap = { 'A*': 8, 'A': 7, 'B': 6, 'C': 5, 'D': 4, 'E': 3, 'F': 2, 'G': 1 };
+                selfNum = gradeMap[selfGrade] || 0;
+                selfHighlightLevel = selfNum ? Math.ceil(selfNum / 2) : null;
+            } else if (isIB) {
+                if (selfGrade === '7-8') selfHighlightLevel = 4;
+                else if (selfGrade === '5-6') selfHighlightLevel = 3;
+                else if (selfGrade === '3-4') selfHighlightLevel = 2;
+                else if (selfGrade === '1-2') selfHighlightLevel = 1;
+            } else {
+                if (selfNum >= 4) selfHighlightLevel = 4;
+                else if (selfNum >= 3) selfHighlightLevel = 3;
+                else if (selfNum >= 2) selfHighlightLevel = 2;
+                else if (selfNum >= 1) selfHighlightLevel = 1;
+            }
+        }
+        
+        let gradeDisplay = "—";
+        if (hasTeacherGrade) {
+            if (isIGCSE) {
+                gradeDisplay = convertNumberToLetterGrade(parseInt(teacherGrade));
+            } else if (isIB) {
+                const numGrade = parseFloat(teacherGrade);
+                if (numGrade >= 7) gradeDisplay = "7-8";
+                else if (numGrade >= 5) gradeDisplay = "5-6";
+                else if (numGrade >= 3) gradeDisplay = "3-4";
+                else if (numGrade >= 1) gradeDisplay = "1-2";
+                else gradeDisplay = teacherGrade;
+            } else {
+                gradeDisplay = teacherGrade;
+            }
+        }
+        
+        let dropdownOptions = '';
+        if (isSelfAssessmentMode) {
+            dropdownOptions += `<option value="">— Select —</option>`;
+            gradeOptions.forEach(opt => {
+                const selected = selfGrade === opt.value ? 'selected' : '';
+                dropdownOptions += `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
+            });
+        }
+        
+        if (isSelfAssessmentMode && !selfGrade) {
+            allSelected = false;
+        }
+        
+        // Build description cells with highlights
+        let level4Class = '';
+        if (teacherHighlightLevel === 4) level4Class = 'teacher-highlight';
+        if (selfHighlightLevel === 4) level4Class = level4Class ? level4Class + ' self-highlight' : 'self-highlight';
+        
+        let level3Class = '';
+        if (teacherHighlightLevel === 3) level3Class = 'teacher-highlight';
+        if (selfHighlightLevel === 3) level3Class = level3Class ? level3Class + ' self-highlight' : 'self-highlight';
+        
+        let level2Class = '';
+        if (teacherHighlightLevel === 2) level2Class = 'teacher-highlight';
+        if (selfHighlightLevel === 2) level2Class = level2Class ? level2Class + ' self-highlight' : 'self-highlight';
+        
+        let level1Class = '';
+        if (teacherHighlightLevel === 1) level1Class = 'teacher-highlight';
+        if (selfHighlightLevel === 1) level1Class = level1Class ? level1Class + ' self-highlight' : 'self-highlight';
+        
+        // Grade cell content
+        let gradeCellContent = '';
+        
+        if (isSelfAssessmentMode) {
+            gradeCellContent = `
+                <div class="self-assessment-cell">
+                    <select class="self-assessment-dropdown" data-standard="${item.code}" style="width: 100%; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.3); color: #f0e6d2; border: 1px solid rgba(255,215,0,0.3);">
+                        ${dropdownOptions}
+                    </select>
+                    ${selfGrade ? `<div style="margin-top: 4px; background: rgba(0, 255, 200, 0.3); padding: 4px 8px; border-radius: 4px; font-size: 14px; color: #b0f0e0; text-align: center; font-weight: bold;">${selfGrade}</div>` : `<div style="margin-top: 4px; font-size: 11px; color: #666; text-align: center;">Select a grade</div>`}
+                </div>
+            `;
+        } else {
+            if (hasTeacherGrade && hasSelfGrade) {
+                gradeCellContent = `
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="background: rgba(255, 215, 0, 0.3); padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 14px; color: #ffd700;">
+                            ${gradeDisplay}
+                        </div>
+                        <div style="background: rgba(0, 255, 200, 0.25); padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 14px; color: #b0f0e0;">
+                            ${selfGrade}
+                        </div>
+                    </div>
+                `;
+            } else if (hasTeacherGrade) {
+                gradeCellContent = `
+                    <div style="background: rgba(255, 215, 0, 0.3); padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 16px; color: #ffd700;">
+                        ${gradeDisplay}
+                    </div>
+                `;
+            } else if (hasSelfGrade) {
+                gradeCellContent = `
+                    <div style="background: rgba(0, 255, 200, 0.25); padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 16px; color: #b0f0e0;">
+                        ${selfGrade}
+                    </div>
+                `;
+            } else {
+                gradeCellContent = `
+                    <div style="font-size: 11px; color: #666; text-align: center; padding: 4px;">
+                        ⏳ Awaiting grading
+                    </div>
+                `;
+            }
+        }
+        
+        html += `
+            <tr>
+                <td><strong>${item.code}</strong>${!isNCAS ? `<br><span style="font-size: 11px; color: #aaa;">${item.name}</span>` : ''}</td>
+                <td class="${level4Class}">${item.levels[gradeLevels[0]] || ""}</td>
+                <td class="${level3Class}">${item.levels[gradeLevels[1]] || ""}</td>
+                <td class="${level2Class}">${item.levels[gradeLevels[2]] || ""}</td>
+                <td class="${level1Class}">${item.levels[gradeLevels[3]] || ""}</td>
+                <td>${gradeCellContent}</td>
+            </tr>
+        `;
     });
-  }
-  
-  // ✅ Apply teacher's selected standards filter
-  if (selectedStandards && selectedStandards.length > 0) {
-    itemsToShow = itemsToShow.filter(item => selectedStandards.includes(item.code));
-  }
-  
-  // ✅ If no items after filtering, show message
-  if (itemsToShow.length === 0) {
-    content.innerHTML = `<div class="rubric-empty-message">
-      <p>📋 No ${headerLabel}s Selected</p>
-      <p>Your teacher has not selected any ${headerLabel}s for this quest yet.</p>
-      <p>Please check back later or contact your teacher.</p>
-    </div>`;
+    
+    html += `
+            </tbody>
+        </table>
+    `;
+    
+    // Teacher comment
+    const questGrade = (questGrades && questGrades[cityId]) ? questGrades[cityId] : null;
+    const teacherComment = questGrade?.[column]?.teacher_comment || null;
+    if (teacherComment && teacherComment.trim() !== '') {
+        html += `
+            <div class="teacher-comment-section" style="margin-top: 15px; padding: 12px; background: rgba(255, 215, 0, 0.1); border-radius: 8px; border-left: 3px solid #ffd700;">
+                <div class="teacher-comment-label" style="color: #ffd700; font-weight: bold;">📝 Teacher's Feedback:</div>
+                <div class="teacher-comment-content" style="color: #f0e6d2; margin-top: 5px;">${escapeHtml(teacherComment)}</div>
+            </div>
+        `;
+    }
+    
+    // Self-assessment footer with submit button
+    if (isSelfAssessmentMode) {
+        html += `
+            <div class="self-assessment-footer" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,215,0,0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <span style="color: #ffd700;">⚠️ Please complete all assessments before continuing</span>
+                    </div>
+                    <button id="submit-self-assessment-btn" class="auth-btn auth-btn-primary" ${allSelected ? '' : 'disabled'} style="${allSelected ? '' : 'opacity: 0.5; cursor: not-allowed;'} padding: 8px 20px;">
+                        ${allSelected ? '✅ Submit Self-Assessment' : '⚠️ Complete all selections first'}
+                    </button>
+                </div>
+                <p style="color: #999; font-size: 12px; margin-top: 8px; text-align: center;">Your self-assessment helps you reflect on your work. Be honest and thoughtful.</p>
+            </div>
+        `;
+    }
+    
+    content.innerHTML = html;
     overlay.style.display = "flex";
     
-    const closeBtn = document.getElementById("close-rubric");
-    if (closeBtn) {
-      closeBtn.onclick = () => {
+    // Wire up self-assessment dropdowns
+    if (isSelfAssessmentMode) {
+        const dropdowns = overlay.querySelectorAll('.self-assessment-dropdown');
+        const submitBtn = document.getElementById('submit-self-assessment-btn');
+        
+        dropdowns.forEach(dropdown => {
+            dropdown.addEventListener('change', function() {
+                const tempAssessment = {};
+                const allDropdowns = overlay.querySelectorAll('.self-assessment-dropdown');
+                allDropdowns.forEach(d => {
+                    if (d.value) {
+                        tempAssessment[d.dataset.standard] = d.value;
+                    }
+                });
+                localStorage.setItem('pendingSelfAssessment_' + cityId, JSON.stringify(tempAssessment));
+                
+                let allFilled = true;
+                allDropdowns.forEach(d => {
+                    if (!d.value) allFilled = false;
+                });
+                
+                if (allFilled) {
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                    submitBtn.textContent = '✅ Submit Self-Assessment';
+                } else {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.5';
+                    submitBtn.style.cursor = 'not-allowed';
+                    submitBtn.textContent = '⚠️ Complete all selections first';
+                }
+            });
+        });
+        
+        if (submitBtn) {
+            submitBtn.addEventListener('click', function() {
+                const assessment = {};
+                const allDropdowns = overlay.querySelectorAll('.self-assessment-dropdown');
+                allDropdowns.forEach(d => {
+                    if (d.value) {
+                        assessment[d.dataset.standard] = d.value;
+                    }
+                });
+                saveSelfAssessment(cityId, assessment);
+            });
+        }
+        
+        // Restore pending data if any
+        const pendingData = localStorage.getItem('pendingSelfAssessment_' + cityId);
+        if (pendingData) {
+            try {
+                const pending = JSON.parse(pendingData);
+                const dropdowns2 = overlay.querySelectorAll('.self-assessment-dropdown');
+                dropdowns2.forEach(d => {
+                    if (pending[d.dataset.standard]) {
+                        d.value = pending[d.dataset.standard];
+                        d.dispatchEvent(new Event('change'));
+                    }
+                });
+                localStorage.removeItem('pendingSelfAssessment_' + cityId);
+            } catch (e) {
+                console.error("Error loading pending self-assessment:", e);
+            }
+        }
+    }
+    
+    // Close button behavior
+    if (!isSelfAssessmentMode) {
+        if (closeBtn) {
+            closeBtn.style.display = 'block';
+            closeBtn.onclick = () => {
+                overlay.style.display = "none";
+                document.getElementById("quest-overlay").style.display = "flex";
+            };
+        }
+    } else {
+        if (closeBtn) {
+            closeBtn.style.display = 'none';
+        }
+    }
+}
+
+// ==============================================
+// SECTION 33b: SELF-ASSESSMENT FUNCTIONS
+// ==============================================
+
+async function saveSelfAssessment(questId, assessment) {
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (!session) {
+        alert("Please log in to save your self-assessment.");
+        return;
+    }
+    
+    // Validate all standards have selections
+    const quest = quests[questId];
+    if (!quest || !quest.rubric) {
+        alert("Quest not found.");
+        return;
+    }
+    
+    const selectedStandards = await getTeacherStandardsForQuest(questId);
+    let itemsToCheck = [];
+    if (quest.rubric.standards) {
+        itemsToCheck = quest.rubric.standards;
+    } else if (quest.rubric.criteria) {
+        itemsToCheck = quest.rubric.criteria;
+    } else if (quest.rubric.assessment_objectives) {
+        itemsToCheck = quest.rubric.assessment_objectives;
+    }
+    
+    if (selectedStandards && selectedStandards.length > 0) {
+        itemsToCheck = itemsToCheck.filter(item => selectedStandards.includes(item.code));
+    }
+    
+    // Check if all standards have a selection
+    for (const item of itemsToCheck) {
+        if (!assessment[item.code]) {
+            alert(`Please select a grade for ${item.code}`);
+            return;
+        }
+    }
+    
+    const userId = session.user.id;
+    
+    // Get existing progress
+    const { data: progress, error: fetchError } = await window.supabase
+        .from('student_progress')
+        .select('self_assessments')
+        .eq('user_id', userId)
+        .maybeSingle();
+    
+    let selfAssessmentsCloud = {};
+    if (progress?.self_assessments) {
+        selfAssessmentsCloud = progress.self_assessments;
+    }
+    
+    // Update with new assessment
+    selfAssessmentsCloud[questId] = assessment;
+    
+    // Save back to database
+    const { error: saveError } = await window.supabase
+        .from('student_progress')
+        .update({
+            self_assessments: selfAssessmentsCloud,
+            updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+    
+    if (saveError) {
+        console.error("Error saving self-assessment:", saveError);
+        alert("Error saving your self-assessment. Please try again.");
+        return;
+    }
+    
+    // Also save locally
+    if (!window.selfAssessments) window.selfAssessments = {};
+    window.selfAssessments[questId] = assessment;
+    selfAssessments[questId] = assessment;
+    localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
+    
+    // Update cache
+    AppState.studentData.selfAssessments = { ...selfAssessments };
+    
+    // Clear pending auto-save
+    localStorage.removeItem('pendingSelfAssessment_' + questId);
+    
+    // Close the rubric overlay (self-assessment mode)
+    const overlay = document.getElementById("rubric-overlay");
+    if (overlay) {
         overlay.style.display = "none";
-        document.getElementById("quest-overlay").style.display = "flex";
-      };
     }
-    return;
-  }
-
-  const column = isMVP ? "mvpGrade" : "grade";
-
-  let html = `<div class="rubric-display-note" style="background: #2d2a94; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
-    📋 This rubric shows how your teacher will evaluate your work. Grades will appear here after your teacher reviews your submission.
-  </div>
-  <table class="rubric-table">
-    <thead>
-      <tr>
-        <th>${headerLabel}</th>
-        <th>${gradeLevels[0]}</th>
-        <th>${gradeLevels[1]}</th>
-        <th>${gradeLevels[2]}</th>
-        <th>${gradeLevels[3]}</th>
-        <th>Your Grade</th>
-      </tr>
-    </thead>
-    <tbody>`;
-
-  itemsToShow.forEach(item => {
-    const saved = questGrades[cityId]?.[column]?.[item.code] ?? "";
-    let highlightGrade = saved !== "" ? Math.floor(saved) : null;
-    // For IB and IGCSE, map 1-8 to 1-4 for highlight
-    if (isIGCSE || isIB) {
-        highlightGrade = highlightGrade ? Math.ceil(highlightGrade / 2) : null;
-    }    
-    let gradeDisplay = saved ? saved : "—";
+    document.getElementById("quest-overlay").style.display = "flex";
     
-    // For IGCSE, convert stored number to letter grade
-    if (isIGCSE && saved) {
-      gradeDisplay = convertNumberToLetterGrade(parseInt(saved));
+    // Show success message
+    alert("✅ Self-assessment submitted successfully! You can now continue your journey.");
+    
+    // Clear the self-assessment pending flag
+    window._selfAssessmentPending = false;
+    
+    // Update profile if open
+    const profileOverlay = document.getElementById("profile-overlay");
+    if (profileOverlay && profileOverlay.style.display === "flex") {
+        if (typeof renderBadges === 'function') renderBadges();
     }
-
-    html += `<tr>
-      <td><strong>${item.code}</strong>${!hasNCAS ? `: ${item.name}` : ''}</td>
-      <td class="${highlightGrade === 4 ? "highlight" : ""}">${item.levels[gradeLevels[0]] || ""}</td>
-      <td class="${highlightGrade === 3 ? "highlight" : ""}">${item.levels[gradeLevels[1]] || ""}</td>
-      <td class="${highlightGrade === 2 ? "highlight" : ""}">${item.levels[gradeLevels[2]] || ""}</td>
-      <td class="${highlightGrade === 1 ? "highlight" : ""}">${item.levels[gradeLevels[3]] || ""}</td>
-      <td>
-        <span class="grade-display" style="font-weight: bold; font-size: 1.2em;">
-          ${gradeDisplay}
-        </span>
-        ${saved ? '<span style="display:block; font-size: 0.8em;">✓ Graded</span>' : '<span style="display:block; font-size: 0.8em; color: #999;">Awaiting grading</span>'}
-      </td>
-    </tr>`;
-  });
-
-  html += `</tbody>
-  </table>`;
-
-  // Check if there's a teacher comment (with safety checks)
-  const questGrade = (questGrades && questGrades[cityId]) ? questGrades[cityId] : null;
-  const teacherComment = questGrade?.[column]?.teacher_comment || null;
-
-  let commentHtml = '';
-  if (teacherComment && teacherComment.trim() !== '') {
-      commentHtml = `
-          <div class="teacher-comment-section">
-              <div class="teacher-comment-label">📝 Teacher's Feedback:</div>
-              <div class="teacher-comment-content">${escapeHtml(teacherComment)}</div>
-          </div>
-      `;
-  }
-  content.innerHTML = html + commentHtml;
-  overlay.style.display = "flex";
-
-  const closeBtn = document.getElementById("close-rubric");
-  if (closeBtn) {
-    closeBtn.onclick = () => {
-      overlay.style.display = "none";
-      document.getElementById("quest-overlay").style.display = "flex";
-    };
-  }
 }
 
-// ==========================
-// GET TEACHER STANDARDS WITH DESCRIPTIONS (STUDENT VERSION)
-// ==========================
-async function getTeacherStandardsWithDescriptions(questId) {
-    const profile = loadStudentProfile();
-    if (!profile || !profile.teacher_code) {
-        console.log("No teacher_code found in student profile");
-        return null;
-    }
-    
-    const { data: teacher, error: teacherError } = await window.supabase
-        .from('teachers')
-        .select('id, name')
-        .eq('class_code', profile.teacher_code)
-        .maybeSingle();
-    
-    if (teacherError || !teacher) {
-        console.log("Teacher not found for code:", profile.teacher_code);
-        return null;
-    }
-    
-    const { data, error } = await window.supabase
-        .from('teacher_quest_standards')
-        .select('selected_standards, rubric_descriptions')
-        .eq('teacher_id', teacher.id)
-        .eq('quest_id', questId)
-        .maybeSingle();
-    
-    if (error) {
-        console.log("Error fetching teacher standards:", error.message);
-        return null;
-    }
-    
-    return data || null;
+function initiateSelfAssessment(questId) {
+    // Helper to be called when the student should self-assess
+    window._selfAssessmentPending = true;
+    openRubricPopup(questId, true);
 }
 
-// ==========================
-// REWARDS OVERLAY FUNCTIONS
-// ==========================
+// ==============================================
+// SECTION 34: REWARDS OVERLAY FUNCTIONS
+// ==============================================
+
 function openRewardsOverlay() {
   const overlay = document.getElementById("rewards-overlay");
   if (!overlay) return;
@@ -2933,7 +3430,6 @@ function renderRewardsTableSimple(totals) {
   
   tableBody.innerHTML = "";
   
-  // MS: Use MS standard names
   const sortedStandards = Object.keys(STANDARD_NAMES).sort();
   
   sortedStandards.forEach(standardCode => {
@@ -3004,9 +3500,11 @@ function initializeRewardsOverlay() {
     });
   }
 }
-// ==========================
-// TEACHER STANDARDS FILTERING
-// ==========================
+
+// ==============================================
+// SECTION 35: TEACHER STANDARDS FILTERING
+// ==============================================
+
 async function getTeacherStandardsForQuest(questId) {
     const profile = loadStudentProfile();
     if (!profile || !profile.teacher_code) {
@@ -3047,6 +3545,37 @@ async function getTeacherStandardsForQuest(questId) {
     
     return data?.selected_standards || null;
 }
+
+async function getTeacherStandardsWithDescriptions(questId) {
+    const profile = loadStudentProfile();
+    if (!profile || !profile.teacher_code) {
+        return null;
+    }
+    
+    const { data: teacher, error: teacherError } = await window.supabase
+        .from('teachers')
+        .select('id, name')
+        .eq('class_code', profile.teacher_code)
+        .maybeSingle();
+    
+    if (teacherError || !teacher) {
+        return null;
+    }
+    
+    const { data, error } = await window.supabase
+        .from('teacher_quest_standards')
+        .select('selected_standards, rubric_descriptions')
+        .eq('teacher_id', teacher.id)
+        .eq('quest_id', questId)
+        .maybeSingle();
+    
+    if (error) {
+        return null;
+    }
+    
+    return data || null;
+}
+
 async function loadTeacherNameForProfile() {
     const profile = loadStudentProfile();
     
@@ -3086,9 +3615,10 @@ async function loadTeacherNameForProfile() {
     }
 }
 
-// ==========================
-// REWARD MATH FUNCTIONS
-// ==========================
+// ==============================================
+// SECTION 36: REWARD MATH FUNCTIONS
+// ==============================================
+
 function saveQuestRewards() {
   localStorage.setItem("questRewards", JSON.stringify(questRewards));
 }
@@ -3162,7 +3692,6 @@ function updateProfileRewards() {
 }
 
 function calculateRewardsPerStandard() {
-    // MS: Use MS standard names
     const standardTotals = {};
     Object.keys(STANDARD_NAMES).forEach(standard => {
         standardTotals[standard] = 0;
@@ -3179,7 +3708,9 @@ function calculateRewardsPerStandard() {
         
         if (!grades) return;
         
-        quest.rubric.standards.forEach(std => {
+        const standards = quest.rubric.standards || quest.rubric.criteria || quest.rubric.assessment_objectives || [];
+        
+        standards.forEach(std => {
             const standardCode = std.code;
             const grade = grades[standardCode];
             
@@ -3195,9 +3726,9 @@ function calculateRewardsPerStandard() {
     return { totals: standardTotals, sources: {} };
 }
 
-// ==========================
-// PROFILE BUTTON HANDLER 
-// ==========================
+// ==============================================
+// SECTION 37: PROFILE BUTTON HANDLER
+// ==============================================
 
 function initializeProfileSystem() {
   const profileBtn = document.getElementById("profile-btn");
@@ -3206,12 +3737,11 @@ function initializeProfileSystem() {
 
   if (!profileBtn || !profileOverlay || !profileClose) return;
 
-  // Remove existing listeners to avoid duplicates
   const newProfileBtn = profileBtn.cloneNode(true);
   profileBtn.parentNode.replaceChild(newProfileBtn, profileBtn);
   
   newProfileBtn.addEventListener("click", async () => {
-    await loadStudentDataFromCloud();
+    await loadStudentDataFromCloud(false); // Use cache if available
     await loadTeacherNameForProfile();
     profileOverlay.style.display = "flex";
     updateProfileStandardsTable();
@@ -3237,8 +3767,9 @@ function initializeProfileSystem() {
 }
 
 // ==============================================
-// AVATAR CHANGE UI
+// SECTION 38: AVATAR CHANGE UI
 // ==============================================
+
 function showAvatarChangeUI() {
   const changeBtn = document.getElementById("change-avatar-btn");
   if (!changeBtn) return;
@@ -3321,8 +3852,9 @@ function loadCharacterSelectionForProfile(container) {
 }
 
 // ==============================================
-// MVP GRADE LOGIC
+// SECTION 39: MVP GRADE LOGIC
 // ==============================================
+
 function computeStandardAverage(isMVP, standardCode) {
   let sum = 0;
   let count = 0;
@@ -3347,14 +3879,13 @@ function computeStandardAverage(isMVP, standardCode) {
 }
 
 // ==============================================
-// PROFILE GRADE AVERAGE
+// SECTION 40: PROFILE GRADE AVERAGE
 // ==============================================
-// Update profile standards table based on teacher's framework
+
 async function updateProfileStandardsTable() {
     const tbody = document.getElementById("standards-table-body");
     if (!tbody) return;
     
-    // Detect which framework the teacher is using
     const framework = await detectTeacherFramework();
     const isIB = framework === 'ib-myp';
     const isIGCSE = framework === 'igcse';
@@ -3368,9 +3899,7 @@ async function updateProfileStandardsTable() {
     }
 }
 
-// MS: NCAS Standards Table (updated with MS standards)
 async function renderNCASStandardsTable(tbody) {
-    // Update table headers for NCAS
     const table = document.getElementById("standards-table");
     if (table) {
         const thead = table.querySelector("thead");
@@ -3391,14 +3920,13 @@ async function renderNCASStandardsTable(tbody) {
         .eq('user_id', window.currentUserId || (await getCurrentUserId()))
         .maybeSingle();
     
-    const questGrades = progress?.quest_grades || {};
-    const completedQuests = progress?.completed_quests || {};
+    const questGradesCloud = progress?.quest_grades || {};
+    const completedQuestsCloud = progress?.completed_quests || {};
     
-    // Separate MVP and non-MVP quests
     const mvpQuests = [];
     const regularQuests = [];
     
-    for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+    for (const [questId, isCompleted] of Object.entries(completedQuestsCloud)) {
         if (!isCompleted) continue;
         const quest = quests[questId];
         if (!quest) continue;
@@ -3410,14 +3938,13 @@ async function renderNCASStandardsTable(tbody) {
         }
     }
     
-    // MS: Calculate averages per MS standard
     const mvpScores = {};
     const mvpCounts = {};
     const regularScores = {};
     const regularCounts = {};
     
     for (const questId of mvpQuests) {
-        const grades = questGrades[questId]?.mvpGrade || {};
+        const grades = questGradesCloud[questId]?.mvpGrade || {};
         for (const [standard, grade] of Object.entries(grades)) {
             mvpScores[standard] = (mvpScores[standard] || 0) + grade;
             mvpCounts[standard] = (mvpCounts[standard] || 0) + 1;
@@ -3425,14 +3952,13 @@ async function renderNCASStandardsTable(tbody) {
     }
     
     for (const questId of regularQuests) {
-        const grades = questGrades[questId]?.grade || {};
+        const grades = questGradesCloud[questId]?.grade || {};
         for (const [standard, grade] of Object.entries(grades)) {
             regularScores[standard] = (regularScores[standard] || 0) + grade;
             regularCounts[standard] = (regularCounts[standard] || 0) + 1;
         }
     }
     
-    // MS: Use MS standards list
     const standards = [
         { code: "VA:Cr1.2.7a", name: "Goal Setting" },
         { code: "VA:Cr2.1.7a", name: "Skill Development" },
@@ -3458,9 +3984,7 @@ async function renderNCASStandardsTable(tbody) {
     }
 }
 
-// IB Standards Table (criteria with formative/summative separation)
 async function renderIBStandardsTable(tbody) {
-    // Update table headers for IB
     const table = document.getElementById("standards-table");
     if (table) {
         const thead = table.querySelector("thead");
@@ -3481,14 +4005,13 @@ async function renderIBStandardsTable(tbody) {
         .eq('user_id', window.currentUserId || (await getCurrentUserId()))
         .maybeSingle();
     
-    const questGrades = progress?.quest_grades || {};
-    const completedQuests = progress?.completed_quests || {};
+    const questGradesCloud = progress?.quest_grades || {};
+    const completedQuestsCloud = progress?.completed_quests || {};
     
-    // Separate MVP and non-MVP quests
     const mvpQuests = [];
     const regularQuests = [];
     
-    for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+    for (const [questId, isCompleted] of Object.entries(completedQuestsCloud)) {
         if (!isCompleted) continue;
         const quest = quests[questId];
         if (!quest) continue;
@@ -3500,13 +4023,11 @@ async function renderIBStandardsTable(tbody) {
         }
     }
     
-    // For IB: calculate scores per criterion
     const mvpScores = { A: 0, B: 0, C: 0, D: 0 };
     const mvpCounts = { A: 0, B: 0, C: 0, D: 0 };
     const regularScores = { A: 0, B: 0, C: 0, D: 0 };
     const regularCounts = { A: 0, B: 0, C: 0, D: 0 };
     
-    // Helper to add grade to criterion
     function addGradeToCriterion(criterionCode, grade, isMvp) {
         if (!grade || isNaN(grade)) return;
         const targetScores = isMvp ? mvpScores : regularScores;
@@ -3515,12 +4036,11 @@ async function renderIBStandardsTable(tbody) {
         targetCounts[criterionCode] = (targetCounts[criterionCode] || 0) + 1;
     }
     
-    // Process all quests
     for (const questId of regularQuests) {
         const quest = quests[questId];
         if (!quest || !quest.rubric?.criteria) continue;
         
-        const grades = questGrades[questId]?.grade || {};
+        const grades = questGradesCloud[questId]?.grade || {};
         quest.rubric.criteria.forEach(criterion => {
             const grade = grades[criterion.code];
             addGradeToCriterion(criterion.code, grade, false);
@@ -3531,7 +4051,7 @@ async function renderIBStandardsTable(tbody) {
         const quest = quests[questId];
         if (!quest || !quest.rubric?.criteria) continue;
         
-        const grades = questGrades[questId]?.mvpGrade || {};
+        const grades = questGradesCloud[questId]?.mvpGrade || {};
         quest.rubric.criteria.forEach(criterion => {
             const grade = grades[criterion.code];
             addGradeToCriterion(criterion.code, grade, true);
@@ -3561,9 +4081,7 @@ async function renderIBStandardsTable(tbody) {
     }
 }
 
-// IGCSE Standards Table for Student Profile
 async function renderIGCSESTandardsTable(tbody) {
-    // Update table headers for IGCSE
     const table = document.getElementById("standards-table");
     if (table) {
         const thead = table.querySelector("thead");
@@ -3580,23 +4098,21 @@ async function renderIGCSESTandardsTable(tbody) {
     const { data: progress } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', currentUserId || (await getCurrentUserId()))
-        .maaybeSingle();
+        .eq('user_id', window.currentUserId || (await getCurrentUserId()))
+        .maybeSingle();
     
-    const questGrades = progress?.quest_grades || {};
-    const completedQuests = progress?.completed_quests || {};
+    const questGradesCloud = progress?.quest_grades || {};
+    const completedQuestsCloud = progress?.completed_quests || {};
     
-    // For IGCSE, all quests count toward the grade
     const allCompletedQuests = [];
     
-    for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+    for (const [questId, isCompleted] of Object.entries(completedQuestsCloud)) {
         if (!isCompleted) continue;
         const quest = quests[questId];
         if (!quest) continue;
         allCompletedQuests.push(questId);
     }
     
-    // Initialize scores for IGCSE AOs
     const totalScores = { AO1: 0, AO2: 0, AO3: 0, AO4: 0 };
     const totalCounts = { AO1: 0, AO2: 0, AO3: 0, AO4: 0 };
     
@@ -3606,13 +4122,12 @@ async function renderIGCSESTandardsTable(tbody) {
         totalCounts[aoCode] = (totalCounts[aoCode] || 0) + 1;
     }
     
-    // Process all completed quests
     for (const questId of allCompletedQuests) {
         const quest = quests[questId];
         if (!quest || !quest.rubric?.assessment_objectives) continue;
         
         const column = quest.style === "mvp" ? "mvpGrade" : "grade";
-        const grades = questGrades[questId]?.[column] || {};
+        const grades = questGradesCloud[questId]?.[column] || {};
         
         quest.rubric.assessment_objectives.forEach(ao => {
             const grade = grades[ao.code];
@@ -3647,48 +4162,31 @@ async function renderIGCSESTandardsTable(tbody) {
     }
 }
 
-// Helper to get current user ID
 async function getCurrentUserId() {
     const { data: { session } } = await window.supabase.auth.getSession();
     return session?.user?.id;
 }
 
-// Convert number (1-8) to IGCSE letter grade
 function convertNumberToLetterGrade(number) {
     const gradeMap = {
-        8: 'A*',
-        7: 'A',
-        6: 'B',
-        5: 'C',
-        4: 'D',
-        3: 'E',
-        2: 'F',
-        1: 'G'
+        8: 'A*', 7: 'A', 6: 'B', 5: 'C', 4: 'D', 3: 'E', 2: 'F', 1: 'G'
     };
     return gradeMap[number] || '';
 }
 
-// Convert IGCSE letter grade to number (1-8)
 function convertLetterGradeToNumber(letter) {
     if (!letter) return null;
     const upperLetter = letter.toString().toUpperCase().trim();
     const gradeMap = {
-        'A*': 8,
-        'A': 7,
-        'B': 6,
-        'C': 5,
-        'D': 4,
-        'E': 3,
-        'F': 2,
-        'G': 1
+        'A*': 8, 'A': 7, 'B': 6, 'C': 5, 'D': 4, 'E': 3, 'F': 2, 'G': 1
     };
     return gradeMap[upperLetter] || null;
 }
 
 // ==============================================
-// RADAR CHART
+// SECTION 41: RADAR CHART
 // ==============================================
-// Compute domain grades based on framework
+
 async function computeDomainGrades() {
     const framework = await detectTeacherFramework();
     const isIB = framework === 'ib-myp';
@@ -3703,17 +4201,16 @@ async function computeDomainGrades() {
     }
 }
 
-// MS: NCAS Domain Grades (groups MS standards into 4 domains)
 function computeNCASDomainGrades() {
     const ncasDomains = {
         creating: [
-            "VA:Cr1.2.7a",  // Goal Setting
-            "VA:Cr2.1.7a",  // Skill Development
-            "VA:Cr2.3.8a"   // Visual Communication
+            "VA:Cr1.2.7a",
+            "VA:Cr2.1.7a",
+            "VA:Cr2.3.8a"
         ],
-        reflecting: ["VA:Cr3.1.7a"],  // Reflection
-        responding: ["VA:Re8.1.8a"],  // Interpretation
-        connecting: ["VA:Cn11.1.8a"]  // Cultural Context
+        reflecting: ["VA:Cr3.1.7a"],
+        responding: ["VA:Re8.1.8a"],
+        connecting: ["VA:Cn11.1.8a"]
     };
 
     const domainGrades = {};
@@ -3723,7 +4220,7 @@ function computeNCASDomainGrades() {
         let count = 0;
 
         ncasDomains[domain].forEach(code => {
-            const avg = computeStandardAverage(true, code); // Use MVP/summative grades
+            const avg = computeStandardAverage(true, code);
             if (typeof avg === "number" && !isNaN(avg)) {
                 sum += avg;
                 count++;
@@ -3736,20 +4233,18 @@ function computeNCASDomainGrades() {
     return domainGrades;
 }
 
-// IB Domain Grades (4 criteria directly map to domains)
 async function computeIBDomainGrades() {
     const { data: progress } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', currentUserId || (await getCurrentUserId()))
+        .eq('user_id', window.currentUserId || (await getCurrentUserId()))
         .maybeSingle();
     
-    const questGrades = progress?.quest_grades || {};
-    const completedQuests = progress?.completed_quests || {};
+    const questGradesCloud = progress?.quest_grades || {};
+    const completedQuestsCloud = progress?.completed_quests || {};
     
-    // Get only MVP quests (summative)
     const mvpQuests = [];
-    for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+    for (const [questId, isCompleted] of Object.entries(completedQuestsCloud)) {
         if (!isCompleted) continue;
         const quest = quests[questId];
         if (quest && quest.style === 'mvp') {
@@ -3757,16 +4252,14 @@ async function computeIBDomainGrades() {
         }
     }
     
-    // Initialize scores for each criterion
     const criteriaScores = { A: 0, B: 0, C: 0, D: 0 };
     const criteriaCounts = { A: 0, B: 0, C: 0, D: 0 };
     
-    // Collect all grades from MVP quests
     for (const questId of mvpQuests) {
         const quest = quests[questId];
         if (!quest || !quest.rubric?.criteria) continue;
         
-        const grades = questGrades[questId]?.mvpGrade || {};
+        const grades = questGradesCloud[questId]?.mvpGrade || {};
         quest.rubric.criteria.forEach(criterion => {
             const grade = grades[criterion.code];
             if (grade && typeof grade === 'number' && !isNaN(grade)) {
@@ -3776,7 +4269,6 @@ async function computeIBDomainGrades() {
         });
     }
     
-    // Calculate averages and map to domain names for radar chart
     const domainGrades = {
         "A: Knowing & Understanding": criteriaCounts.A ? criteriaScores.A / criteriaCounts.A : 0,
         "B: Developing Skills": criteriaCounts.B ? criteriaScores.B / criteriaCounts.B : 0,
@@ -3787,35 +4279,31 @@ async function computeIBDomainGrades() {
     return domainGrades;
 }
 
-// IGCSE Domain Grades (4 Assessment Objectives)
 async function computeIGCSEDomainGrades() {
     const { data: progress } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', currentUserId || (await getCurrentUserId()))
+        .eq('user_id', window.currentUserId || (await getCurrentUserId()))
         .maybeSingle();
     
-    const questGrades = progress?.quest_grades || {};
-    const completedQuests = progress?.completed_quests || {};
+    const questGradesCloud = progress?.quest_grades || {};
+    const completedQuestsCloud = progress?.completed_quests || {};
     
-    // For IGCSE, all completed quests count
     const allCompletedQuests = [];
-    for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+    for (const [questId, isCompleted] of Object.entries(completedQuestsCloud)) {
         if (!isCompleted) continue;
         allCompletedQuests.push(questId);
     }
     
-    // Initialize scores for each AO
     const aoScores = { AO1: 0, AO2: 0, AO3: 0, AO4: 0 };
     const aoCounts = { AO1: 0, AO2: 0, AO3: 0, AO4: 0 };
     
-    // Collect all grades from completed quests
     for (const questId of allCompletedQuests) {
         const quest = quests[questId];
         if (!quest || !quest.rubric?.assessment_objectives) continue;
         
         const column = quest.style === "mvp" ? "mvpGrade" : "grade";
-        const grades = questGrades[questId]?.[column] || {};
+        const grades = questGradesCloud[questId]?.[column] || {};
         
         quest.rubric.assessment_objectives.forEach(ao => {
             const grade = grades[ao.code];
@@ -3826,7 +4314,6 @@ async function computeIGCSEDomainGrades() {
         });
     }
     
-    // Calculate averages and convert to letter grades for display
     const domainGrades = {
         "AO1: Record": aoCounts.AO1 ? aoScores.AO1 / aoCounts.AO1 : 0,
         "AO2: Explore & Select": aoCounts.AO2 ? aoScores.AO2 / aoCounts.AO2 : 0,
@@ -3837,7 +4324,6 @@ async function computeIGCSEDomainGrades() {
     return domainGrades;
 }
 
-// Render radar chart based on framework
 async function renderRadarChart() {
     const canvas = document.getElementById("radar-chart");
     const tooltip = document.getElementById("radar-tooltip");
@@ -3871,7 +4357,6 @@ async function renderRadarChart() {
             "AO4: Present": "Present a personal and meaningful response that realises intentions."
         };
     } else if (isNCAS) {
-        // MS: Updated domain names for MS
         radarData = computeNCASDomainGrades();
         labels = ["creating", "reflecting", "responding", "connecting"];
         descriptions = {
@@ -3881,7 +4366,6 @@ async function renderRadarChart() {
             connecting: "Connecting: Making connections between art, culture, and personal experiences."
         };
     } else {
-        // Fallback
         radarData = { creating: 0, reflecting: 0, responding: 0, connecting: 0 };
         labels = ["creating", "reflecting", "responding", "connecting"];
         descriptions = {
@@ -3903,7 +4387,6 @@ async function renderRadarChart() {
 
     ctx.clearRect(0, 0, size, size);
 
-    // Draw background grid
     ctx.strokeStyle = "rgba(255,255,255,0.45)";
     ctx.lineWidth = 1;
 
@@ -3921,7 +4404,6 @@ async function renderRadarChart() {
         ctx.stroke();
     }
 
-    // Draw axis lines
     for (let i = 0; i < labels.length; i++) {
         const angle = (Math.PI * 2 / labels.length) * i - Math.PI / 2;
         const x = centerX + maxRadius * Math.cos(angle);
@@ -3932,7 +4414,6 @@ async function renderRadarChart() {
         ctx.stroke();
     }
 
-    // Draw labels
     ctx.fillStyle = "#fff";
     ctx.font = "bold 14px Arial";
     ctx.textAlign = "center";
@@ -3946,11 +4427,9 @@ async function renderRadarChart() {
         
         let displayLabel = labels[i];
         if (isIB) {
-            // For IB, show just the letter on the chart
             displayLabel = labels[i].charAt(0);
             ctx.fillText(displayLabel, x, y);
         } else if (isIGCSE) {
-            // For IGCSE, show just AO1, AO2, etc.
             displayLabel = labels[i].split(':')[0];
             ctx.fillText(displayLabel, x, y);
         } else {
@@ -3959,14 +4438,12 @@ async function renderRadarChart() {
         labelPositions.push({ x, y, label: labels[i] });
     }
 
-    // Draw data area
     ctx.beginPath();
     for (let i = 0; i < values.length; i++) {
         const angle = (Math.PI * 2 / labels.length) * i - Math.PI / 2;
-        // Scale values to 0-4 range (IGCSE values are 1-8, so divide by 2)
         let scaledValue = values[i];
         if (isIGCSE) {
-            scaledValue = values[i] / 2; // Convert 1-8 scale to 0.5-4 for display
+            scaledValue = values[i] / 2;
         }
         const r = (scaledValue / 4) * maxRadius;
         const x = centerX + r * Math.cos(angle);
@@ -3978,7 +4455,6 @@ async function renderRadarChart() {
     ctx.fill();
     ctx.stroke();
 
-    // Draw data points
     ctx.fillStyle = "#fff";
     const pointPositions = [];
     values.forEach((val, i) => {
@@ -3996,7 +4472,6 @@ async function renderRadarChart() {
         pointPositions.push({ x, y, label: labels[i] });
     });
 
-    // Tooltip handling
     canvas.onmousemove = (e) => {
         const container = document.getElementById("radar-chart-container");
         const rect = container.getBoundingClientRect();
@@ -4038,8 +4513,9 @@ async function renderRadarChart() {
 }
 
 // ==============================================
-// GRADES STORAGE
+// SECTION 42: GRADES STORAGE + TIMER FUNCTIONS
 // ==============================================
+
 function saveQuestGrades() {
   localStorage.setItem("questGrades", JSON.stringify(questGrades));
 }
@@ -4049,9 +4525,6 @@ function loadQuestGrades() {
   return data ? JSON.parse(data) : {};
 }
 
-// ==============================================
-// TIMER FUNCTIONS
-// ==============================================
 function saveQuestStartTimes() {
   localStorage.setItem("questStartTimes", JSON.stringify(questStartTimes));
   autoSaveToCloud();
@@ -4105,23 +4578,19 @@ function initializeQuestTimers() {
   for (const questId in questAccepted) {
     if (questAccepted[questId] && questStartTimes[questId]) {
       startQuestTimer(questId);
-      
     }
   }
   checkAllQuestWarnings();
   updateActiveQuestButton();
   startActiveQuestTimerUpdates();
-  
 }
 
 function startQuestTimer(questId) {
     if (questTimers[questId]) clearInterval(questTimers[questId]);
     
     questTimers[questId] = setInterval(() => {
-        // Always update the map warning, even if overlay is closed
         checkAllQuestWarnings();
         
-        // Only update timer display if this quest is currently open
         if (currentQuestId === questId) {
             const remaining = updateTimerDisplay(questId);
             if (remaining <= 0) stopQuestTimer(questId);
@@ -4138,10 +4607,10 @@ function stopQuestTimer(questId) {
   }
 }
 
+// ==============================================
+// SECTION 43: BACKGROUND TIMER CHECK
+// ==============================================
 
-// ==============================================
-// BACKGROUND TIMER CHECK
-// ==============================================
 function startBackgroundTimerCheck() {
   setInterval(() => {
     for (const questId in questAccepted) {
@@ -4167,10 +4636,8 @@ function calculateRemainingMinutes(questId) {
     const quest = quests[questId];
     if (!quest) return 0;
     
-    // Get class duration
     const classDuration = getClassDurationSync();
     
-    // Get total minutes allowed
     let totalMinutes;
     const customTimer = getCustomTimerForQuestSync(questId);
     
@@ -4185,12 +4652,10 @@ function calculateRemainingMinutes(questId) {
     const startTime = new Date(questStartTimes[questId]);
     const now = new Date();
     
-    // Count elapsed class days using schedule
     let elapsedClassDays = 0;
     const current = new Date(startTime);
     const today = new Date(now);
     
-    // Reset to start of day for accurate day counting
     current.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
     
@@ -4201,7 +4666,6 @@ function calculateRemainingMinutes(questId) {
         current.setDate(current.getDate() + 1);
     }
     
-    // Each class day counts as one class period
     const elapsedMinutes = elapsedClassDays * classDuration;
     const remainingMinutes = Math.max(0, totalMinutes - elapsedMinutes);
     
@@ -4219,11 +4683,9 @@ function updateTimerDisplay(questId) {
     if (timerDisplay && questBox && currentQuestId === questId) {
         timerDisplay.textContent = formatTime(remaining, true);
         
-        // Calculate remaining percentage
         const quest = quests[questId];
         let totalMinutes = quest?.timer?.allottedMinutes || 75;
         
-        // Check for custom timer
         if (cachedCustomTimer !== null && cachedClassDuration) {
             totalMinutes = cachedCustomTimer * cachedClassDuration;
         }
@@ -4243,141 +4705,309 @@ function updateTimerDisplay(questId) {
         }
     }
     
-    checkAllQuestWarnings(); // Add this at the end
+    checkAllQuestWarnings();
     return remaining;
 }
 
 // ==============================================
-// START ACTIVE QUEST TIMER UPDATES
+// SECTION 44: START ACTIVE QUEST TIMER UPDATES
 // ==============================================
 
-function startActiveQuestTimerUpdates() {
-    // Clear any existing interval
+function startActiveQuestTimerUpdatesRAF() {
     if (window._activeQuestTimerInterval) {
         clearInterval(window._activeQuestTimerInterval);
         window._activeQuestTimerInterval = null;
     }
     
-    // Update the button immediately
     updateActiveQuestButton();
     
-    // Then update every second
     window._activeQuestTimerInterval = setInterval(() => {
         updateActiveQuestButton();
     }, 1000);
 }
 
-function acceptQuest(questId) {
-  const quest = quests[questId];
-  if (!quest || !quest.timer) return;
+// ==============================================
+// SECTION 45: CUSTOM TIMER FUNCTIONS (OPTIMIZED)
+// ==============================================
 
-  const check = canAcceptQuest(questId);
-  
-  if (!check.allowed) {
-    if (check.reason === "active_quest") {
-      showRestrictionPopup(check.activeQuestId);
-    } else if (check.reason === "prerequisites") {
-      let message = "";
-      if (check.required === 2) {
-        message = `This MVP quest requires at least 2 completed formative quests. You have completed ${check.completed} of the required ${check.required}.`;
-      } else {
-        message = `This MVP quest requires completing its formative quest first.`;
-      }
-      showPrerequisitePopup(message, check.prerequisites);
-    }
-    return;
-  }
-
-  if (confirm(`Accept "${quest.title}"?\n\nYou will have ${formatTime(quest.timer.allottedMinutes, true)} to complete this quest.`)) {
-    if (activeQuestId && activeQuestId !== questId) {
-      questAccepted[activeQuestId] = false;
-      stopQuestTimer(activeQuestId);
+async function getCustomTimerForQuest(questId) {
+    // Check cache first
+    if (AppState.teacherData.loaded && AppState.teacherData.customTimers[questId] !== undefined) {
+        console.log("Using cached custom timer for", questId);
+        return AppState.teacherData.customTimers[questId];
     }
     
-    questAccepted[questId] = true;
-    questStartTimes[questId] = new Date().toISOString();
-    
-    saveQuestAccepted();
-    saveQuestStartTimes();
-    
-    const acceptBtn = document.getElementById("quest-accept");
-    if (acceptBtn) {
-      acceptBtn.disabled = true;
-      acceptBtn.textContent = "Accepted";
+    if (!window.supabase || !window.supabase.from) {
+        return null;
     }
     
-    const timerDisplay = document.getElementById("timer-display");
-    if (timerDisplay) timerDisplay.style.display = "block";
+    const profile = loadStudentProfile();
+    if (!profile || !profile.teacher_code) return null;
     
-    startQuestTimer(questId);
-    saveQuestData();
-    
-    // ✅ Update the active quest button
-    updateActiveQuestButton();
-    // ✅ Start the optimized timer updates
-    startActiveQuestTimerUpdates();
-    
-    const finishedWorkBtn = document.getElementById("finished-work-btn");
-    const linksContainer = document.getElementById("quest-links");
-    
-    if (finishedWorkBtn) {
-      finishedWorkBtn.style.opacity = "1";
-      finishedWorkBtn.style.cursor = "pointer";
-      finishedWorkBtn.removeAttribute('disabled');
-      finishedWorkBtn.title = "Upload your finished work";
-      
-      const newBtn = finishedWorkBtn.cloneNode(true);
-      finishedWorkBtn.parentNode.replaceChild(newBtn, finishedWorkBtn);
-      newBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        if (!currentQuestId) {
-          alert("Please open a quest first to add your work.");
-          return;
+    try {
+        const { data: teacher, error: teacherError } = await window.supabase
+            .from('teachers')
+            .select('id')
+            .eq('class_code', profile.teacher_code)
+            .maybeSingle();
+        
+        if (teacherError || !teacher) return null;
+        
+        let query = window.supabase
+            .from('teacher_quest_standards')
+            .select('timer_classes')
+            .eq('teacher_id', teacher.id)
+            .eq('quest_id', questId);
+        
+        let timerValue = null;
+        
+        if (profile.class_id) {
+            const { data, error } = await query.eq('class_id', profile.class_id).maybeSingle();
+            
+            if (!error && data?.timer_classes !== null && data?.timer_classes !== undefined) {
+                timerValue = data.timer_classes;
+            } else {
+                const { data: globalData, error: globalError } = await query.is('class_id', null).maybeSingle();
+                
+                if (!globalError && globalData?.timer_classes !== null && globalData?.timer_classes !== undefined) {
+                    timerValue = globalData.timer_classes;
+                }
+            }
+        } else {
+            const { data, error } = await query.is('class_id', null).maybeSingle();
+            
+            if (!error && data?.timer_classes !== null && data?.timer_classes !== undefined) {
+                timerValue = data.timer_classes;
+            }
         }
-        openWorkOverlay(currentQuestId);
-      });
+        
+        // Store in cache (even nulls, so we don't re-fetch)
+        AppState.teacherData.customTimers[questId] = timerValue;
+        return timerValue;
+    } catch (error) {
+        console.log("Error getting custom timer:", error);
     }
     
-    if (linksContainer) {
-      linksContainer.style.opacity = "1";
-      linksContainer.style.pointerEvents = "auto";
-      linksContainer.title = "";
-    }
-    
-    updateTimerDisplay(questId);
-  }
+    return null;
 }
-function resetQuestTimer(questId) {
-  delete questStartTimes[questId];
-  delete questAccepted[questId];
-  
-  saveQuestStartTimes();
-  saveQuestAccepted();
-  
-  stopQuestTimer(questId);
-  
-  const questBox = document.getElementById("quest-box");
-  if (questBox && currentQuestId === questId) {
-    questBox.classList.remove("warning", "times-up");
-  }
-  
-  const timerDisplay = document.getElementById("timer-display");
-  if (timerDisplay && currentQuestId === questId) {
-    timerDisplay.textContent = "";
-    timerDisplay.style.display = "none";
-  }
-  
-  const acceptBtn = document.getElementById("quest-accept");
-  if (acceptBtn && currentQuestId === questId) {
-    acceptBtn.disabled = false;
-    acceptBtn.textContent = "Accept Quest";
-  }
-  
-  const questCheck = document.getElementById("quest-check");
-  if (questCheck && currentQuestId === questId) {
-    questCheck.disabled = false;
-    questCheck.title = "";
-  }
+
+async function getClassDuration() {
+    // Check cache first
+    if (AppState.teacherData.loaded && AppState.teacherData.classDuration) {
+        return AppState.teacherData.classDuration;
+    }
+    
+    const profile = loadStudentProfile();
+    if (!profile || !profile.class_id) {
+        console.log("No class_id found, using default 75 minutes");
+        AppState.teacherData.classDuration = 75;
+        return 75;
+    }
+    
+    try {
+        const { count, error: countError } = await window.supabase
+            .from('class_settings')
+            .select('*', { count: 'exact', head: true });
+        
+        if (countError || count === 0) {
+            console.log("No class settings found, using default 75 minutes");
+            AppState.teacherData.classDuration = 75;
+            return 75;
+        }
+        
+        const { data, error } = await window.supabase
+            .from('class_settings')
+            .select('class_duration_minutes')
+            .eq('id', profile.class_id)
+            .maybeSingle();
+        
+        if (error || !data) {
+            const result = await window.supabase
+                .from('class_settings')
+                .select('class_duration_minutes')
+                .eq('class_id', profile.class_id)
+                .maybeSingle();
+            
+            if (result.error || !result.data) {
+                console.log("No class duration found, using default 75 minutes");
+                AppState.teacherData.classDuration = 75;
+                return 75;
+            }
+            
+            AppState.teacherData.classDuration = result.data.class_duration_minutes || 75;
+            return AppState.teacherData.classDuration;
+        }
+        
+        AppState.teacherData.classDuration = data?.class_duration_minutes || 75;
+        return AppState.teacherData.classDuration;
+        
+    } catch (error) {
+        console.log("Error fetching class duration:", error);
+        AppState.teacherData.classDuration = 75;
+        return 75;
+    }
+}
+
+async function acceptQuestWithCustomTimer(questId) {
+    const quest = quests[questId];
+    if (!quest) return;
+    
+    const check = canAcceptQuest(questId);
+    if (!check.allowed) {
+        if (check.reason === "active_quest") {
+            showRestrictionPopup(check.activeQuestId);
+        } else if (check.reason === "prerequisites") {
+            let message = "";
+            if (check.required === 2) {
+                message = `This MVP quest requires at least 2 completed formative quests. You have completed ${check.completed} of the required ${check.required}.`;
+            } else {
+                message = `This MVP quest requires completing its formative quest first.`;
+            }
+            showPrerequisitePopup(message, check.prerequisites);
+        }
+        return;
+    }
+    
+    const customTimerClasses = await getCustomTimerForQuest(questId);
+    const classDuration = await getClassDuration();
+    
+    let allottedMinutes;
+    if (customTimerClasses !== null) {
+        allottedMinutes = customTimerClasses * classDuration;
+    } else if (quest.timer) {
+        allottedMinutes = quest.timer.allottedMinutes;
+    } else {
+        allottedMinutes = 75;
+    }
+    
+    const timeText = formatTime(allottedMinutes, true);
+    
+    if (confirm(`Accept "${quest.title}"?\n\nYou will have ${timeText} to complete this quest.`)) {
+        if (activeQuestId && activeQuestId !== questId) {
+            questAccepted[activeQuestId] = false;
+            stopQuestTimer(activeQuestId);
+        }
+        
+        questAccepted[questId] = true;
+        questStartTimes[questId] = new Date().toISOString();
+        
+        if (customTimerClasses !== null) {
+            questTimers[questId] = { allottedMinutes: allottedMinutes, classDuration: classDuration };
+        }
+        
+        saveQuestAccepted();
+        saveQuestStartTimes();
+        
+        // Invalidate cache since data changed
+        invalidateStudentDataCache();
+        
+        const acceptBtn = document.getElementById("quest-accept");
+        if (acceptBtn) {
+            acceptBtn.disabled = true;
+            acceptBtn.textContent = "Accepted";
+        }
+        
+        const timerDisplay = document.getElementById("timer-display");
+        if (timerDisplay) {
+            timerDisplay.style.display = "block";
+        }
+        
+        startQuestTimer(questId);
+        saveQuestData();
+        
+        const finishedWorkBtn = document.getElementById("finished-work-btn");
+        if (finishedWorkBtn) {
+            finishedWorkBtn.style.opacity = "1";
+            finishedWorkBtn.style.cursor = "pointer";
+            finishedWorkBtn.removeAttribute('disabled');
+            
+            const newBtn = finishedWorkBtn.cloneNode(true);
+            finishedWorkBtn.parentNode.replaceChild(newBtn, finishedWorkBtn);
+            newBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                if (!currentQuestId) {
+                    alert("Please open a quest first to add your work.");
+                    return;
+                }
+                openWorkOverlay(currentQuestId);
+            });
+        }
+        
+        const linksContainer = document.getElementById("quest-links");
+        if (linksContainer) {
+            linksContainer.style.opacity = "1";
+            linksContainer.style.pointerEvents = "auto";
+        }
+        
+        updateTimerDisplay(questId);
+    }
+}
+
+function getCustomTimerForQuestSync(questId) {
+    if (cachedTimerQuestId === questId && cachedCustomTimer !== null) {
+        return cachedCustomTimer;
+    }
+    // Check AppState cache
+    if (AppState.teacherData.customTimers[questId] !== undefined) {
+        return AppState.teacherData.customTimers[questId];
+    }
+    return null;
+}
+
+function getClassDurationSync() {
+    if (cachedClassDuration) return cachedClassDuration;
+    return AppState.teacherData.classDuration || 75;
+}
+
+async function cacheTimerValuesForQuest(questId) {
+    // Check if already cached
+    if (cachedTimerQuestId === questId && cachedClassDuration) {
+        return; // Already cached for this quest
+    }
+    
+    cachedTimerQuestId = questId;
+    cachedCustomTimer = await getCustomTimerForQuest(questId);
+    cachedClassDuration = await getClassDuration();
+    console.log("Cached class duration:", cachedClassDuration, "custom timer:", cachedCustomTimer);
+}
+
+function checkAllQuestWarnings() {
+    const overlay = document.getElementById("map-warning-overlay");
+    if (!overlay) return;
+    
+    let hasWarning = false;
+    let hasTimeUp = false;
+    
+    for (const [questId, isAccepted] of Object.entries(questAccepted)) {
+        if (isAccepted === true && !completedQuests[questId]) {
+            const remaining = calculateRemainingMinutes(questId);
+            const quest = quests[questId];
+            
+            let totalMinutes = quest?.timer?.allottedMinutes || 75;
+            
+            const customTimer = getCustomTimerForQuestSync(questId);
+            const classDuration = getClassDurationSync();
+            if (customTimer !== null) {
+                totalMinutes = customTimer * classDuration;
+            }
+            
+            const remainingPercent = totalMinutes > 0 ? (remaining / totalMinutes) * 100 : 0;
+            
+            if (remaining <= 0) {
+                hasTimeUp = true;
+            } else if (remainingPercent <= 30) {
+                hasWarning = true;
+            }
+        }
+    }
+    
+    overlay.classList.remove("warning", "times-up");
+    
+    if (hasTimeUp) {
+        overlay.classList.add("times-up");
+    } else if (hasWarning) {
+        overlay.classList.add("warning");
+    }
 }
 
 function setupTimerControls(questId) {
@@ -4388,7 +5018,7 @@ function setupTimerControls(questId) {
     if (!quest || !acceptBtn || !timerDisplay) return;
     
     // Check for custom timer from teacher
-    const customTimer = getCustomTimerForQuest(questId);
+    const customTimer = getCustomTimerForQuestSync(questId);
     
     if (customTimer !== null || quest.timer) {
         acceptBtn.style.display = "block";
@@ -4423,7 +5053,8 @@ function setupTimerControls(questId) {
         // No timer for this quest
         acceptBtn.style.display = "none";
         timerDisplay.style.display = "none";
-        document.getElementById("quest-box").classList.add("no-timer");
+        const questBox = document.getElementById("quest-box");
+        if (questBox) questBox.classList.add("no-timer");
     }
     
     const questCheck = document.getElementById("quest-check");
@@ -4433,285 +5064,10 @@ function setupTimerControls(questId) {
     }
 }
 
-// Get custom timer for a quest (from teacher settings)
-async function getCustomTimerForQuest(questId) {
-    if (!window.supabase || !window.supabase.from) {
-        console.log("Supabase not available, returning null for timer");
-        return null;
-    }
-    
-    const profile = loadStudentProfile();
-    if (!profile || !profile.teacher_code) return null;
-    
-    try {
-        const { data: teacher, error: teacherError } = await window.supabase
-            .from('teachers')
-            .select('id')
-            .eq('class_code', profile.teacher_code)
-            .maybeSingle();
-        
-        if (teacherError || !teacher) return null;
-        
-        // Try with class_id first
-        let query = window.supabase
-            .from('teacher_quest_standards')
-            .select('timer_classes')
-            .eq('teacher_id', teacher.id)
-            .eq('quest_id', questId);
-        
-        if (profile.class_id) {
-            // Try with specific class_id
-            const { data, error } = await query.eq('class_id', profile.class_id).maybeSingle();
-            
-            if (!error && data?.timer_classes !== null && data?.timer_classes !== undefined) {
-                return data.timer_classes;
-            }
-            
-            // If no class-specific timer, try without class_id (global for this quest)
-            const { data: globalData, error: globalError } = await query.is('class_id', null).maybeSingle();
-            
-            if (!globalError && globalData?.timer_classes !== null && globalData?.timer_classes !== undefined) {
-                return globalData.timer_classes;
-            }
-        } else {
-            // No class_id, try global
-            const { data, error } = await query.is('class_id', null).maybeSingle();
-            
-            if (!error && data?.timer_classes !== null && data?.timer_classes !== undefined) {
-                return data.timer_classes;
-            }
-        }
-    } catch (error) {
-        console.log("Error getting custom timer:", error);
-    }
-    
-    return null;
-}
-// Get class duration for this student's class
 // ==============================================
-// GET CLASS DURATION (STUDENT VERSION)
+// SECTION 46: SCHEDULE DATA FOR TIMER
 // ==============================================
-async function getClassDuration() {
-    const profile = loadStudentProfile();
-    if (!profile || !profile.class_id) {
-        console.log("No class_id found, using default 75 minutes");
-        return 75;
-    }
-    
-    try {
-        // First check if there are ANY records in class_settings
-        const { count, error: countError } = await window.supabase
-            .from('class_settings')
-            .select('*', { count: 'exact', head: true });
-        
-        // If table is empty or error, return default
-        if (countError || count === 0) {
-            console.log("No class settings found, using default 75 minutes");
-            return 75;
-        }
-        
-        // Try with 'id' column first (most common)
-        const { data, error } = await window.supabase
-            .from('class_settings')
-            .select('class_duration_minutes')
-            .eq('id', profile.class_id)
-            .maybeSingle();
-        
-        // If that fails, try with 'class_id'
-        if (error || !data) {
-            const result = await window.supabase
-                .from('class_settings')
-                .select('class_duration_minutes')
-                .eq('class_id', profile.class_id)
-                .maybeSingle();
-            
-            if (result.error || !result.data) {
-                console.log("No class duration found, using default 75 minutes");
-                return 75;
-            }
-            
-            return result.data.class_duration_minutes || 75;
-        }
-        
-        return data?.class_duration_minutes || 75;
-        
-    } catch (error) {
-        console.log("Error fetching class duration:", error);
-        return 75; // Default fallback
-    }
-}
 
-// Accept quest with custom timer support
-async function acceptQuestWithCustomTimer(questId) {
-    const quest = quests[questId];
-    if (!quest) return;
-    
-    // Check if quest can be accepted
-    const check = canAcceptQuest(questId);
-    if (!check.allowed) {
-        if (check.reason === "active_quest") {
-            showRestrictionPopup(check.activeQuestId);
-        } else if (check.reason === "prerequisites") {
-            let message = "";
-            if (check.required === 2) {
-                message = `This MVP quest requires at least 2 completed formative quests. You have completed ${check.completed} of the required ${check.required}.`;
-            } else {
-                message = `This MVP quest requires completing its formative quest first.`;
-            }
-            showPrerequisitePopup(message, check.prerequisites);
-        }
-        return;
-    }
-    
-    // Get custom timer if exists
-    const customTimerClasses = await getCustomTimerForQuest(questId);
-    const classDuration = await getClassDuration();
-    
-    // Calculate minutes based on timer source
-    let allottedMinutes;
-    if (customTimerClasses !== null) {
-        allottedMinutes = customTimerClasses * classDuration;
-    } else if (quest.timer) {
-        allottedMinutes = quest.timer.allottedMinutes;
-    } else {
-        allottedMinutes = 75; // default
-    }
-    
-    const timeText = formatTime(allottedMinutes, true);
-    
-    if (confirm(`Accept "${quest.title}"?\n\nYou will have ${timeText} to complete this quest.`)) {
-        if (activeQuestId && activeQuestId !== questId) {
-            questAccepted[activeQuestId] = false;
-            stopQuestTimer(activeQuestId);
-        }
-        
-        questAccepted[questId] = true;
-        questStartTimes[questId] = new Date().toISOString();
-        
-        // Store the custom allotted minutes with the quest for timer calculations
-        if (customTimerClasses !== null) {
-            questTimers[questId] = { allottedMinutes: allottedMinutes, classDuration: classDuration };
-        }
-        
-        saveQuestAccepted();
-        saveQuestStartTimes();
-        
-        const acceptBtn = document.getElementById("quest-accept");
-        if (acceptBtn) {
-            acceptBtn.disabled = true;
-            acceptBtn.textContent = "Accepted";
-        }
-        
-        const timerDisplay = document.getElementById("timer-display");
-        if (timerDisplay) {
-            timerDisplay.style.display = "block";
-        }
-        
-        startQuestTimer(questId);
-        saveQuestData();
-        
-        // Re-enable the finished work button
-        const finishedWorkBtn = document.getElementById("finished-work-btn");
-        if (finishedWorkBtn) {
-            finishedWorkBtn.style.opacity = "1";
-            finishedWorkBtn.style.cursor = "pointer";
-            finishedWorkBtn.removeAttribute('disabled');
-            
-            const newBtn = finishedWorkBtn.cloneNode(true);
-            finishedWorkBtn.parentNode.replaceChild(newBtn, finishedWorkBtn);
-            newBtn.addEventListener("click", (e) => {
-                e.preventDefault();
-                if (!currentQuestId) {
-                    alert("Please open a quest first to add your work.");
-                    return;
-                }
-                openWorkOverlay(currentQuestId);
-            });
-        }
-        
-        // Re-enable links
-        const linksContainer = document.getElementById("quest-links");
-        if (linksContainer) {
-            linksContainer.style.opacity = "1";
-            linksContainer.style.pointerEvents = "auto";
-        }
-        
-        updateTimerDisplay(questId);
-    }
-}
-
-// Synchronous versions for use in timer (these need to be fast, so they use cached values)
-
-function getCustomTimerForQuestSync(questId) {
-    if (cachedTimerQuestId === questId && cachedCustomTimer !== null) {
-        return cachedCustomTimer;
-    }
-    // Return null - the async version will be called separately
-    return null;
-}
-
-function getClassDurationSync() {
-    return cachedClassDuration || 75;
-}
-
-// Call this when opening a quest to cache timer values
-async function cacheTimerValuesForQuest(questId) {
-    cachedTimerQuestId = questId;
-    cachedCustomTimer = await getCustomTimerForQuest(questId);
-    cachedClassDuration = await getClassDuration(); // This now handles empty table
-    console.log("Cached class duration:", cachedClassDuration);
-}
-// Check all active quests for time warnings
-function checkAllQuestWarnings() {
-    const overlay = document.getElementById("map-warning-overlay");
-    if (!overlay) return;
-    
-    let hasWarning = false;
-    let hasTimeUp = false;
-    
-    // Check all accepted quests that are not completed
-    for (const [questId, isAccepted] of Object.entries(questAccepted)) {
-        if (isAccepted === true && !completedQuests[questId]) {
-            const remaining = calculateRemainingMinutes(questId);
-            const quest = quests[questId];
-            
-            // Get total minutes
-            let totalMinutes = quest?.timer?.allottedMinutes || 75;
-            
-            // Check for custom timer
-            const customTimer = getCustomTimerForQuestSync(questId);
-            const classDuration = getClassDurationSync();
-            if (customTimer !== null) {
-                totalMinutes = customTimer * classDuration;
-            }
-            
-            const remainingPercent = totalMinutes > 0 ? (remaining / totalMinutes) * 100 : 0;
-            
-            if (remaining <= 0) {
-                hasTimeUp = true;
-            } else if (remainingPercent <= 30) {
-                hasWarning = true;
-            }
-        }
-    }
-    
-    // Update overlay classes
-    overlay.classList.remove("warning", "times-up");
-    
-    if (hasTimeUp) {
-        overlay.classList.add("times-up");
-        console.log("⏰ TIME'S UP - Map overlay turned red");
-    } else if (hasWarning) {
-        overlay.classList.add("warning");
-        console.log("⚠️ WARNING - Map overlay pulsing red");
-    }
-}
-
-// ==========================
-// SCHEDULE DATA FOR TIMER
-// ==========================
-
-// Load schedule for student
 async function loadScheduleForStudent() {
     const profile = loadStudentProfile();
     if (!profile || !profile.class_id) {
@@ -4720,7 +5076,6 @@ async function loadScheduleForStudent() {
     }
     
     try {
-        // Load no-class days
         const { data: noClassDays, error: noClassError } = await window.supabase
             .from('class_schedule_overrides')
             .select('date, reason, notes, is_class_day')
@@ -4733,7 +5088,6 @@ async function loadScheduleForStudent() {
             cachedScheduleData.noClassDays = noClassDays.map(d => d.date);
         }
         
-        // Load weekend settings
         const { data: weekendSettings, error: weekendError } = await window.supabase
             .from('class_weekend_settings')
             .select('saturday_is_class, sunday_is_class')
@@ -4746,7 +5100,6 @@ async function loadScheduleForStudent() {
             cachedScheduleData.weekendSettings = weekendSettings;
         }
         
-        // Load frequency settings
         const { data: frequencyRules, error: freqError } = await window.supabase
             .from('class_schedule_rules')
             .select('type, days')
@@ -4764,38 +5117,33 @@ async function loadScheduleForStudent() {
         console.log("Error in loadScheduleForStudent:", error);
     }
 }
-// Check if a specific date is a class day
+
 function isClassDay(date) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    const dayOfWeek = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    const dayOfWeek = date.getDay();
     
-    // Check if it's a no-class day (holiday/break)
     if (cachedScheduleData.noClassDays.includes(dateStr)) {
         return false;
     }
     
-    // Check weekend
-    if (dayOfWeek === 6) { // Saturday
+    if (dayOfWeek === 6) {
         return cachedScheduleData.weekendSettings.saturday_is_class;
     }
-    if (dayOfWeek === 0) { // Sunday
+    if (dayOfWeek === 0) {
         return cachedScheduleData.weekendSettings.sunday_is_class;
     }
     
-    // Check frequency settings for weekdays
     if (cachedScheduleData.frequencyDays.length > 0) {
-        // Convert JavaScript day (1=Monday) to match database (1=Monday)
         const jsDay = dayOfWeek === 0 ? 7 : dayOfWeek;
         return cachedScheduleData.frequencyDays.includes(jsDay);
     }
     
-    // Default: all weekdays are class days
     return true;
 }
-// Count class days between two dates (excluding weekends and holidays)
+
 function countClassDays(startDate, endDate) {
     let classDays = 0;
     const current = new Date(startDate);
@@ -4810,26 +5158,129 @@ function countClassDays(startDate, endDate) {
     
     return classDays;
 }
+// ================================================
+// SECTION 46B: OPEN QUEST TIME OPTIMIZATION
+// ================================================
 
-// ==========================
-// STUDENT CALENDAR
-// ==========================
+    // Synchronous version of setupTimerControls - uses cached values only
+function setupTimerControlsSync(questId) {
+    const quest = quests[questId];
+    const acceptBtn = document.getElementById("quest-accept");
+    const timerDisplay = document.getElementById("timer-display");
+    
+    if (!quest || !acceptBtn || !timerDisplay) return;
+    
+    // Use cached values only - no async
+    const customTimer = getCustomTimerForQuestSync(questId);
+    
+    if (customTimer !== null || quest.timer) {
+        acceptBtn.style.display = "block";
+        
+        if (questAccepted[questId]) {
+            acceptBtn.disabled = true;
+            acceptBtn.textContent = "Accepted";
+            timerDisplay.style.display = "block";
+            
+            if (!questTimers[questId] && questStartTimes[questId]) {
+                startQuestTimer(questId);
+            }
+            // Update timer display immediately
+            updateTimerDisplay(questId);
+        } else {
+            acceptBtn.disabled = false;
+            acceptBtn.textContent = "Accept Quest";
+            timerDisplay.style.display = "none";
+        }
+        
+        const newAcceptBtn = acceptBtn.cloneNode(true);
+        acceptBtn.parentNode.replaceChild(newAcceptBtn, acceptBtn);
+        
+        newAcceptBtn.addEventListener("click", () => {
+            if (!questAccepted[questId]) {
+                acceptQuestWithCustomTimer(questId);
+            }
+        });
+    } else {
+        acceptBtn.style.display = "none";
+        timerDisplay.style.display = "none";
+        const questBox = document.getElementById("quest-box");
+        if (questBox) questBox.classList.add("no-timer");
+    }
+    
+    const questCheck = document.getElementById("quest-check");
+    if (questCheck) {
+        questCheck.disabled = false;
+        questCheck.title = "";
+    }
+}
+
+// Synchronous version of updateRestrictedElementsVisibility
+function updateRestrictedElementsVisibilitySync(questId) {
+    const isAccepted = questAccepted[questId] === true;
+    const isCompleted = completedQuests[questId] === true;
+    const hasTimer = quests[questId]?.timer !== undefined;
+    
+    const canAccess = !hasTimer || isAccepted || isCompleted;
+    
+    const finishedWorkBtn = document.getElementById("finished-work-btn");
+    const linksContainer = document.getElementById("quest-links");
+    
+    if (finishedWorkBtn) {
+        const newBtn = finishedWorkBtn.cloneNode(true);
+        finishedWorkBtn.parentNode.replaceChild(newBtn, finishedWorkBtn);
+        
+        if (!canAccess) {
+            newBtn.style.opacity = "0.5";
+            newBtn.style.cursor = "not-allowed";
+            newBtn.title = "You must accept this quest first";
+            newBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                showAcceptQuestRestrictionPopup(questId);
+            });
+        } else {
+            newBtn.style.opacity = "1";
+            newBtn.style.cursor = "pointer";
+            newBtn.title = "Upload your finished work";
+            newBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                if (!currentQuestId) {
+                    alert("Please open a quest first to add your work.");
+                    return;
+                }
+                openWorkOverlay(currentQuestId);
+            });
+        }
+    }
+    
+    if (linksContainer) {
+        if (!canAccess) {
+            linksContainer.style.opacity = "0.5";
+            linksContainer.style.pointerEvents = "none";
+            linksContainer.title = "You must accept this quest first";
+        } else {
+            linksContainer.style.opacity = "1";
+            linksContainer.style.pointerEvents = "auto";
+            linksContainer.title = "";
+        }
+    }
+}
+
+// ==============================================
+// SECTION 47: STUDENT CALENDAR
+// ==============================================
 
 let currentCalendarDate = new Date();
 let calendarQuestData = null;
 
-// Open student calendar
 async function openStudentCalendar() {
-    await loadStudentDataFromCloud();
+    await loadStudentDataFromCloud(false);
     await loadScheduleForStudent();
     await loadQuestCalendarData();
     renderStudentCalendar();
     document.getElementById('calendar-modal').style.display = 'flex';
 }
 
-// Load quest data for calendar (active and completed quests)
 async function loadQuestCalendarData() {
-    // Get the current user ID from session
     const { data: { session } } = await window.supabase.auth.getSession();
     const userId = session?.user?.id;
     
@@ -4843,7 +5294,6 @@ async function loadQuestCalendarData() {
         completedQuests: []
     };
     
-    // Get student progress data
     const { data: progress, error } = await window.supabase
         .from('student_progress')
         .select('completed_quests, quest_grades, quest_accepted, quest_start_times')
@@ -4857,24 +5307,18 @@ async function loadQuestCalendarData() {
     
     if (!progress) return;
     
-    const completedQuests = progress.completed_quests || {};
-    const questGrades = progress.quest_grades || {};
-    const questAccepted = progress.quest_accepted || {};
-    const questStartTimes = progress.quest_start_times || {};
+    const completedQuestsCloud = progress.completed_quests || {};
+    const questGradesCloud = progress.quest_grades || {};
+    const questAcceptedCloud = progress.quest_accepted || {};
+    const questStartTimesCloud = progress.quest_start_times || {};
     
-    console.log("Raw data - Start times:", questStartTimes);
-    console.log("Raw data - Completed:", completedQuests);
-    
-    // Find active quest (accepted but not completed)
-    for (const [questId, isAccepted] of Object.entries(questAccepted)) {
-        if (isAccepted === true && !completedQuests[questId]) {
+    // Find active quest
+    for (const [questId, isAccepted] of Object.entries(questAcceptedCloud)) {
+        if (isAccepted === true && !completedQuestsCloud[questId]) {
             const quest = quests[questId];
-            const startTime = new Date(questStartTimes[questId]);
+            const startTime = new Date(questStartTimesCloud[questId]);
             
-            if (isNaN(startTime.getTime())) {
-                console.log(`Invalid start time for ${questId}`);
-                continue;
-            }
+            if (isNaN(startTime.getTime())) continue;
             
             const classDuration = await getClassDuration();
             const customTimer = await getCustomTimerForQuest(questId);
@@ -4896,45 +5340,32 @@ async function loadQuestCalendarData() {
                 dueDate: dueDate,
                 totalMinutes: totalMinutes
             };
-            console.log(`Active quest: ${questId}, start: ${startTime}, due: ${dueDate}`);
             break;
         }
     }
     
-    // Find completed quests with their actual completion dates
-    for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+    // Find completed quests
+    for (const [questId, isCompleted] of Object.entries(completedQuestsCloud)) {
         if (isCompleted === true) {
             const quest = quests[questId];
-            if (!quest) {
-                console.log(`Quest ${questId} not found in quests data`);
-                continue;
-            }
+            if (!quest) continue;
             
-            const startTime = questStartTimes[questId];
+            const startTime = questStartTimesCloud[questId];
             let completedDate = null;
-            const grades = questGrades[questId];
+            const grades = questGradesCloud[questId];
             
-            console.log(`Processing completed quest ${questId}:`, {
-                startTime: startTime,
-                grades: grades
-            });
-            
-            // Get the completion date from the grade or use a fallback
             if (grades) {
-                // Check if there's a timestamp in the grade data
                 if (grades.updated_at) {
                     completedDate = new Date(grades.updated_at);
                 } else if (grades.graded_at) {
                     completedDate = new Date(grades.graded_at);
                 } else {
-                    // Use the start time + 1 day as fallback for testing
                     completedDate = startTime ? new Date(startTime) : new Date();
                     if (startTime) {
                         completedDate.setDate(completedDate.getDate() + 1);
                     }
                 }
             } else {
-                // If no grades, use start time + 1 day
                 completedDate = startTime ? new Date(startTime) : new Date();
                 if (startTime) {
                     completedDate.setDate(completedDate.getDate() + 1);
@@ -4948,15 +5379,10 @@ async function loadQuestCalendarData() {
                 completedDate: completedDate,
                 dueDate: null
             });
-            
-            console.log(`Added completed quest: ${questId}, start: ${startTime}, completed: ${completedDate}`);
         }
     }
-    
-    console.log("Final calendarQuestData:", calendarQuestData);
 }
 
-// Calculate due date based on schedule (counting only class days)
 function calculateDueDate(startDate, totalMinutes, classDuration) {
     const totalClassPeriods = Math.ceil(totalMinutes / classDuration);
     let classDaysCount = 0;
@@ -4975,7 +5401,6 @@ function calculateDueDate(startDate, totalMinutes, classDuration) {
     return currentDate;
 }
 
-// Render student calendar
 function renderStudentCalendar() {
     const year = currentCalendarDate.getFullYear();
     const month = currentCalendarDate.getMonth();
@@ -5009,41 +5434,34 @@ function renderStudentCalendar() {
             currentDate.setHours(0, 0, 0, 0);
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`;
             
-            // Add day number
             const daySpan = document.createElement('div');
             daySpan.className = 'calendar-day-number';
             daySpan.textContent = dayNumber;
             cell.appendChild(daySpan);
             
-            // COLLECT ALL STATUSES FOR THIS DATE
             const statuses = [];
             
-            // 1. Check for teacher no-class day (highest priority)
             const scheduleEntry = cachedScheduleData.noClassDaysDetails?.find(d => d.date === dateStr);
             const isTeacherNoClassDay = scheduleEntry && scheduleEntry.is_class_day === false;
             
             if (isTeacherNoClassDay) {
                 statuses.push({
-                    type: 'no-class',
-                    priority: 1,
+                    type: 'no-class', priority: 1,
                     color: 'rgba(255, 0, 0, 0.35)',
                     label: `🚫 No Class: ${scheduleEntry.reason || 'Teacher scheduled'}`,
                     fullText: scheduleEntry.reason || 'No Class'
                 });
             }
             
-            // 2. Check for teacher note
             if (scheduleEntry?.notes) {
                 statuses.push({
-                    type: 'note',
-                    priority: 2,
+                    type: 'note', priority: 2,
                     color: 'rgba(76, 175, 80, 0.35)',
                     label: `📝 Note: ${scheduleEntry.notes}`,
                     fullText: scheduleEntry.notes
                 });
             }
             
-            // 3. Check for completed quests
             if (calendarQuestData.completedQuests && calendarQuestData.completedQuests.length > 0) {
                 for (const completed of calendarQuestData.completedQuests) {
                     if (completed.startDate && completed.completedDate) {
@@ -5054,8 +5472,7 @@ function renderStudentCalendar() {
                         
                         if (currentDate >= start && currentDate <= completion) {
                             statuses.push({
-                                type: 'completed',
-                                priority: 3,
+                                type: 'completed', priority: 3,
                                 color: 'rgba(100, 100, 100, 0.35)',
                                 label: `✅ Completed: ${completed.title}`,
                                 questId: completed.id,
@@ -5066,7 +5483,6 @@ function renderStudentCalendar() {
                 }
             }
             
-            // 4. Check for active quest
             if (calendarQuestData.activeQuest) {
                 const startDate = new Date(calendarQuestData.activeQuest.startDate);
                 startDate.setHours(0, 0, 0, 0);
@@ -5074,12 +5490,10 @@ function renderStudentCalendar() {
                 dueDate.setHours(0, 0, 0, 0);
                 
                 if (currentDate >= startDate && currentDate <= dueDate) {
-                    // Check if this quest is already in statuses as completed
                     const alreadyCompleted = statuses.some(s => s.type === 'completed' && s.questId === calendarQuestData.activeQuest.id);
                     if (!alreadyCompleted) {
                         statuses.push({
-                            type: 'active',
-                            priority: 4,
+                            type: 'active', priority: 4,
                             color: 'rgba(0, 150, 255, 0.35)',
                             label: `📘 Active: ${calendarQuestData.activeQuest.title}`,
                             questId: calendarQuestData.activeQuest.id,
@@ -5090,7 +5504,6 @@ function renderStudentCalendar() {
                 }
             }
             
-            // Remove duplicate types (keep only one of each type per day)
             const uniqueStatuses = [];
             const seenTypes = new Set();
             for (const status of statuses) {
@@ -5100,22 +5513,17 @@ function renderStudentCalendar() {
                 }
             }
             
-            // Sort by priority (highest first)
             uniqueStatuses.sort((a, b) => a.priority - b.priority);
             
-            // APPLY SMOOTH GRADIENT BACKGROUND
             if (uniqueStatuses.length === 1) {
-                // Single color
                 cell.style.background = uniqueStatuses[0].color;
             } else if (uniqueStatuses.length === 2) {
-                // Smooth transition between 2 colors
                 cell.style.background = `linear-gradient(to bottom, 
                     ${uniqueStatuses[0].color} 0%, 
                     ${uniqueStatuses[0].color} 35%,
                     ${uniqueStatuses[1].color} 65%,
                     ${uniqueStatuses[1].color} 100%)`;
             } else if (uniqueStatuses.length === 3) {
-                // Smooth transitions between 3 colors
                 cell.style.background = `linear-gradient(to bottom, 
                     ${uniqueStatuses[0].color} 0%, 
                     ${uniqueStatuses[0].color} 25%,
@@ -5124,7 +5532,6 @@ function renderStudentCalendar() {
                     ${uniqueStatuses[2].color} 75%,
                     ${uniqueStatuses[2].color} 100%)`;
             } else if (uniqueStatuses.length >= 4) {
-                // For 4+ colors, use overlapping segments
                 const segmentPercent = 100 / uniqueStatuses.length;
                 const gradientStops = [];
                 
@@ -5143,7 +5550,6 @@ function renderStudentCalendar() {
                 cell.style.background = `linear-gradient(to bottom, ${gradientStops.join(', ')})`;
             }
             
-            // BUILD TOOLTIP CONTENT (store in data attribute for event delegation)
             if (uniqueStatuses.length > 0) {
                 const tooltipLines = [`📅 ${currentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`];
                 tooltipLines.push('━━━━━━━━━━━━━━━━━');
@@ -5157,7 +5563,6 @@ function renderStudentCalendar() {
                 cell.setAttribute('data-tooltip', '');
             }
             
-            // ADD GREEN CHECKMARK FOR COMPLETION DATE
             for (const status of uniqueStatuses) {
                 if (status.type === 'completed' && status.isCompletedDate) {
                     const checkSpan = document.createElement('div');
@@ -5169,7 +5574,6 @@ function renderStudentCalendar() {
                 }
             }
             
-            // ADD QUEST NAME FOR START DATE (only for active quests)
             for (const status of uniqueStatuses) {
                 if (status.type === 'active' && status.isStartDate && calendarQuestData.activeQuest) {
                     const questNameSpan = document.createElement('div');
@@ -5186,7 +5590,6 @@ function renderStudentCalendar() {
                 }
             }
             
-            // ADD DUE DATE INDICATOR
             for (const status of uniqueStatuses) {
                 if (status.type === 'active' && status.isDueDate && calendarQuestData.activeQuest) {
                     cell.classList.add('quest-due');
@@ -5203,7 +5606,6 @@ function renderStudentCalendar() {
                     break;
                 }
             }
-            
         } else {
             cell.style.visibility = 'hidden';
             cell.style.pointerEvents = 'none';
@@ -5213,7 +5615,6 @@ function renderStudentCalendar() {
     }
 }
 
-// Calendar navigation
 function calendarPrevMonth() {
     currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
     renderStudentCalendar();
@@ -5224,18 +5625,15 @@ function calendarNextMonth() {
     renderStudentCalendar();
 }
 
-// Set up event delegation for calendar tooltips (call this once when page loads)
 function setupCalendarTooltipDelegation() {
     const grid = document.getElementById('student-calendar-grid');
     if (!grid) return;
     
-    // Create tooltip element once
     const tooltip = document.createElement('div');
     tooltip.id = 'calendar-custom-tooltip';
     tooltip.className = 'calendar-tooltip';
     document.body.appendChild(tooltip);
     
-    // Mouse move on grid - show tooltip for cells with data-tooltip attribute
     grid.addEventListener('mousemove', (e) => {
         const cell = e.target.closest('.calendar-day');
         if (!cell) {
@@ -5260,8 +5658,9 @@ function setupCalendarTooltipDelegation() {
 }
 
 // ==============================================
-// RESTRICTED ELEMENTS VISIBILITY
+// SECTION 48: RESTRICTED ELEMENTS VISIBILITY
 // ==============================================
+
 function updateRestrictedElementsVisibility(questId) {
   const isAccepted = questAccepted[questId] === true;
   const isCompleted = completedQuests[questId] === true;
@@ -5313,8 +5712,9 @@ function updateRestrictedElementsVisibility(questId) {
 }
 
 // ==============================================
-// RESTRICTION POPUPS
+// SECTION 49: RESTRICTION POPUPS
 // ==============================================
+
 function showAcceptQuestRestrictionPopup(questId) {
   const quest = quests[questId];
   const popup = document.getElementById("accept-quest-restriction-popup");
@@ -5332,7 +5732,7 @@ function closeAcceptQuestRestrictionPopup() {
 }
 
 // ==============================================
-// WORK OVERLAY FUNCTIONS
+// SECTION 50: WORK OVERLAY FUNCTIONS
 // ==============================================
 
 async function openWorkOverlay(questId) {
@@ -5386,13 +5786,8 @@ async function openWorkOverlay(questId) {
   if (imageInput) imageInput.value = "";
 }
 
-function closeWorkOverlay() {
-  const overlay = document.getElementById("work-overlay");
-  if (overlay) overlay.style.display = "none";
-}
-
 // ==============================================
-// JSON PROFILE SAVE/LOAD SYSTEM
+// SECTION 51: JSON PROFILE SAVE/LOAD SYSTEM
 // ==============================================
 
 function collectStudentData() {
@@ -5414,6 +5809,7 @@ function collectStudentData() {
         works: studentWorks,
         questRewards: questRewards,
         earnedBadges: earnedBadges,
+        selfAssessments: selfAssessments,
         standards: {},
         appName: "Artheim",
         version: "1.0",
@@ -5505,6 +5901,7 @@ function loadStudentData(data) {
         rubricLocked = {};
         questAccepted = {};
         questStartTimes = {};
+        selfAssessments = {};
         
         saveEarnedBadges();
         saveQuestData();
@@ -5597,6 +5994,12 @@ function loadStudentData(data) {
         saveQuestRewards();
     }
     
+    if (data.selfAssessments) {
+        selfAssessments = data.selfAssessments;
+        window.selfAssessments = data.selfAssessments;
+        localStorage.setItem('selfAssessments', JSON.stringify(selfAssessments));
+    }
+    
     if (data.standards) {
         Object.entries(data.standards).forEach(([standard, grades]) => {
             const row = document.querySelector(`tr[data-standard="${standard}"]`);
@@ -5646,12 +6049,12 @@ function loadStudentData(data) {
                 }
             }
         });
-        
-        const earnedCount = Object.values(earnedBadges).filter(b => b.earned).length;
-        console.log(`After re-validation: ${earnedCount} badges earned`);
     }
     
     saveEarnedBadges();
+    
+    // Invalidate caches since data changed
+    invalidateAllCaches();
     
     recalculateAllQuestRewards();
     updateProfileUI();
@@ -5687,8 +6090,9 @@ window.ArtheimProfile = {
 };
 
 // ==============================================
-// MINUTES TO CLASSES CONVERSION
+// SECTION 52: MINUTES TO CLASSES CONVERSION
 // ==============================================
+
 function convertMinutesToClasses(minutes) {
   if (typeof minutes !== 'number' || isNaN(minutes)) return "0 classes";
   const classes = Math.round(minutes / 75);
@@ -5702,7 +6106,7 @@ function convertMinutesToClassesDecimal(minutes, decimalPlaces = 1) {
 }
 
 // ==============================================
-// QUEST RESTRICTION FUNCTIONS
+// SECTION 53: QUEST RESTRICTION FUNCTIONS
 // ==============================================
 
 function getActiveQuestId() {
@@ -5757,14 +6161,15 @@ function initializeActiveQuest() {
 }
 
 // ==============================================
-// SAVE RUBRIC LOCKS (Helper function)
+// SECTION 53b: SAVE RUBRIC LOCKS (HELPER)
 // ==============================================
+
 function saveRubricLocks() {
     localStorage.setItem("rubricLocked", JSON.stringify(rubricLocked));
 }
 
 // ==============================================
-// QUEST LIST FUNCTIONS
+// SECTION 54: QUEST LIST FUNCTIONS
 // ==============================================
 
 function renderQuestList(filter = 'all') {
@@ -5900,7 +6305,7 @@ function initializeQuestList() {
 }
 
 // ==============================================
-// LOAD TEACHER CUSTOM QUESTS 
+// SECTION 55: LOAD TEACHER CUSTOM QUESTS
 // ==============================================
 
 async function loadTeacherCustomQuests() {
@@ -5909,7 +6314,6 @@ async function loadTeacherCustomQuests() {
         return [];
     }
     
-    // First find the teacher ID from teacher_code
     const { data: teacher, error: teacherError } = await window.supabase
         .from('teachers')
         .select('id')
@@ -5921,7 +6325,6 @@ async function loadTeacherCustomQuests() {
         return [];
     }
     
-    // Load custom quests from that teacher
     const { data, error } = await window.supabase
         .from('teacher_custom_quests')
         .select('*')
@@ -5936,7 +6339,6 @@ async function loadTeacherCustomQuests() {
     return data || [];
 }
 
-// Get all quests including custom quests (for student view)
 async function getAllQuestsForStudent(forceRefresh = false) {
     // If force refresh, bypass cache
     if (forceRefresh) {
@@ -5953,19 +6355,14 @@ async function getAllQuestsForStudent(forceRefresh = false) {
     
     console.log("Loading quests with custom quests...");
     
-    // Get base quests
     const baseQuests = await getQuests();
-    
-    // Get custom quests
     const customQuests = await loadTeacherCustomQuests();
     
-    // Combine them
     const allQuests = { ...baseQuests };
     
     for (let i = 0; i < customQuests.length; i++) {
         const custom = customQuests[i];
         
-        // Define images for each custom quest slot (based on order)
         const customImages = [
             "charimage/custom1.gif",
             "charimage/custom2.gif",
@@ -5974,7 +6371,6 @@ async function getAllQuestsForStudent(forceRefresh = false) {
             "charimage/custom5.gif"
         ];
         
-        // Use the index to determine which image to use (cycle through if more than 5)
         const imageIndex = i % customImages.length;
         const characterImage = customImages[imageIndex];
         
@@ -5996,17 +6392,21 @@ async function getAllQuestsForStudent(forceRefresh = false) {
             teacher_quest: true
         };
     }    
-    // Cache the combined result
+    
     cachedQuests = allQuests;
     cachedQuestsIncludeCustom = true;
+    
+    // Rebuild relationships with new quests
+    if (Object.keys(allQuests).length > 0) {
+        quests = allQuests;
+        buildQuestRelationships();
+    }
     
     console.log("Quests with custom quests cached successfully:", Object.keys(cachedQuests).length, "quests found");
     return cachedQuests;
 }
 
-// After loading quests, add hotspots for custom quests
 async function addCustomQuestHotspots() {
-    // Prevent multiple simultaneous calls
     if (isAddingHotspots) {
         console.log("Already adding hotspots, skipping...");
         return;
@@ -6014,12 +6414,10 @@ async function addCustomQuestHotspots() {
     isAddingHotspots = true;
     
     try {
-        // Check if custom quests are missing from the quests object
         const hasCustomQuests = Object.keys(quests).some(id => id.startsWith('custom_'));
         
         if (!hasCustomQuests) {
             console.log("Custom quests missing from quests object, refreshing...");
-            // Force refresh quests
             const freshQuests = await getAllQuestsForStudent(true);
             quests = freshQuests;
             cachedQuests = freshQuests;
@@ -6027,7 +6425,6 @@ async function addCustomQuestHotspots() {
             console.log("Custom quests now:", Object.keys(quests).filter(id => id.startsWith('custom_')));
         }
         
-        // Make sure quests are loaded
         if (!quests || Object.keys(quests).length === 0) {
             console.log("Quests not loaded yet, waiting...");
             setTimeout(() => addCustomQuestHotspots(), 500);
@@ -6040,24 +6437,22 @@ async function addCustomQuestHotspots() {
         const mapContainer = document.getElementById('map-container');
         if (!mapContainer) return;
         
-        // Remove existing custom quest hotspots first
         const existingHotspots = document.querySelectorAll('.hotspot.custom-quest-hotspot');
         existingHotspots.forEach(hotspot => hotspot.remove());
         
         // MS: All custom quests on single map
         const customPositions = [
-            { top: "53.4%", left: "73.2%" },   // Position 1
-            { top: "53.8%", left: "81.6%" },   // Position 2
-            { top: "59.3%", left: "81.6%" },   // Position 3
-            { top: "61.5%", left: "75.6%" },   // Position 4
-            { top: "64%", left: "83.4%" }    // Position 5
+            { top: "53.4%", left: "73.2%" },
+            { top: "53.8%", left: "81.6%" },
+            { top: "59.3%", left: "81.6%" },
+            { top: "61.5%", left: "75.6%" },
+            { top: "64%", left: "83.4%" }
         ];
         
         for (let i = 0; i < customQuests.length && i < customPositions.length; i++) {
             const quest = customQuests[i];
             const pos = customPositions[i];
             
-            // Check if quest exists in quests object
             if (!quests[quest.quest_id]) {
                 console.log(`Warning: Quest ${quest.quest_id} not found in quests object`);
                 continue;
@@ -6066,19 +6461,16 @@ async function addCustomQuestHotspots() {
             const hotspot = document.createElement('div');
             hotspot.className = 'hotspot debug custom-quest-hotspot';
             hotspot.setAttribute('data-city', quest.quest_id);
-            // MS: All custom quests on single map
             hotspot.setAttribute('data-map', 'map1');
             hotspot.style.top = pos.top;
             hotspot.style.left = pos.left;
             hotspot.style.position = 'absolute';
             hotspot.title = quest.title;
             
-            // Add click handler directly
             hotspot.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log("Custom quest clicked:", quest.quest_id);
-                console.log("Quest exists in quests?", !!quests[quest.quest_id]);
                 if (quests[quest.quest_id]) {
                     openQuest(quest.quest_id);
                 } else {
@@ -6090,7 +6482,6 @@ async function addCustomQuestHotspots() {
             console.log("Added custom quest hotspot for:", quest.title);
         }
         
-        bindHotspots();
         updateHotspotVisibility();
         
     } catch (error) {
@@ -6101,7 +6492,7 @@ async function addCustomQuestHotspots() {
 }
 
 // ==============================================
-// RESPONSIVE HELPER FUNCTIONS
+// SECTION 56: RESPONSIVE HELPER FUNCTIONS
 // ==============================================
 
 function handleOrientationChange() {
@@ -6177,7 +6568,7 @@ function initializeResponsiveBehaviors() {
 }
 
 // ==============================================
-// HELP MODAL
+// SECTION 57: HELP MODAL
 // ==============================================
 
 window.closeHelpModal = function() {
@@ -6213,7 +6604,7 @@ function initializeHelpModal() {
 }
 
 // ==============================================
-// GALLERY FUNCTIONS
+// SECTION 58: GALLERY FUNCTIONS
 // ==============================================
 
 function openGallery() {
@@ -6389,8 +6780,9 @@ function initializeGallery() {
     });
   }
 }
+
 // ==============================================
-// FULLSCREEN IMAGE VIEWER
+// SECTION 59: FULLSCREEN IMAGE VIEWER
 // ==============================================
 
 function initializeFullscreenViewer() {
@@ -6448,7 +6840,7 @@ function closeFullscreenImage() {
 }
 
 // ==============================================
-// RESTRICTION POPUP FUNCTIONS
+// SECTION 60: RESTRICTION POPUP FUNCTIONS
 // ==============================================
 
 function showRestrictionPopup(activeQuestId) {
@@ -6511,9 +6903,9 @@ function closePrerequisitePopup() {
 }
 
 // ==============================================
-// QUEST CACHING (BANDWIDTH OPTIMIZATION)
+// SECTION 61: QUEST CACHING (BANDWIDTH OPTIMIZATION)
 // ==============================================
-// Get quests from cache or fetch once
+
 async function getQuests() {
     if (cachedQuests) {
         console.log("Returning cached quests, count:", Object.keys(cachedQuests).length);
@@ -6539,33 +6931,33 @@ async function getQuests() {
     console.log("Quests cached successfully:", Object.keys(cachedQuests).length, "quests found");
     return cachedQuests;
 }
+// Add a sync getter for already-loaded quests
+function getQuestsSync() {
+    if (cachedQuests) return cachedQuests;
+    return quests;
+}
 
-// Force refresh cache (useful after framework change or teacher updates)
 function refreshQuestsCache() {
-    refreshAllQuestCaches();  // Call the comprehensive cache clear
+    refreshAllQuestCaches();
     console.log("Quest cache cleared by refreshQuestsCache()");
 }
 
-// Force refresh both memory and localStorage caches
 function refreshAllQuestCaches() {
-    cachedQuests = null;  // Clear in-memory cache
-    cachedQuestsIncludeCustom = false;  // Reset custom flag if you have it
+    cachedQuests = null;
+    cachedQuestsIncludeCustom = false;
     localStorage.removeItem(QUEST_CACHE_KEY);
     localStorage.removeItem(QUEST_CACHE_VERSION_KEY);
     localStorage.removeItem(QUEST_CACHE_TIMESTAMP_KEY);
     console.log("All quest caches cleared (memory + localStorage)");
 }
 
-// Get quests with localStorage caching (persists across browser restarts)
 async function getQuestsWithLocalCache(forceRefresh = false) {
-    // Force clear in-memory cache if forceRefresh is true
     if (forceRefresh) {
         console.log("Force refresh - clearing in-memory cache");
         cachedQuests = null;
         cachedQuestsIncludeCustom = false;
     }
     
-    // Check if teacher has updated quests since last cache
     let teacherTimestamp = null;
     try {
         const { data: { session } } = await window.supabase.auth.getSession();
@@ -6589,23 +6981,17 @@ async function getQuestsWithLocalCache(forceRefresh = false) {
         console.log("Could not check teacher timestamp:", e);
     }
     
-    // Get cached timestamp
     const cachedTimestamp = localStorage.getItem(QUEST_CACHE_TIMESTAMP_KEY);
     const cacheAge = cachedTimestamp ? Date.now() - parseInt(cachedTimestamp) : Infinity;
     const isCacheExpired = cacheAge > QUEST_CACHE_DURATION;
     
-    // Check if teacher has newer quests than cache
     const teacherHasNewerQuests = teacherTimestamp && cachedTimestamp && teacherTimestamp > parseInt(cachedTimestamp);
     
-    // Force refresh if needed
     if (forceRefresh || teacherHasNewerQuests || isCacheExpired) {
         console.log("Refreshing quest cache...", {
-            forceRefresh,
-            teacherHasNewerQuests,
-            isCacheExpired
+            forceRefresh, teacherHasNewerQuests, isCacheExpired
         });
         
-        // Pass true to getAllQuestsForStudent to force refresh its internal cache
         const freshQuests = await getAllQuestsForStudent(true);
         cachedQuests = freshQuests;
         quests = freshQuests;
@@ -6615,7 +7001,6 @@ async function getQuestsWithLocalCache(forceRefresh = false) {
         return freshQuests;
     }
     
-    // Check localStorage cache
     const cached = localStorage.getItem(QUEST_CACHE_KEY);
     const storedVersion = localStorage.getItem(QUEST_CACHE_VERSION_KEY);
     
@@ -6627,7 +7012,6 @@ async function getQuestsWithLocalCache(forceRefresh = false) {
         return parsedCache;
     }
     
-    // Fallback: fetch fresh
     console.log("Fetching fresh quests from server...");
     const freshQuests = await getAllQuestsForStudent(true);
     cachedQuests = freshQuests;
@@ -6638,12 +7022,10 @@ async function getQuestsWithLocalCache(forceRefresh = false) {
     return freshQuests;
 }
 
-// Check if teacher has updated quests (compares timestamps)
 async function checkQuestCacheValidity() {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) return false;
     
-    // Get student's profile to find teacher_code
     const { data: profile } = await window.supabase
         .from('profiles')
         .select('teacher_code')
@@ -6652,7 +7034,6 @@ async function checkQuestCacheValidity() {
     
     if (!profile?.teacher_code) return false;
     
-    // Get teacher's quests_updated_at timestamp
     const { data: teacher } = await window.supabase
         .from('teachers')
         .select('quests_updated_at')
@@ -6661,11 +7042,9 @@ async function checkQuestCacheValidity() {
     
     if (!teacher?.quests_updated_at) return false;
     
-    // Get cached timestamp from localStorage
     const cachedTimestamp = localStorage.getItem(QUEST_CACHE_TIMESTAMP_KEY);
     const teacherTimestamp = new Date(teacher.quests_updated_at).getTime();
     
-    // If teacher timestamp is newer than cache, refresh
     if (!cachedTimestamp || teacherTimestamp > parseInt(cachedTimestamp)) {
         console.log("Teacher updated quests, refreshing cache...");
         refreshAllQuestCaches();
@@ -6676,13 +7055,12 @@ async function checkQuestCacheValidity() {
     return false;
 }
 
-// ==========================
-// IMAGE COMPRESSION
-// ==========================
-// Image compression 
+// ==============================================
+// SECTION 62: IMAGE COMPRESSION
+// ==============================================
+
 async function compressImage(file, maxWidth = 1024, quality = 0.85) {
     return new Promise((resolve, reject) => {
-        // Check if it's an image
         if (!file.type.startsWith('image/')) {
             resolve(file);
             return;
@@ -6694,7 +7072,6 @@ async function compressImage(file, maxWidth = 1024, quality = 0.85) {
             let width = img.width;
             let height = img.height;
             
-            // Only resize if image is larger than maxWidth
             if (width > maxWidth) {
                 height = (height * maxWidth) / width;
                 width = maxWidth;
@@ -6706,14 +7083,12 @@ async function compressImage(file, maxWidth = 1024, quality = 0.85) {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
             
-            // Convert to JPEG
             canvas.toBlob((blob) => {
                 if (!blob) {
                     reject(new Error('Image compression failed'));
                     return;
                 }
                 
-                // Create a new file from blob
                 const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
                     type: 'image/jpeg',
                     lastModified: Date.now()
@@ -6733,7 +7108,10 @@ async function compressImage(file, maxWidth = 1024, quality = 0.85) {
     });
 }
 
-// Load badges from Json
+// ==============================================
+// SECTION 63: BADGE SYSTEM
+// ==============================================
+
 function loadBadgesFromJSON() {
     return fetch("badges.json")
         .then(res => {
@@ -6752,7 +7130,6 @@ function loadBadgesFromJSON() {
         });
 }
 
-// Initialize Badge system
 function initializeBadgeSystem() {
     console.log("Initializing badge system...");
     console.log("Current earned badges before check:", earnedBadges);
@@ -6771,7 +7148,6 @@ function initializeBadgeSystem() {
     console.log("Badge system initialized. Final badges:", earnedBadges);
 }
 
-// Check badges system
 function checkAllBadges(showCelebration = true) {
     if (!badgesData) return;
     
@@ -6824,29 +7200,23 @@ function checkAllBadges(showCelebration = true) {
         console.log("New badges earned, saving to cloud...");
         saveBadgesToCloud();
     }
-    
-    console.log("Final earned badges after check:", earnedBadges);
 }
 
 function checkProgressionBadge(badge) {
     if (!badge.levels) return false;
     
-    // Count ONLY MVP style quests that are completed
     let mvpCount = 0;
     const mvpQuestIds = [];
     
     for (const [questId, isCompleted] of Object.entries(completedQuests)) {
         if (isCompleted === true) {
             const quest = quests[questId];
-            // ✅ CRITICAL: Only count if quest style is 'mvp'
             if (quest && quest.style === 'mvp') {
                 mvpCount++;
                 mvpQuestIds.push(questId);
             }
         }
     }
-    
-    console.log(`Badge ${badge.id}: MVP count = ${mvpCount} (Quests: ${mvpQuestIds.join(', ')})`);
     
     let highestLevel = null;
     if (badge.levels) {
@@ -6867,12 +7237,9 @@ function checkProgressionBadge(badge) {
             tooltip: highestLevel.tooltip,
             earnedAt: earnedBadges[badge.id]?.earnedAt || new Date().toISOString()
         };
-        console.log(`✅ Badge ${badge.id} earned at level ${highestLevel.level}`);
         return true;
     } else {
-        // If badge was previously earned but now doesn't meet criteria, keep it
         if (earnedBadges[badge.id] && earnedBadges[badge.id].earned) {
-            console.log(`Badge ${badge.id} already earned, keeping`);
             return true;
         }
         return false;
@@ -6947,8 +7314,9 @@ function checkPerspectivePro(params) {
 }
 
 // ==============================================
-// RENDER BADGES IN PROFILE
+// SECTION 64: RENDER BADGES IN PROFILE
 // ==============================================
+
 function renderBadges() {
     const container = document.getElementById("badge-container");
     const titleElement = document.getElementById("badge-title");
@@ -7022,7 +7390,7 @@ function renderBadges() {
                 tooltip = badge.tooltipShadow || badge.name;
             }
             badgeSlot.setAttribute("data-tooltip", tooltip);
-            }
+        }
         
         badgeSlot.appendChild(img);
         container.appendChild(badgeSlot);
@@ -7030,20 +7398,20 @@ function renderBadges() {
 }
 
 // ==============================================
-// UPDATE BADGES AFTER QUEST COMPLETION
+// SECTION 65: UPDATE BADGES AFTER QUEST COMPLETION
 // ==============================================
+
 function updateBadgesAfterQuest() {
     console.log("Updating badges after quest completion...");
     checkAllBadges(true);
     if (document.getElementById("profile-overlay").style.display === "flex") {
         renderBadges();
     }
-    // Save to cloud
     saveBadgesToCloud();
 }
 
 // ==============================================
-// REAL-TIME BADGE UPDATES
+// SECTION 66: REAL-TIME BADGE UPDATES
 // ==============================================
 
 function setupRealtimeRefresh() {
@@ -7075,7 +7443,6 @@ function setupRealtimeRefresh() {
                 filter: `user_id=eq.${session.user.id}`
             }, (payload) => {
                 console.log("Real-time update received for student progress:", payload);
-                console.log("Real-time update received, calling refreshStudentData");
                 refreshStudentData();
             })
             .on('postgres_changes', {
@@ -7089,7 +7456,7 @@ function setupRealtimeRefresh() {
                 if (galleryOverlay && galleryOverlay.style.display === "flex") {
                     renderGalleryItems();
                 }
-                  refreshStudentData();
+                refreshStudentData();
             })
             .subscribe((status) => {
                 console.log("Realtime subscription status:", status);
@@ -7114,7 +7481,7 @@ function showBadgeNotification(badgeName) {
 
 async function manualRefreshBadges() {
     console.log("Manually refreshing badges...");
-    await loadStudentDataFromCloud();
+    await loadStudentDataFromCloud(true);
     
     const profileOverlay = document.getElementById("profile-overlay");
     if (profileOverlay && profileOverlay.style.display === "flex") {
@@ -7129,7 +7496,7 @@ async function manualRefreshBadges() {
 }
 
 // ==============================================
-// SAFETY NET FUNCTIONS (Empty/Removed)
+// SECTION 67: SAFETY NET FUNCTIONS (Empty/Removed)
 // ==============================================
 
 function loadStandardDeductions() { 
@@ -7145,17 +7512,14 @@ function initializeDeductionSystem() {
     console.warn("initializeDeductionSystem called but function removed");
 }
 
-function saveRubricLocks() {
-    console.warn("saveRubricLocks called but function removed");
-}
-
 // ==============================================
-// REFRESH STUDENT DATA
+// SECTION 68: REFRESH STUDENT DATA
 // ==============================================
 
 async function refreshStudentData() {
     console.log("Refreshing student data from cloud...");
-    await loadStudentDataFromCloud();
+    invalidateAllCaches(); // Force fresh load
+    await loadStudentDataFromCloud(true);
     await loadScheduleForStudent();
     updateProfileUI();
     updateProfileStandardsTable();
@@ -7183,22 +7547,19 @@ async function refreshStudentData() {
 }
 
 // ==============================================
-// ART BATTLE FUNCTIONS (STUDENT SIDE)
+// SECTION 69: ART BATTLE FUNCTIONS (STUDENT SIDE)
 // ==============================================
 
-// Open Art Battle overlay
 async function openArtBattle() {
     const overlay = document.getElementById('artbattle-overlay');
     const content = document.getElementById('artbattle-content');
     
-    // Clear and show loading
     content.innerHTML = '<div class="artbattle-loading">Loading competitions...</div>';
     overlay.style.display = 'flex';
     
     await loadArtBattleContests();
 }
 
-// Load available contests for student
 async function loadArtBattleContests() {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
@@ -7206,7 +7567,6 @@ async function loadArtBattleContests() {
         return;
     }
     
-    // Get all contests (RLS will handle permissions)
     const { data: contests, error } = await window.supabase
         .from('art_battle_contests')
         .select('*')
@@ -7223,7 +7583,6 @@ async function loadArtBattleContests() {
         return;
     }
     
-    // Get current student's teacher ID to filter hidden contests
     const profile = loadStudentProfile();
     const { data: teacherData } = await window.supabase
         .from('teachers')
@@ -7233,7 +7592,6 @@ async function loadArtBattleContests() {
     
     const teacherId = teacherData?.id;
     
-    // Filter contests that are NOT hidden by this teacher
     const visibleContests = contests.filter(contest => {
         const hiddenBy = contest.hidden_by_teachers || [];
         return !hiddenBy.includes(teacherId);
@@ -7244,7 +7602,6 @@ async function loadArtBattleContests() {
         return;
     }
     
-    // Render contests
     const now = new Date();
     let html = '<h2 style="color: #ffd700; margin-bottom: 20px;">⚔️ Art Battle Competitions</h2>';
     
@@ -7280,23 +7637,20 @@ async function loadArtBattleContests() {
     
     document.getElementById('artbattle-content').innerHTML = html;
     
-    // Add click handlers to contest cards
     document.querySelectorAll('.artbattle-contest-card').forEach(card => {
         card.addEventListener('click', () => {
             const contestId = card.dataset.contestId;
             const status = card.dataset.contestStatus;
 
-            // Clear jitter interval when opening a new contest
-        if (window.raceJitterInterval) {
-            clearInterval(window.raceJitterInterval);
-            window.raceJitterInterval = null;
-        }
+            if (window.raceJitterInterval) {
+                clearInterval(window.raceJitterInterval);
+                window.raceJitterInterval = null;
+            }
             openArtBattleContest(contestId, status);
         });
     });
 }
 
-// Vote for a submission
 async function voteForSubmission(contestId, submissionId) {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
@@ -7304,7 +7658,6 @@ async function voteForSubmission(contestId, submissionId) {
         return;
     }
     
-    // Get all approved submissions for this contest to check count
     const { data: approvedSubmissions } = await window.supabase
         .from('art_battle_submissions')
         .select('id')
@@ -7314,7 +7667,6 @@ async function voteForSubmission(contestId, submissionId) {
     const totalSubmissions = approvedSubmissions?.length || 0;
     const maxVotes = totalSubmissions <= 2 ? 1 : 2;
     
-    // Check how many votes the student has already cast
     const { data: existingVotes } = await window.supabase
         .from('art_battle_votes')
         .select('submission_id')
@@ -7323,26 +7675,22 @@ async function voteForSubmission(contestId, submissionId) {
     
     const currentVoteCount = existingVotes?.length || 0;
     
-    // Check if already voted for this specific submission
     const alreadyVotedForThis = existingVotes?.some(v => v.submission_id === submissionId);
     if (alreadyVotedForThis) {
         alert("You have already voted for this artwork!");
         return;
     }
 
-    // Check if reached max votes
     if (currentVoteCount >= maxVotes) {
         alert(`You must vote for ${maxVotes} different artwork${maxVotes > 1 ? 's' : ''}. You have already used all your votes.`);
         return;
     }
 
-    // If maxVotes is 2 and they have 1 vote, remind them to complete their second vote
     if (maxVotes === 2 && currentVoteCount === 1) {
         const confirmed = confirm("You have cast 1 of 2 required votes. Continue with your second vote?");
         if (!confirmed) return;
     }        
     
-    // Add vote
     const { error } = await window.supabase
         .from('art_battle_votes')
         .insert({
@@ -7357,7 +7705,6 @@ async function voteForSubmission(contestId, submissionId) {
         return;
     }
     
-    // Update submission vote count
     await window.supabase.rpc('increment_vote_count', { submission_id: submissionId });
     
     const remainingVotes = maxVotes - (currentVoteCount + 1);
@@ -7368,7 +7715,6 @@ async function voteForSubmission(contestId, submissionId) {
         alert("Vote cast successfully! You have used all your votes for this contest.");
     }
     
-    // Refresh the contest view without closing the overlay
     await openArtBattleContest(contestId, 'active');
 }
 
@@ -7384,11 +7730,9 @@ async function viewStudentContestSubmission(submissionId) {
         return;
     }
     
-    // Reuse existing work modal or create a simple alert
     alert(`Title: ${submission.title}\nStudent: ${submission.profiles?.name}\nDescription: ${submission.description || 'No description'}\nVotes: ${submission.votes || 0}`);
 }
 
-// Initialize Art Battle hotspot
 function initArtBattleHotspot() {
     const hotspot = document.querySelector('.hotspot.artbattle-hotspot');
     if (hotspot) {
@@ -7400,7 +7744,6 @@ function initArtBattleHotspot() {
     }
 }
 
-// Close Art Battle overlay
 function closeArtBattle() {
     const overlay = document.getElementById('artbattle-overlay');
     if (overlay) {
@@ -7408,14 +7751,12 @@ function closeArtBattle() {
     }
 }
 
-// Initialize Art Battle close button
 function initArtBattleClose() {
     const closeBtn = document.getElementById('close-artbattle');
     if (closeBtn) {
         closeBtn.addEventListener('click', closeArtBattle);
     }
     
-    // Also close when clicking outside the box
     const overlay = document.getElementById('artbattle-overlay');
     if (overlay) {
         overlay.addEventListener('click', (e) => {
@@ -7426,7 +7767,6 @@ function initArtBattleClose() {
     }
 }
 
-// Open submit artwork modal
 async function openSubmitArtworkModal(contestId) {
     const { data: session } = await window.supabase.auth.getSession();
     const { data: existingSubmission } = await window.supabase
@@ -7441,7 +7781,6 @@ async function openSubmitArtworkModal(contestId) {
             const replace = confirm("You already have a pending submission. Do you want to replace it with a new one?");
             if (!replace) return;
             
-            // Delete the old submission
             const { error: deleteError } = await window.supabase
                 .from('art_battle_submissions')
                 .delete()
@@ -7452,18 +7791,14 @@ async function openSubmitArtworkModal(contestId) {
                 return;
             }
             
-            // Wait a moment for the delete to process
             await new Promise(resolve => setTimeout(resolve, 500));
-            
         } else if (existingSubmission.status === 'approved') {
             alert("Your artwork has already been approved for this contest. You cannot submit another.");
             return;
         } else if (existingSubmission.status === 'rejected') {
-            // Allow resubmission after rejection
             const resubmit = confirm("Your previous submission was rejected. Would you like to submit a new artwork?");
             if (!resubmit) return;
             
-            // Delete the rejected submission
             const { error: deleteError } = await window.supabase
                 .from('art_battle_submissions')
                 .delete()
@@ -7474,14 +7809,12 @@ async function openSubmitArtworkModal(contestId) {
                 return;
             }
             
-            // Wait a moment for the delete to process
             await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
     
     currentContestForSubmission = contestId;
     
-    // Clear form safely
     const titleInput = document.getElementById('contest-submission-title');
     const descInput = document.getElementById('contest-submission-description');
     const imageInput = document.getElementById('contest-submission-image');
@@ -7495,11 +7828,9 @@ async function openSubmitArtworkModal(contestId) {
     if (filenameDiv) filenameDiv.style.display = 'none';
     if (messageDiv) messageDiv.innerHTML = '';
     
-    // Show modal
     if (modal) modal.style.display = 'flex';
 }
 
-// Close submit artwork modal
 function closeSubmitArtworkModal() {
     document.getElementById('submit-contest-work-modal').style.display = 'none';
 }
@@ -7516,7 +7847,6 @@ async function viewContestSubmissionDetails(submissionId, forStudent = false, co
         return;
     }
     
-    // Get contest details to check if ended
     let isContestEnded = contestEnded;
     if (!contestEnded && submission.contest_id) {
         const { data: contest } = await window.supabase
@@ -7530,18 +7860,11 @@ async function viewContestSubmissionDetails(submissionId, forStudent = false, co
     }
     
     const modal = document.getElementById('teacher-work-modal');
-    if (!modal) {
-        console.error("Modal not found");
-        return;
-    }
+    if (!modal) return;
     
     const content = document.getElementById('teacher-work-content');
-    if (!content) {
-        console.error("Content element not found");
-        return;
-    }
+    if (!content) return;
     
-    // Student name visibility logic: ONLY show after contest ends
     const showStudentName = isContestEnded;
     
     content.innerHTML = `
@@ -7560,7 +7883,6 @@ async function viewContestSubmissionDetails(submissionId, forStudent = false, co
     
     modal.style.display = 'flex';
     
-    // X button close
     const closeBtn = modal.querySelector('.close-btn');
     if (closeBtn) {
         closeBtn.onclick = () => {
@@ -7568,7 +7890,6 @@ async function viewContestSubmissionDetails(submissionId, forStudent = false, co
         };
     }
     
-    // Click outside to close
     modal.onclick = (e) => {
         if (e.target === modal) {
             modal.style.display = 'none';
@@ -7576,7 +7897,6 @@ async function viewContestSubmissionDetails(submissionId, forStudent = false, co
     };
 }
 
-// Preview image before upload
 function setupSubmissionImagePreview() {
     const imageInput = document.getElementById('contest-submission-image');
     const filenameDiv = document.getElementById('contest-submission-filename');
@@ -7592,14 +7912,12 @@ function setupSubmissionImagePreview() {
     }
 }
 
-// Submit artwork to contest
 async function submitContestArtwork() {
     const title = document.getElementById('contest-submission-title').value.trim();
     const description = document.getElementById('contest-submission-description').value.trim();
     const imageFile = document.getElementById('contest-submission-image').files[0];
     const messageDiv = document.getElementById('contest-submission-message');
     
-    // Validate
     if (!title) {
         messageDiv.innerHTML = 'Please enter a title.';
         messageDiv.style.color = '#ff8888';
@@ -7612,7 +7930,6 @@ async function submitContestArtwork() {
         return;
     }
     
-    // Validate file size (max 5MB)
     if (imageFile.size > 2 * 1024 * 1024) {
         messageDiv.innerHTML = 'Image too large. Max 2MB. Upload a Screenshot or the photo, not the photo';
         messageDiv.style.color = '#ff8888';
@@ -7622,7 +7939,6 @@ async function submitContestArtwork() {
     messageDiv.innerHTML = 'Uploading...';
     messageDiv.style.color = '#ffd700';
     
-    // Get current user
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
         messageDiv.innerHTML = 'Please log in.';
@@ -7630,7 +7946,6 @@ async function submitContestArtwork() {
         return;
     }
     
-    // Get student's profile to get their avatar and name
     const { data: profile } = await window.supabase
         .from('profiles')
         .select('name, avatar_url')
@@ -7640,11 +7955,9 @@ async function submitContestArtwork() {
     const studentName = profile?.name || 'Unknown';
     const studentAvatar = profile?.avatar_url || 'profile.png';
     
-    // Compress and upload image
     try {
         const compressedFile = await compressImage(imageFile, 1024, 0.85);
         
-        // Upload to storage
         const fileName = `contest_${currentContestForSubmission}_${session.user.id}_${Date.now()}.jpg`;
         const { data: uploadData, error: uploadError } = await window.supabase.storage
             .from('contest-submissions')
@@ -7654,12 +7967,10 @@ async function submitContestArtwork() {
             throw uploadError;
         }
         
-        // Get public URL
         const { data: urlData } = window.supabase.storage
             .from('contest-submissions')
             .getPublicUrl(fileName);
         
-        // Save submission to database
         const { error: insertError } = await window.supabase
             .from('art_battle_submissions')
             .insert({
@@ -7682,7 +7993,6 @@ async function submitContestArtwork() {
         messageDiv.innerHTML = '✅ Artwork submitted! Waiting for teacher approval.';
         messageDiv.style.color = '#4caf50';
         
-        // Close modal after 2 seconds and refresh contest view
         setTimeout(() => {
             closeSubmitArtworkModal();
             openArtBattleContest(currentContestForSubmission, 'active');
@@ -7694,7 +8004,7 @@ async function submitContestArtwork() {
         messageDiv.style.color = '#ff8888';
     }
 }
-// Initialize submission modal events
+
 function initSubmissionModal() {
     const modal = document.getElementById('submit-contest-work-modal');
     const closeX = document.getElementById('close-submit-contest-modal');
@@ -7720,7 +8030,6 @@ async function deletePendingSubmission(contestId) {
     const confirmed = confirm("Are you sure you want to delete your pending submission? This cannot be undone.");
     if (!confirmed) return;
     
-    // Get the submission to delete
     const { data: submission } = await window.supabase
         .from('art_battle_submissions')
         .select('id')
@@ -7734,7 +8043,6 @@ async function deletePendingSubmission(contestId) {
         return;
     }
     
-    // Delete the submission
     const { error } = await window.supabase
         .from('art_battle_submissions')
         .delete()
@@ -7747,7 +8055,6 @@ async function deletePendingSubmission(contestId) {
     
     alert("Your submission has been deleted.");
     
-    // Refresh the contest view
     await openArtBattleContest(contestId, 'active');
 }
 
@@ -7757,7 +8064,6 @@ async function replaceSubmission(contestId) {
     const confirmed = confirm("Replace your current submission? Your existing artwork will be deleted and you can upload a new one.");
     if (!confirmed) return;
     
-    // Get the submission to delete
     const { data: submission } = await window.supabase
         .from('art_battle_submissions')
         .select('id')
@@ -7773,15 +8079,12 @@ async function replaceSubmission(contestId) {
             .eq('id', submission.id);
     }
     
-    // Open submit modal for new artwork
     openSubmitArtworkModal(contestId);
 }
 
-// Open specific contest details
 async function openArtBattleContest(contestId, status) {
     console.log("Opening contest:", contestId, "Status:", status);
     
-    // Get contest details
     const { data: contest, error } = await window.supabase
         .from('art_battle_contests')
         .select('*')
@@ -7793,7 +8096,6 @@ async function openArtBattleContest(contestId, status) {
         return;
     }
     
-    // Get submissions for this contest (get ALL statuses to check for rejection)
     const { data: allSubmissions, error: subError } = await window.supabase
         .from('art_battle_submissions')
         .select('*, profiles(name, avatar_url)')
@@ -7803,10 +8105,8 @@ async function openArtBattleContest(contestId, status) {
         console.error("Error loading submissions:", subError);
     }
     
-    // Filter approved submissions for display
     const submissions = allSubmissions?.filter(s => s.status === 'approved') || [];
     
-    // Declare startDate and endDate
     const startDate = new Date(contest.start_date);
     const endDate = new Date(contest.end_date);
     const now = new Date();
@@ -7814,17 +8114,14 @@ async function openArtBattleContest(contestId, status) {
     const isUpcoming = now < startDate;
     const isEnded = now > endDate;
     
-    // Format dates for display
     const startDateStr = startDate.toLocaleDateString();
     const endDateStr = endDate.toLocaleDateString();
     
-    // Check for rejected submission
     const { data: { user } } = await window.supabase.auth.getUser();
     const mySubmission = allSubmissions?.find(s => s.student_id === user?.id);
     const isRejected = mySubmission && mySubmission.status === 'rejected';
     const rejectionReason = mySubmission?.rejection_reason || '';
     
-    // ✅ Get vote information for display
     const { data: myVotes } = await window.supabase
         .from('art_battle_votes')
         .select('submission_id')
@@ -7842,17 +8139,14 @@ async function openArtBattleContest(contestId, status) {
     const currentVoteCount = myVotes?.length || 0;
     const remainingVotes = maxVotesAllowed - currentVoteCount;
     
-    // ✅ Decide which view to show
     const hasVotedCompletely = currentVoteCount >= maxVotesAllowed;
     const isContestActive = isActive && status !== 'ended';
     
-    // If contest is active AND student has used all their votes, show race track
     if (isContestActive && hasVotedCompletely && submissions.length > 0) {
         await renderRaceTrackView(contestId);
         return;
     }
     
-    // If contest has ended, show results view (we'll implement next)
     if (isEnded) {
         await renderResultsView(contestId);
         return;
@@ -7860,7 +8154,6 @@ async function openArtBattleContest(contestId, status) {
     
     let actionButtons = '';
     
-    // Show rejection message first (highest priority)
     if (isRejected) {
         actionButtons = `
             <div class="contest-status-message" style="background: rgba(244, 67, 54, 0.3); border-color: #f44336; margin-top: 20px;">
@@ -7878,8 +8171,8 @@ async function openArtBattleContest(contestId, status) {
                 </div>
             `;
         } else if (hasSubmitted) {
-            const mySubmission = allSubmissions?.find(s => s.student_id === user?.id);
-            const isPending = mySubmission?.status === 'pending';
+            const mySub = allSubmissions?.find(s => s.student_id === user?.id);
+            const isPending = mySub?.status === 'pending';
             
             actionButtons = `
                 <div class="contest-action-buttons" style="margin-top: 20px;">
@@ -7903,7 +8196,6 @@ async function openArtBattleContest(contestId, status) {
     
     if (submissions && submissions.length > 0) {
         for (const sub of submissions) {
-            // ✅ Don't show vote button for student's own submission
             const isOwnSubmission = sub.student_id === user?.id;
             const canVote = isActive && !isRejected && !isOwnSubmission && remainingVotes > 0;
             
@@ -7962,26 +8254,20 @@ async function openArtBattleContest(contestId, status) {
     
     document.getElementById('artbattle-content').innerHTML = contestHtml;
     
-    // Add back button handler
     document.getElementById('back-to-contests')?.addEventListener('click', () => {
         loadArtBattleContests();
     });
     
-    // Add click handlers for submission thumbnails - calling shared function with student view
     document.querySelectorAll('.contest-submission-card .submission-thumbnail').forEach(thumb => {
         thumb.addEventListener('click', async () => {
             const card = thumb.closest('.contest-submission-card');
             const submissionId = card.dataset.submissionId;
-            // Call the shared function with true for student view
             if (typeof viewContestSubmissionDetails === 'function') {
                 await viewContestSubmissionDetails(submissionId, true, false);
-            } else {
-                console.error("viewContestSubmissionDetails not available");
             }
         });
     });
     
-    // Add vote button handlers (only if not rejected)
     if (!isRejected) {
         document.querySelectorAll('.vote-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -7991,17 +8277,14 @@ async function openArtBattleContest(contestId, status) {
         });
     }
     
-    // ✅ Delete submission button
     document.getElementById('delete-submission-btn')?.addEventListener('click', () => {
         deletePendingSubmission(contestId);
     });
     
-    // ✅ Replace submission button
     document.getElementById('replace-submission-btn')?.addEventListener('click', () => {
         replaceSubmission(contestId);
     });
     
-    // Add submit button handler (only if not rejected and no submission yet)
     const hasSubmitted = submissions?.some(s => s.student_id === user?.id);
     if (!isRejected && !hasSubmitted && isActive && status !== 'ended') {
         document.getElementById('submit-artwork-btn')?.addEventListener('click', () => {
@@ -8010,17 +8293,14 @@ async function openArtBattleContest(contestId, status) {
     }
 }
 
-// Render Race Track View (for students who have voted twice)
 async function renderRaceTrackView(contestId) {
     console.log("Rendering race track for contest:", contestId);
     
-    // Clear any existing jitter interval
     if (window.raceJitterInterval) {
         clearInterval(window.raceJitterInterval);
         window.raceJitterInterval = null;
     }
     
-    // Get contest details
     const { data: contest, error } = await window.supabase
         .from('art_battle_contests')
         .select('*')
@@ -8032,7 +8312,6 @@ async function renderRaceTrackView(contestId) {
         return;
     }
     
-    // Get all approved submissions
     const { data: submissions, error: subError } = await window.supabase
         .from('art_battle_submissions')
         .select('*')
@@ -8049,19 +8328,15 @@ async function renderRaceTrackView(contestId) {
         return;
     }
     
-    // Calculate total votes
     const totalVotes = submissions.reduce((sum, sub) => sum + (sub.votes || 0), 0);
     
-    // Sort submissions by votes (highest first for lane order)
     const sortedSubmissions = [...submissions].sort((a, b) => (b.votes || 0) - (a.votes || 0));
     
-    // Format dates
     const startDate = new Date(contest.start_date);
     const endDate = new Date(contest.end_date);
     const startDateStr = startDate.toLocaleDateString();
     const endDateStr = endDate.toLocaleDateString();
     
-    // Check if current student has submitted artwork (for submit button)
     const { data: { user } } = await window.supabase.auth.getUser();
     const hasSubmitted = submissions?.some(s => s.student_id === user?.id);
     const userSubmission = submissions?.find(s => s.student_id === user?.id);
@@ -8106,16 +8381,11 @@ async function renderRaceTrackView(contestId) {
         const votePercentage = totalVotes > 0 ? ((sub.votes || 0) / totalVotes) * 100 : 0;
         const basePosition = Math.min(votePercentage, 95);
         
-        // Add random offset (-3% to +3%) for excitement
-        const randomOffset = (Math.random() * 40) - 20; // -20% to +20%
+        const randomOffset = (Math.random() * 40) - 20;
         let position = basePosition + randomOffset;
-        
-        // Keep within bounds
         position = Math.max(2, Math.min(95, position));
         
-        // Generate random CSS variable for animation
-        const randomDistance = (Math.random() * 15) + 5; // 5px to 20px
-        
+        const randomDistance = (Math.random() * 15) + 5;
         const studentAvatar = sub.avatar_url || 'profile.png';
         
         raceHtml += `
@@ -8143,9 +8413,7 @@ async function renderRaceTrackView(contestId) {
     
     document.getElementById('artbattle-content').innerHTML = raceHtml;
     
-    // Add back button handler
     document.getElementById('back-to-contests')?.addEventListener('click', () => {
-        // Clear jitter interval when leaving
         if (window.raceJitterInterval) {
             clearInterval(window.raceJitterInterval);
             window.raceJitterInterval = null;
@@ -8153,7 +8421,6 @@ async function renderRaceTrackView(contestId) {
         loadArtBattleContests();
     });
     
-    // Add click handlers for race characters
     document.querySelectorAll('.race-lane').forEach(lane => {
         lane.addEventListener('click', async () => {
             const submissionId = lane.dataset.submissionId;
@@ -8161,14 +8428,11 @@ async function renderRaceTrackView(contestId) {
         });
     });
     
-    // Add submit button handler
     document.getElementById('submit-artwork-btn')?.addEventListener('click', () => {
         openSubmitArtworkModal(contestId);
     });
     
-    // Add reset button handler
     document.getElementById('reset-race-btn')?.addEventListener('click', () => {
-        // Reset to actual vote-based positions
         const lanes = document.querySelectorAll('.race-lane');
         lanes.forEach((lane, index) => {
             const sub = sortedSubmissions[index];
@@ -8183,11 +8447,8 @@ async function renderRaceTrackView(contestId) {
         });
     });
     
-    // Start random jitter movement
     startRaceJitter(contestId);
 }
-
-// Random jitter function - Make avatar move back and forward randonly
 
 function startRaceJitter(contestId) {
     if (window.raceJitterInterval) {
@@ -8206,28 +8467,23 @@ function startRaceJitter(contestId) {
         lanes.forEach(lane => {
             const character = lane.querySelector('.race-character');
             if (character) {
-                // Get current left position
                 let currentLeft = parseFloat(character.style.left);
                 if (isNaN(currentLeft)) currentLeft = 50;
                 
-                // Add small random change (-1.5% to +1.5%)
-                let newLeft = currentLeft + (Math.random() * 12 - 6); // -6% to +6%
+                let newLeft = currentLeft + (Math.random() * 12 - 6);
                 newLeft = Math.max(2, Math.min(95, newLeft));
                 character.style.left = `${newLeft}%`;
                 
-                // Update random offset for animation
                 const newDistance = (Math.random() * 15) + 5;
                 character.style.setProperty('--random-offset', `${newDistance}px`);
             }
         });
-    }, 500); // Update every .5 secondss
+    }, 500);
 }
 
-// Render Results View (for ended contests - shows podium and final race track)
 async function renderResultsView(contestId) {
     console.log("Rendering results view for contest:", contestId);
     
-    // Get contest details
     const { data: contest, error } = await window.supabase
         .from('art_battle_contests')
         .select('*')
@@ -8239,7 +8495,6 @@ async function renderResultsView(contestId) {
         return;
     }
     
-    // Get all approved submissions with vote counts
     const { data: submissions, error: subError } = await window.supabase
         .from('art_battle_submissions')
         .select('*, profiles(name, avatar_url)')
@@ -8257,24 +8512,20 @@ async function renderResultsView(contestId) {
         return;
     }
     
-    // Get top 3 winners
     const winners = submissions.slice(0, 3);
     const totalVotes = submissions.reduce((sum, sub) => sum + (sub.votes || 0), 0);
     
-    // Format dates
     const startDate = new Date(contest.start_date);
     const endDate = new Date(contest.end_date);
     const startDateStr = startDate.toLocaleDateString();
     const endDateStr = endDate.toLocaleDateString();
     
-    // Build Winners Podium HTML
     let podiumHtml = `
         <div class="results-podium">
             <h3 style="color: #ffd700; text-align: center; margin-bottom: 20px;">🏆 WINNERS 🏆</h3>
             <div class="podium-container">
     `;
     
-    // Winner positions: 2nd (left), 1st (center), 3rd (right)
     const podiumOrder = [1, 0, 2];
     
     for (let i = 0; i < 3; i++) {
@@ -8304,7 +8555,6 @@ async function renderResultsView(contestId) {
         </div>
     `;
     
-    // Build Final Race Track HTML
     const sortedSubmissions = [...submissions].sort((a, b) => (b.votes || 0) - (a.votes || 0));
     
     let raceHtml = `
@@ -8320,9 +8570,8 @@ async function renderResultsView(contestId) {
         const sub = sortedSubmissions[i];
         let finalPosition;
         
-        // Winner (first place) goes to finish line
         if (i === 0) {
-            finalPosition = 95;  // Changed from 100 to 95
+            finalPosition = 95;
         } else {
             const votePercentage = totalVotes > 0 ? ((sub.votes || 0) / totalVotes) * 100 : 0;
             finalPosition = Math.min(votePercentage, 95);
@@ -8337,9 +8586,7 @@ async function renderResultsView(contestId) {
                         <img src="${studentAvatar}" alt="Student">
                     </div>
                     <div class="race-name">${escapeHtml(sub.student_name || 'Unknown Student')}</div>
-                    
                     <div class="race-votes">${parseFloat(sub.votes || 0).toFixed(1)} ⭐</div>
-                    
                 </div>
                 <div class="race-track-line"></div>
             </div>
@@ -8350,7 +8597,6 @@ async function renderResultsView(contestId) {
         </div>
     `;
     
-    // Combine with tabs
     const fullHtml = `
         <div class="contest-detail-view">
             <button id="back-to-contests" class="back-btn">← Back to Contests</button>
@@ -8380,12 +8626,10 @@ async function renderResultsView(contestId) {
     
     document.getElementById('artbattle-content').innerHTML = fullHtml;
     
-    // Add back button handler
     document.getElementById('back-to-contests')?.addEventListener('click', () => {
         loadArtBattleContests();
     });
     
-    // Add tab switching handlers
     document.querySelectorAll('.results-tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const tab = btn.dataset.tab;
@@ -8398,7 +8642,6 @@ async function renderResultsView(contestId) {
         });
     });
     
-    // Add click handlers for race characters in final positions
     document.querySelectorAll('.race-lane').forEach(lane => {
         lane.addEventListener('click', async () => {
             const submissionId = lane.dataset.submissionId;
@@ -8407,334 +8650,352 @@ async function renderResultsView(contestId) {
     });
 }
 
-// This will only work if you change the global
-/*function startRaceAutoRefresh(contestId) {
-    // Clear any existing interval
-    if (raceRefreshInterval) {
-        clearInterval(raceRefreshInterval);
-    }
-    
-    // Refresh every 10 seconds
-    raceRefreshInterval = setInterval(async () => {
-        console.log("Refreshing race track...");
-        const container = document.getElementById('race-track-container');
-        if (container) {
-            container.classList.add('race-refreshing');
-            await renderRaceTrackView(contestId);
-            setTimeout(() => {
-                container.classList.remove('race-refreshing');
-            }, 500);
-        } else {
-            // Race track no longer visible, stop refreshing
-            clearInterval(raceRefreshInterval);
-            raceRefreshInterval = null;
-        }
-    }, 10000);
-}*/
 
-// DOMCONTENTLOADED-----IMPORTANT!!!!-------------------------------------------------------------------
+// ==============================================
+// SECTION 70: DOM CONTENT LOADED
+// ==============================================
+
 document.addEventListener("DOMContentLoaded", () => {
-  // ==============================================
-  // STEP 1: Load quests using caching
-  // ==============================================
+    // ==============================================
+    // STEP 1: Load quests using caching
+    // ==============================================
     getQuestsWithLocalCache().then(questsData => {
-    quests = questsData;
-    console.log("Quests ready, count:", Object.keys(quests).length);
-    
-    // ==============================================
-    // STEP 2: Initialize everything that needs quests
-    // ==============================================
-    initializeWorkOverlay();
-    initializeGallery();
-    updateProfileUI();
-    initializeRewardsOverlay();
-    initializeActiveQuest();
-    startBackgroundTimerCheck();
-    initializeNewQuestSystem();
-    initializeFloatingNavigation();
-    initializeFullscreenViewer();
-    setupForgotPassword();
-    bindHotspots();
-    updateProfileStandardsTable();
-    renderRadarChart();
-    initializeQuestTimers();
-    initializeQuestList();
-    initializeRationaleOverlay();
-    initializeAchievementsSystem();
-    initializeProfileSystem();
-    initializeResponsiveBehaviors();
-    initializeHelpModal();
-    setupCalendarTooltipDelegation();
-    initArtBattleHotspot();
-    initArtBattleClose();
-    initSubmissionModal();
-    setupActiveQuestButton();
-    updateActiveQuestButton();
-    
-    // ==============================================
-    // STEP 3: Hotspot positioning (waits for map image to load properly)
-    // ==============================================
-    const mapImage = document.getElementById("map-image");
-    if (mapImage) {
-      if (mapImage.complete) {
-        initializeHotspotPositions();
-        updateHotspotPositions();
-        updateHotspotVisibility();
-        addCustomQuestHotspots();
-      } else {
-        mapImage.onload = () => {
-          initializeHotspotPositions();
-          updateHotspotPositions();
-          updateHotspotVisibility();
-          addCustomQuestHotspots();
-        };
-      }
-    }
-    
-    loadBadgesFromJSON().then(() => {
-      initializeBadgeSystem();
-    });
-    
-    // ==============================================
-    // STEP 4: UI event listeners
-    // ==============================================
-    
-    // MS: REMOVED map-selector listener - no map switching
-    
-    document.getElementById("path-selector")?.addEventListener("change", handlePathChange);
-    document.getElementById("mvp-quests")?.addEventListener("change", function() {
-      if (this.value) openQuest(this.value);
-      this.style.display = "none";
-    });
-
-
-    function isVisible(el) {
-      return el && getComputedStyle(el).display !== "none";
-    }
-    
-    // Work image upload preview
-    const workImageInput = document.getElementById("work-image-input");
-    if (workImageInput) {
-      workImageInput.addEventListener("change", function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(event) {
-          const preview = document.getElementById("work-preview");
-          if (preview) preview.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-
-    initializeStudentSetup();
-
-    // ==============================================
-    // Create New Profile and Back to Login links
-    // ==============================================
-    const createProfileLink = document.getElementById("create-profile-link");
-    if (createProfileLink) {
-        createProfileLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            document.getElementById("welcome-overlay").style.display = "none";
-            showStudentSetupOverlay();
-        });
-    }
-
-    const backToLoginLink = document.getElementById("back-to-login-link");
-    if (backToLoginLink) {
-        backToLoginLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            document.getElementById("student-setup-overlay").style.display = "none";
-            document.getElementById("welcome-overlay").style.display = "flex";
-        });
-    }
-
-    
-    // ==============================================
-    // ESC key handler (ALL ESC HANDLERS IN ONE PLACE)
-    // ==============================================
-    window.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
-
-      const achievementsOverlay = document.getElementById("achievements-overlay");
-      const rationaleOverlay = document.getElementById("rationale-overlay");
-      const questOverlay = document.getElementById("quest-overlay");
-      const rubricOverlay = document.getElementById("rubric-overlay");
-      const workOverlay = document.getElementById("work-overlay"); 
-      const galleryOverlay = document.getElementById("gallery-overlay");
-      const modal = document.getElementById("helpModal");
-      const restrictionPopup = document.getElementById("accept-quest-restriction-popup");
-      const setupOverlay = document.getElementById("student-setup-overlay");
-      const profileOverlay = document.getElementById("profile-overlay");
-      const artBattleOverlay = document.getElementById("artbattle-overlay");
-      const submitModal = document.getElementById('submit-contest-work-modal');
-      const teacherWorkModal = document.getElementById('teacher-work-modal');
-      const calendarModal = document.getElementById('calendar-modal');
-
-      // Achievements overlay
-      if (isVisible(achievementsOverlay)) {
-        closeAchievementsOverlay();
-        return;
-      }
-      // Calendar modal
-      if (calendarModal && calendarModal.style.display === 'flex') {
-          calendarModal.style.display = 'none';
-          return;
-      }
-      // Rationale overlay
-      if (isVisible(rationaleOverlay)) {
-        closeRationalePopup();
-        return;
-      }
-      // Help modal
-      if (isVisible(modal)) {
-        if (typeof window.closeHelpModal === 'function') {
-          window.closeHelpModal();
-        } else {
-          modal.style.display = "none";
-        }
-        return;
-      }
-      // Work overlay
-      if (isVisible(workOverlay)) {
-        closeWorkOverlay();
-        return;
-      }
-      // Rubric overlay
-      if (isVisible(rubricOverlay)) {
-        rubricOverlay.style.display = "none";
-        questOverlay.style.display = "block";
-        return;
-      }
-      // Quest overlay
-      if (isVisible(questOverlay)) {
-        closeQuest();
-        return;
-      }
-      // Profile overlay
-      if (profileOverlay && profileOverlay.style.display === "flex") {
-        profileOverlay.style.display = "none";
-        return;
-      }
-      // Restriction popup
-      if (restrictionPopup && restrictionPopup.style.display === "flex") {
-        closeAcceptQuestRestrictionPopup();
-        return;
-      }
-      // Gallery overlay
-      if (galleryOverlay && galleryOverlay.style.display === "flex") {
-          closeGallery();
-          return;
-      }      
-      // Teacher work modal overlay
-      if (teacherWorkModal && teacherWorkModal.style.display === 'flex') {
-        teacherWorkModal.style.display = 'none';
-        return;
-      }
-      // Art battle overlay
-      if (artBattleOverlay && artBattleOverlay.style.display === "flex") {
-          closeArtBattle();
-          return;
-      }
-      // Submit work overlay:
-      if (submitModal && submitModal.style.display === 'flex') {
-          submitModal.style.display = 'none';
-          return;
-      }
-      // Student setup overlay 
-      if (setupOverlay && setupOverlay.style.display === "flex") {
-        setupOverlay.style.display = "none";
-        setupOverlay.classList.remove("hide-setup-text");
-        const nameInput = document.getElementById("student-name-input");
-        const nameSubmit = document.getElementById("student-name-submit");
-        const characterDiv = document.getElementById("character-selection");
-        if (nameInput) nameInput.style.display = "block";
-        if (nameSubmit) nameSubmit.style.display = "block";
-        if (characterDiv) characterDiv.style.display = "none";
-        return;
-      }
-    });
-    
-    // Tab buttons
-    document.querySelectorAll(".tab-button").forEach(button => {
-      button.addEventListener("click", () => {
-        const tab = button.dataset.tab;
-        document.querySelectorAll(".tab-content").forEach(tc => tc.style.display = "none");
-        document.querySelectorAll(".tab-button").forEach(b => b.classList.remove("active"));
-        const tabEl = document.getElementById("tab-" + tab);
-        if (tabEl) tabEl.style.display = "block";
-        button.classList.add("active");
+        quests = questsData;
+        cachedQuests = questsData;          // Ensure in-memory cache is set
+        cachedQuestsIncludeCustom = true;   // Mark as fully loaded (skip re-fetch)
+        console.log("Quests ready, count:", Object.keys(quests).length);
         
-        if (tab === "questlist") {
-          const filterSelect = document.getElementById("questlist-filter");
-          if (filterSelect && typeof renderQuestList === 'function') {
-            renderQuestList(filterSelect.value);
-          }
-        } else if (tab === "pathfinder") {
-          if (!pathfinderQuestions && typeof initializePathfinder === 'function') {
-            initializePathfinder();
-          }
+        // Build quest relationships ONCE at startup
+        buildQuestRelationships();
+
+        // ==============================================
+        // Pre-cache all timer values in the background
+        // (defined here so it has access to quests)
+        // ==============================================
+        async function preCacheAllTimerValues() {
+            if (!quests || Object.keys(quests).length === 0) return;
+            
+            console.log("Pre-caching timer values...");
+            const profile = loadStudentProfile();
+            if (!profile?.teacher_code) return;
+            
+            try {
+                // Batch fetch all custom timers at once
+                const { data: teacher } = await window.supabase
+                    .from('teachers')
+                    .select('id')
+                    .eq('class_code', profile.teacher_code)
+                    .maybeSingle();
+                
+                if (!teacher) return;
+                
+                const { data: timers } = await window.supabase
+                    .from('teacher_quest_standards')
+                    .select('quest_id, timer_classes')
+                    .eq('teacher_id', teacher.id);
+                
+                if (timers) {
+                    timers.forEach(t => {
+                        AppState.teacherData.customTimers[t.quest_id] = t.timer_classes;
+                    });
+                }
+                
+                AppState.teacherData.classDuration = await getClassDuration();
+                AppState.teacherData.loaded = true;
+                console.log("Timer values pre-cached:", Object.keys(AppState.teacherData.customTimers).length, "timers");
+            } catch (err) {
+                console.error("Error pre-caching timer values:", err);
+            }
         }
-      });
-    });
-    initializeStudentSetup();
-    
-    // ==============================================
-    // STEP 5: Login/Logout listeners
-    // ==============================================
-    const loginBtn = document.getElementById("login-submit-btn");
-    if (loginBtn) {
-      loginBtn.addEventListener("click", handleLoginSubmit);
-    }
-    
-    const logoutBtn = document.getElementById("logout-profile-btn");
-    if (logoutBtn) {
-      logoutBtn.addEventListener("click", logout);
-    }
-    
-    // Calendar button
-    const calendarBtn = document.getElementById('calendar-btn');
-    if (calendarBtn) {
-        calendarBtn.addEventListener('click', openStudentCalendar);
-    }
-    
-    // Close calendar
-    const closeCalendar = document.getElementById('close-calendar');
-    if (closeCalendar) {
-        closeCalendar.addEventListener('click', () => {
-            document.getElementById('calendar-modal').style.display = 'none';
+
+        // Run pre-cache in background (don't await - don't block init)
+        preCacheAllTimerValues();
+        
+        // ==============================================
+        // STEP 2: Initialize everything that needs quests
+        // ==============================================
+        initializeWorkOverlay();
+        initializeGallery();
+        updateProfileUI();
+        initializeRewardsOverlay();
+        initializeActiveQuest();
+        startBackgroundTimerCheck();
+        initializeNewQuestSystem();
+        initializeFloatingNavigation();
+        initializeFullscreenViewer();
+        setupForgotPassword();
+        bindHotspots();
+        updateProfileStandardsTable();
+        renderRadarChart();
+        initializeQuestTimers();
+        initializeQuestList();
+        initializeRationaleOverlay();
+        initializeAchievementsSystem();
+        initializeProfileSystem();
+        initializeResponsiveBehaviors();
+        initializeHelpModal();
+        setupCalendarTooltipDelegation();
+        initArtBattleHotspot();
+        initArtBattleClose();
+        initSubmissionModal();
+        setupActiveQuestButton();
+        updateActiveQuestButton();
+        
+        // ==============================================
+        // STEP 3: Hotspot positioning
+        // ==============================================
+        const mapImage = document.getElementById("map-image");
+        if (mapImage) {
+            if (mapImage.complete) {
+                initializeHotspotPositions();
+                updateHotspotPositions();
+                updateHotspotVisibility();
+                addCustomQuestHotspots();
+            } else {
+                mapImage.onload = () => {
+                    initializeHotspotPositions();
+                    updateHotspotPositions();
+                    updateHotspotVisibility();
+                    addCustomQuestHotspots();
+                };
+            }
+        }
+        
+        loadBadgesFromJSON().then(() => {
+            initializeBadgeSystem();
         });
-    }
-    
-    // Calendar navigation
-    const prevBtn = document.getElementById('calendar-prev-month');
-    if (prevBtn) {
-        prevBtn.addEventListener('click', calendarPrevMonth);
-    }
-    
-    const nextBtn = document.getElementById('calendar-next-month');
-    if (nextBtn) {
-        nextBtn.addEventListener('click', calendarNextMonth);
-    }
-    
-    // Close when clicking outside
-    const calendarModal = document.getElementById('calendar-modal');
-    if (calendarModal) {
-        calendarModal.addEventListener('click', (e) => {
-            if (e.target === calendarModal) {
+        
+        // ==============================================
+        // STEP 4: UI event listeners
+        // ==============================================
+        
+        document.getElementById("path-selector")?.addEventListener("change", handlePathChange);
+        document.getElementById("mvp-quests")?.addEventListener("change", function() {
+            if (this.value) openQuest(this.value);
+            this.style.display = "none";
+        });
+
+        function isVisible(el) {
+            return el && getComputedStyle(el).display !== "none";
+        }
+        
+        // Work image upload preview
+        const workImageInput = document.getElementById("work-image-input");
+        if (workImageInput) {
+            workImageInput.addEventListener("change", function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const preview = document.getElementById("work-preview");
+                    if (preview) preview.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        initializeStudentSetup();
+
+        // ==============================================
+        // Create New Profile and Back to Login links
+        // ==============================================
+        const createProfileLink = document.getElementById("create-profile-link");
+        if (createProfileLink) {
+            createProfileLink.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                document.getElementById("welcome-overlay").style.display = "none";
+                showStudentSetupOverlay();
+            });
+        }
+
+        const backToLoginLink = document.getElementById("back-to-login-link");
+        if (backToLoginLink) {
+            backToLoginLink.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                document.getElementById("student-setup-overlay").style.display = "none";
+                document.getElementById("welcome-overlay").style.display = "flex";
+            });
+        }
+        
+        // ==============================================
+        // ESC key handler (ALL ESC HANDLERS IN ONE PLACE)
+        // ==============================================
+        window.addEventListener("keydown", (e) => {
+            if (e.key !== "Escape") return;
+
+            const achievementsOverlay = document.getElementById("achievements-overlay");
+            const rationaleOverlay = document.getElementById("rationale-overlay");
+            const questOverlay = document.getElementById("quest-overlay");
+            const rubricOverlay = document.getElementById("rubric-overlay");
+            const workOverlay = document.getElementById("work-overlay"); 
+            const galleryOverlay = document.getElementById("gallery-overlay");
+            const modal = document.getElementById("helpModal");
+            const restrictionPopup = document.getElementById("accept-quest-restriction-popup");
+            const setupOverlay = document.getElementById("student-setup-overlay");
+            const profileOverlay = document.getElementById("profile-overlay");
+            const artBattleOverlay = document.getElementById("artbattle-overlay");
+            const submitModal = document.getElementById('submit-contest-work-modal');
+            const teacherWorkModal = document.getElementById('teacher-work-modal');
+            const calendarModal = document.getElementById('calendar-modal');
+            const rewardsOverlay = document.getElementById('rewards-overlay');
+
+            if (isVisible(achievementsOverlay)) {
+                closeAchievementsOverlay();
+                return;
+            }
+            if (calendarModal && calendarModal.style.display === 'flex') {
                 calendarModal.style.display = 'none';
+                return;
+            }
+            if (isVisible(rationaleOverlay)) {
+                closeRationalePopup();
+                return;
+            }
+            if (isVisible(modal)) {
+                if (typeof window.closeHelpModal === 'function') {
+                    window.closeHelpModal();
+                } else {
+                    modal.style.display = "none";
+                }
+                return;
+            }
+            if (isVisible(workOverlay)) {
+                closeWorkOverlay();
+                return;
+            }
+            if (isVisible(rubricOverlay)) {
+                // Only allow closing rubric if NOT in self-assessment mode
+                if (!window._selfAssessmentPending) {
+                    rubricOverlay.style.display = "none";
+                    questOverlay.style.display = "block";
+                }
+                return;
+            }
+            if (isVisible(questOverlay)) {
+                closeQuest();
+                return;
+            }
+            if (profileOverlay && profileOverlay.style.display === "flex") {
+                profileOverlay.style.display = "none";
+                return;
+            }
+            if (restrictionPopup && restrictionPopup.style.display === "flex") {
+                closeAcceptQuestRestrictionPopup();
+                return;
+            }
+            if (galleryOverlay && galleryOverlay.style.display === "flex") {
+                closeGallery();
+                return;
+            }      
+            if (teacherWorkModal && teacherWorkModal.style.display === 'flex') {
+                teacherWorkModal.style.display = 'none';
+                return;
+            }
+            if (artBattleOverlay && artBattleOverlay.style.display === "flex") {
+                closeArtBattle();
+                return;
+            }
+            if (submitModal && submitModal.style.display === 'flex') {
+                submitModal.style.display = 'none';
+                return;
+            }
+            if (rewardsOverlay && rewardsOverlay.style.display === 'flex') {
+                closeRewardsOverlay();
+                return;
+            }
+            if (setupOverlay && setupOverlay.style.display === "flex") {
+                setupOverlay.style.display = "none";
+                setupOverlay.classList.remove("hide-setup-text");
+                const nameInput = document.getElementById("student-name-input");
+                const nameSubmit = document.getElementById("student-name-submit");
+                const characterDiv = document.getElementById("character-selection");
+                if (nameInput) nameInput.style.display = "block";
+                if (nameSubmit) nameSubmit.style.display = "block";
+                if (characterDiv) characterDiv.style.display = "none";
+                return;
             }
         });
-    }
-    
-    // ==============================================
-    // STEP 6: Real-time refresh (after login)
-    // ==============================================
-    setTimeout(() => {
-      setupRealtimeRefresh();
-    }, 3000);
-  }).catch(err => console.error("Failed to load quests:", err));
+        
+        // Tab buttons
+        document.querySelectorAll(".tab-button").forEach(button => {
+            button.addEventListener("click", () => {
+                const tab = button.dataset.tab;
+                document.querySelectorAll(".tab-content").forEach(tc => tc.style.display = "none");
+                document.querySelectorAll(".tab-button").forEach(b => b.classList.remove("active"));
+                const tabEl = document.getElementById("tab-" + tab);
+                if (tabEl) tabEl.style.display = "block";
+                button.classList.add("active");
+                
+                if (tab === "questlist") {
+                    const filterSelect = document.getElementById("questlist-filter");
+                    if (filterSelect && typeof renderQuestList === 'function') {
+                        renderQuestList(filterSelect.value);
+                    }
+                } else if (tab === "pathfinder") {
+                    if (!pathfinderQuestions && typeof initializePathfinder === 'function') {
+                        initializePathfinder();
+                    }
+                }
+            });
+        });
+        
+        initializeStudentSetup();
+        
+        // ==============================================
+        // STEP 5: Login/Logout listeners
+        // ==============================================
+        const loginBtn = document.getElementById("login-submit-btn");
+        if (loginBtn) {
+            loginBtn.addEventListener("click", handleLoginSubmit);
+        }
+        
+        const logoutBtn = document.getElementById("logout-profile-btn");
+        if (logoutBtn) {
+            logoutBtn.addEventListener("click", logout);
+        }
+        
+        // Calendar button
+        const calendarBtn = document.getElementById('calendar-btn');
+        if (calendarBtn) {
+            calendarBtn.addEventListener('click', openStudentCalendar);
+        }
+        
+        // Close calendar
+        const closeCalendar = document.getElementById('close-calendar');
+        if (closeCalendar) {
+            closeCalendar.addEventListener('click', () => {
+                document.getElementById('calendar-modal').style.display = 'none';
+            });
+        }
+        
+        // Calendar navigation
+        const prevBtn = document.getElementById('calendar-prev-month');
+        if (prevBtn) {
+            prevBtn.addEventListener('click', calendarPrevMonth);
+        }
+        
+        const nextBtn = document.getElementById('calendar-next-month');
+        if (nextBtn) {
+            nextBtn.addEventListener('click', calendarNextMonth);
+        }
+        
+        // Close when clicking outside
+        const calendarModal = document.getElementById('calendar-modal');
+        if (calendarModal) {
+            calendarModal.addEventListener('click', (e) => {
+                if (e.target === calendarModal) {
+                    calendarModal.style.display = 'none';
+                }
+            });
+        }
+        
+        // ==============================================
+        // STEP 6: Real-time refresh (after login)
+        // ==============================================
+        setTimeout(() => {
+            setupRealtimeRefresh();
+        }, 3000);
+    }).catch(err => console.error("Failed to load quests:", err));
 });
