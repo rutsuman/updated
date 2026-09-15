@@ -6255,6 +6255,151 @@ input:focus,
     color: #ff9800;
     font-weight: bold;
 }
+
+/* Self-Assessment Styles */
+
+.self-assessment-dropdown {
+    width: 100%;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    color: #f0e6d2;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.self-assessment-dropdown:hover {
+    border-color: rgba(255, 215, 0, 0.6);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.self-assessment-dropdown:focus {
+    outline: none;
+    border-color: #ffd700;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+.self-assessment-dropdown option {
+    background: #1a1a3a;
+    color: #f0e6d2;
+    padding: 4px;
+}
+
+.self-grade-badge {
+    margin-top: 4px;
+    background: rgba(0, 255, 200, 0.25);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #b0f0e0;
+    text-align: center;
+    border: 1px solid rgba(0, 255, 200, 0.15);
+}
+
+.self-assessment-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.self-assessment-header {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+.self-assessment-image img {
+    max-width: 150px;
+    max-height: 150px;
+    border-radius: 8px;
+    border: 2px solid #ffd700;
+    object-fit: cover;
+}
+
+.self-assessment-info h3 {
+    color: #ffd700;
+    margin: 0;
+}
+
+.self-assessment-info p {
+    color: #f0e6d2;
+    margin: 5px 0;
+}
+
+.self-assessment-footer {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+#submit-self-assessment-btn {
+    padding: 8px 20px;
+    font-size: 14px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #ffd700, #f0a500);
+    color: #1a1a3a;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#submit-self-assessment-btn:hover:not(:disabled) {
+    transform: scale(1.02);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+#submit-self-assessment-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* When teacher grade exists, show it in yellow */
+.grade-display.has-teacher-grade {
+    background: rgba(255, 215, 0, 0.2);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+/* Self-assessment comparison in normal view */
+.self-assessment-comparison {
+    margin-top: 4px;
+    background: rgba(0, 255, 200, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #b0f0e0;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .self-assessment-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .self-assessment-image img {
+        max-width: 100px;
+        max-height: 100px;
+    }
+    
+    .self-assessment-footer {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    #submit-self-assessment-btn {
+        width: 100%;
+        margin-top: 10px;
+    }
+}
 /* Teacher Work View Modal */
 .teacher-work-close {
     position: absolute;
@@ -9528,4 +9673,38 @@ input:focus,
     bottom: 90px;
     left: 20px;
     z-index: 1000;
+}
+
+/* ==============================================
+   RUBRIC HIGHLIGHT COLORS
+   ============================================== */
+
+/* Teacher grade highlight - YELLOW */
+.teacher-highlight {
+    background: rgba(255, 215, 0, 0.25) !important;
+    border-left: 3px solid #ffd700;
+    border-right: 3px solid #ffd700;
+}
+
+/* Self-assessment highlight - TEAL */
+.self-highlight {
+    background: rgba(0, 255, 200, 0.2) !important;
+    border-left: 3px solid #00ffc8;
+    border-right: 3px solid #00ffc8;
+}
+
+/* Both teacher and self-assessment on the same cell */
+.teacher-highlight.self-highlight {
+    background: linear-gradient(to right, rgba(255, 215, 0, 0.25) 50%, rgba(0, 255, 200, 0.2) 50%) !important;
+    border-left: 3px solid #ffd700;
+    border-right: 3px solid #00ffc8;
+}
+
+/* Rubric table cell hover effect */
+.rubric-table td {
+    transition: background-color 0.3s ease;
+}
+
+.rubric-table td:hover {
+    filter: brightness(1.1);
 }
