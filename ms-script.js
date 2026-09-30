@@ -416,7 +416,7 @@ function handlePreviewClick(e) {
     }
 }
 
-function saveWorkData() {
+async function saveWorkData() {
     // Prevent multiple simultaneous saves
     if (isSavingWork) {
         console.log("Save already in progress, ignoring duplicate call");
@@ -431,11 +431,44 @@ function saveWorkData() {
         return;
     }
 
-    // Check if this quest is already saved (prevent resubmission)
+        // Check if this quest is already saved (prevent resubmission)
     if (studentWorks[questId] && studentWorks[questId].image && studentWorks[questId].image !== "pending") {
         const confirmResave = confirm("You have already saved work for this quest. Do you want to replace it?");
         if (!confirmResave) {
             return;
+        }
+
+        // Since the work is being replaced, clear the old self-assessment
+        localStorage.removeItem('pendingSelfAssessment_' + questId);
+        localStorage.removeItem('pendingSelfAssessmentQuest');
+
+        // Clear the submitted self-assessment locally
+        if (window.selfAssessments && window.selfAssessments[questId]) {
+            delete window.selfAssessments[questId];
+            localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
+        }
+
+        // Clear the submitted self-assessment in the cloud
+        try {
+            const { data: { session } } = await window.supabase.auth.getSession();
+            if (session) {
+                const { data: progress } = await window.supabase
+                    .from('student_progress')
+                    .select('self_assessments')
+                    .eq('user_id', session.user.id)
+                    .maybeSingle();
+
+                if (progress?.self_assessments?.[questId]) {
+                    const updated = { ...progress.self_assessments };
+                    delete updated[questId];
+                    await window.supabase
+                        .from('student_progress')
+                        .update({ self_assessments: updated })
+                        .eq('user_id', session.user.id);
+                }
+            }
+        } catch (e) {
+            console.warn("Could not clear self-assessment from cloud:", e);
         }
     }
 
@@ -566,6 +599,35 @@ async function deleteWorkImage() {
         delete studentWorks[questId];
         console.log("Deleted from local studentWorks, now has:", Object.keys(studentWorks));
     }
+    // Clear any pending self-assessment for this quest
+localStorage.removeItem('pendingSelfAssessment_' + questId);
+localStorage.removeItem('pendingSelfAssessmentQuest');
+
+// Clear the submitted self-assessment locally
+if (window.selfAssessments && window.selfAssessments[questId]) {
+    delete window.selfAssessments[questId];
+    localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
+}
+
+// Clear the submitted self-assessment in the cloud
+try {
+    const { data: progress, error: fetchErr } = await window.supabase
+        .from('student_progress')
+        .select('self_assessments')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+    if (!fetchErr && progress?.self_assessments?.[questId]) {
+        const updated = { ...progress.self_assessments };
+        delete updated[questId];
+        await window.supabase
+            .from('student_progress')
+            .update({ self_assessments: updated })
+            .eq('user_id', session.user.id);
+    }
+} catch (e) {
+    console.warn("Could not clear self-assessment from cloud:", e);
+}
     
     saveStudentWorks();
     await loadCloudWorksIntoGallery();
@@ -1444,71 +1506,6 @@ function closeQuest() {
 }
 
 // ==============================================
-// SECTION 21: FORGOT PASSWORD
-// ==============================================
-
-function setupForgotPassword() {
-    const forgotLink = document.getElementById('forgot-password-link');
-    const modal = document.getElementById('forgot-password-modal');
-    const cancelBtn = document.getElementById('reset-cancel-btn');
-    const submitBtn = document.getElementById('reset-submit-btn');
-    const emailInput = document.getElementById('reset-email-input');
-    const messageDiv = document.getElementById('reset-message');
-    
-    if (!forgotLink) return;
-    
-    forgotLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        modal.style.display = 'flex';
-        emailInput.value = '';
-        messageDiv.innerHTML = '';
-    });
-    
-    cancelBtn.addEventListener('click', () => {
-        modal.style.display = 'none';
-    });
-    
-    submitBtn.addEventListener('click', async () => {
-        const email = emailInput.value.trim();
-        if (!email) {
-            messageDiv.innerHTML = 'Please enter your email address.';
-            messageDiv.style.color = '#ff8888';
-            return;
-        }
-        
-        messageDiv.innerHTML = 'Sending reset link...';
-        messageDiv.style.color = '#ffd700';
-        
-        const { error } = await window.supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + '/reset-password.html'
-        });
-        
-        if (error) {
-            messageDiv.innerHTML = error.message;
-            messageDiv.style.color = '#ff8888';
-        } else {
-            messageDiv.innerHTML = 'Reset link sent! Check your email.';
-            messageDiv.style.color = '#4caf50';
-            setTimeout(() => {
-                modal.style.display = 'none';
-            }, 3000);
-        }
-    });
-    
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && modal.style.display === 'flex') {
-            modal.style.display = 'none';
-        }
-    });
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
-}
-
-// ==============================================
 // SECTION 22: INVITATION HANDLING
 // ==============================================
 
@@ -2080,7 +2077,7 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null) {
             const { data: urlData } = window.supabase.storage
                 .from('student-works')
                 .getPublicUrl(fileName);
-            imageUrl = urlData.publicUrl;
+            imageUrl = urlData.publicUrl + '?v=' + Date.now();
         }
     }
     
@@ -3221,7 +3218,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false) {
                     }
                 });
                 localStorage.setItem('pendingSelfAssessment_' + cityId, JSON.stringify(tempAssessment));
-                
+                localStorage.setItem('pendingSelfAssessmentQuest', cityId);
                 let allFilled = true;
                 allDropdowns.forEach(d => {
                     if (!d.value) allFilled = false;
@@ -3254,22 +3251,23 @@ async function openRubricPopup(cityId, isSelfAssessment = false) {
             });
         }
         
-        // Restore pending data if any
         const pendingData = localStorage.getItem('pendingSelfAssessment_' + cityId);
         if (pendingData) {
-            try {
-                const pending = JSON.parse(pendingData);
-                const dropdowns2 = overlay.querySelectorAll('.self-assessment-dropdown');
-                dropdowns2.forEach(d => {
-                    if (pending[d.dataset.standard]) {
-                        d.value = pending[d.dataset.standard];
-                        d.dispatchEvent(new Event('change'));
-                    }
-                });
-                localStorage.removeItem('pendingSelfAssessment_' + cityId);
-            } catch (e) {
-                console.error("Error loading pending self-assessment:", e);
-            }
+        try {
+            const pending = JSON.parse(pendingData);
+            const dropdowns2 = overlay.querySelectorAll('.self-assessment-dropdown');
+            dropdowns2.forEach(d => {
+                if (pending[d.dataset.standard]) {
+                    d.value = pending[d.dataset.standard];
+                    d.dispatchEvent(new Event('change'));
+                }
+            });
+            // Do NOT remove the pending key here — keep it until the student
+            // actually submits, so an interrupted session can still be recovered.
+            localStorage.setItem('pendingSelfAssessmentQuest', cityId);
+        } catch (e) {
+            console.error("Error loading pending self-assessment:", e);
+        }
         }
     }
     
@@ -3372,7 +3370,7 @@ async function saveSelfAssessment(questId, assessment) {
     
     // Clear pending auto-save
     localStorage.removeItem('pendingSelfAssessment_' + questId);
-    
+    localStorage.removeItem('pendingSelfAssessmentQuest');    
     // Close the rubric overlay (self-assessment mode)
     const overlay = document.getElementById("rubric-overlay");
     if (overlay) {
@@ -8723,7 +8721,6 @@ document.addEventListener("DOMContentLoaded", () => {
         initializeNewQuestSystem();
         initializeFloatingNavigation();
         initializeFullscreenViewer();
-        setupForgotPassword();
         bindHotspots();
         updateProfileStandardsTable();
         renderRadarChart();
