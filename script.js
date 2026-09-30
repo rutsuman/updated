@@ -35,7 +35,6 @@ const AppState = {
 // --- Original Global Variables ---
 let isAddingHotspots = false;
 let rubricLocked = {};
-let currentMap = "map1";
 let completedQuests = loadQuestData();
 let questGrades = loadQuestGrades() || {};
 let currentQuestId = null;
@@ -385,7 +384,7 @@ function handlePreviewClick(e) {
     }
 }
 
-function saveWorkData() {
+async function saveWorkData() {
     // Prevent multiple simultaneous saves
     if (isSavingWork) {
         console.log("Save already in progress, ignoring duplicate call");
@@ -400,11 +399,44 @@ function saveWorkData() {
         return;
     }
 
-    // Check if this quest is already saved (prevent resubmission)
-    if (studentWorks[questId] && studentWorks[questId].image && studentWorks[questId].image !== "pending") {
+        // Check if this quest is already saved (prevent resubmission)
+     if (studentWorks[questId] && studentWorks[questId].image && studentWorks[questId].image !== "pending") {
         const confirmResave = confirm("You have already saved work for this quest. Do you want to replace it?");
         if (!confirmResave) {
             return;
+        }
+
+        // Since the work is being replaced, clear the old self-assessment
+        localStorage.removeItem('pendingSelfAssessment_' + questId);
+        localStorage.removeItem('pendingSelfAssessmentQuest');
+
+        // Clear the submitted self-assessment locally
+        if (window.selfAssessments && window.selfAssessments[questId]) {
+            delete window.selfAssessments[questId];
+            localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
+        }
+
+        // Clear the submitted self-assessment in the cloud
+        try {
+            const { data: { session } } = await window.supabase.auth.getSession();
+            if (session) {
+                const { data: progress } = await window.supabase
+                    .from('student_progress')
+                    .select('self_assessments')
+                    .eq('user_id', session.user.id)
+                    .maybeSingle();
+
+                if (progress?.self_assessments?.[questId]) {
+                    const updated = { ...progress.self_assessments };
+                    delete updated[questId];
+                    await window.supabase
+                        .from('student_progress')
+                        .update({ self_assessments: updated })
+                        .eq('user_id', session.user.id);
+                }
+            }
+        } catch (e) {
+            console.warn("Could not clear self-assessment from cloud:", e);
         }
     }
 
@@ -527,6 +559,39 @@ async function deleteWorkImage() {
         delete studentWorks[questId];
         console.log("Deleted from local studentWorks, now has:", Object.keys(studentWorks));
     }
+
+    // Clear any pending self-assessment for this quest
+localStorage.removeItem('pendingSelfAssessment_' + questId);
+localStorage.removeItem('pendingSelfAssessmentQuest');
+
+// Clear the submitted self-assessment locally
+if (window.selfAssessments && window.selfAssessments[questId]) {
+    delete window.selfAssessments[questId];
+    localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
+}
+
+// Clear the submitted self-assessment in the cloud
+try {
+    const { data: progress, error: fetchErr } = await window.supabase
+        .from('student_progress')
+        .select('self_assessments')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+    if (!fetchErr && progress?.self_assessments?.[questId]) {
+        const updated = { ...progress.self_assessments };
+        delete updated[questId];
+        await window.supabase
+            .from('student_progress')
+            .update({ self_assessments: updated })
+            .eq('user_id', session.user.id);
+    }
+} catch (e) {
+    console.warn("Could not clear self-assessment from cloud:", e);
+}
+
+
+
     saveStudentWorks();
     await loadCloudWorksIntoGallery();
     if (preview) {
@@ -925,17 +990,10 @@ async function logout() {
 // SECTION 12: MAP CONFIG & HELPERS
 // ==============================================
 
-const MAPS = {
-    map1: { image: "map.jpg" },
-    map2: { image: "map2.jpg" },
-    map3: { image: "map3.jpg" }
-};
-
+// Single map — no map switching
 function getMapForQuest(questId) {
-    const hotspot = document.querySelector(`.hotspot[data-city="${questId}"]`);
-    return hotspot ? hotspot.dataset.map : null;
+    return "map1";
 }
-
 // ==============================================
 // SECTION 13: SUMMATIVE PATH MENU
 // ==============================================
@@ -1018,29 +1076,30 @@ function calculateHotspotPositions() {
         };
     });
 }
+    function updateHotspotPositions() {
+        const mapImage = document.getElementById("map-image");
+        const mapContainer = document.getElementById("map-container");
+        const floatingNav = document.getElementById("floating-nav");
 
-function updateHotspotPositions() {
-    const mapImage = document.getElementById("map-image");
-    const mapContainer = document.getElementById("map-container");
-    const floatingNav = document.getElementById("floating-nav");
-    if (!mapImage || !mapContainer) return;
-    const mapRect = mapImage.getBoundingClientRect();
-    const containerRect = mapContainer.getBoundingClientRect();
-    const mapScale = scale || 1;
-    document.querySelectorAll(".hotspot").forEach(hotspot => {
-        const id = hotspot.dataset.city;
-        const mapAttr = hotspot.dataset.map;
-        const position = hotspotPositions[id];
-        if (position) {
-            hotspot.style.left = position.left;
-            hotspot.style.top = position.top;
-            hotspot.style.transform = `translate(-50%, -50%) scale(${mapScale})`;
-            hotspot.style.display = mapAttr === currentMap ? "block" : "none";
-            hotspot.style.zIndex = "1000";
-        }
-    });
-}
+        if (!mapImage || !mapContainer) return;
 
+        const mapRect = mapImage.getBoundingClientRect();
+        const containerRect = mapContainer.getBoundingClientRect();
+
+        document.querySelectorAll(".hotspot").forEach(hotspot => {
+            const id = hotspot.dataset.city;
+            const position = hotspotPositions[id];
+
+            if (position) {
+                hotspot.style.left = position.left;
+                hotspot.style.top = position.top;
+                hotspot.style.transform = "translate(-50%, -50%)";
+                // MS: All hotspots always visible
+                hotspot.style.display = "block";
+                hotspot.style.zIndex = "1000";
+            }
+        });
+    }
 // ==============================================
 // SECTION 15: FLOATING NAVIGATION
 // ==============================================
@@ -1061,82 +1120,53 @@ function initializeFloatingNavigation() {
 function bindHotspots() {
     document.querySelectorAll(".hotspot").forEach(hotspot => {
         const cityId = hotspot.dataset.city;
+
+        // Prevent duplicate listeners by cloning the element
+        // (cloneNode strips all existing event listeners)
+        const freshHotspot = hotspot.cloneNode(true);
+        hotspot.parentNode.replaceChild(freshHotspot, hotspot);
+
+        // Now attach exactly ONE listener to the fresh element
         if (cityId.startsWith('custom_')) {
             console.log("FOUND CUSTOM QUEST HOTSPOT:", cityId);
-            hotspot.addEventListener("click", () => {
+            freshHotspot.addEventListener("click", () => {
                 console.log("Custom quest clicked:", cityId);
                 openQuest(cityId);
             });
-        } else if (quests[cityId]?.style === "mvp") {
-            hotspot.classList.add("mvp-hotspot");
-            hotspot.addEventListener("click", () => {
-                if (MAPS[cityId]) {
-                    switchMap(cityId);
-                } else {
-                    openQuest(cityId);
-                }
+        }
+        else if (quests[cityId]?.style === "mvp") {
+            freshHotspot.classList.add("mvp-hotspot");
+            freshHotspot.addEventListener("click", () => {
+                openQuest(cityId);
             });
-        } else {
-            hotspot.addEventListener("click", () => {
-                if (MAPS[cityId]) {
-                    switchMap(cityId);
-                } else {
-                    openQuest(cityId);
-                }
+        }
+        else {
+            freshHotspot.addEventListener("click", () => {
+                openQuest(cityId);
             });
         }
     });
 }
-
 // ==============================================
 // SECTION 17: SWITCH MAP & HOTSPOT VISIBILITY
 // ==============================================
 
-function updateHotspotVisibility() {
-    console.log("updateHotspotVisibility called, currentMap:", currentMap);
-    updateHotspotPositions();
-    document.querySelectorAll(".hotspot").forEach(hotspot => {
-        const hotspotMap = hotspot.getAttribute('data-map');
-        const cityId = hotspot.getAttribute('data-city');
-        if (hotspot.classList.contains('custom-quest-hotspot')) {
-            console.log("Custom hotspot:", cityId, "hotspotMap:", hotspotMap, "currentMap:", currentMap);
-            hotspot.style.display = currentMap === "map2" ? "block" : "none";
-        } else {
-            hotspot.style.display = hotspotMap === currentMap ? "block" : "none";
-        }
-    });
-    const floatingNav = document.getElementById("floating-nav");
-    if (floatingNav) {
-        floatingNav.style.display = "flex";
-    }
-    if (currentMap === 'map2') {
-        const existingCustomHotspots = document.querySelectorAll('.hotspot.custom-quest-hotspot');
-        if (existingCustomHotspots.length === 0) {
-            console.log("No custom hotspots found on map2, adding them...");
-            addCustomQuestHotspots();
-        }
-    }
-}
+    function updateHotspotVisibility() {
+        console.log("updateHotspotVisibility called - MS version");
 
-function switchMap(mapId, keepQuestOpen = false) {
-    if (!MAPS[mapId]) return;
-    currentMap = mapId;
-    const mapImage = document.getElementById("map-image");
-    mapImage.src = MAPS[mapId].image;
-    mapImage.onload = () => {
         updateHotspotPositions();
-        checkAllQuestWarnings();
-        updateHotspotVisibility();
-        if (mapId === 'map2') {
-            addCustomQuestHotspots();
+
+        // MS: All hotspots always visible on the single map
+        document.querySelectorAll(".hotspot").forEach(hotspot => {
+            hotspot.style.display = "block";
+        });
+
+        // Floating nav - always visible
+        const floatingNav = document.getElementById("floating-nav");
+        if (floatingNav) {
+            floatingNav.style.display = "flex";
         }
-        if (!keepQuestOpen) {
-            closeQuest();
-        }
-    };
-    const mapSelector = document.getElementById("map-selector");
-    if (mapSelector) mapSelector.value = mapId;
-}
+    }
 
 
 // ==============================================
@@ -1155,14 +1185,9 @@ async function openQuest(cityId) {
     const quest = quests[cityId];
     if (!quest) return;
 
-    // Switch map if needed (synchronous trigger; image loads in background)
-    const mapId = getMapForQuest(cityId);
-    if (mapId && mapId !== currentMap) {
-        switchMap(mapId, true);
-    }
-
     currentQuestId = cityId;
     const questBox = document.getElementById("quest-box");
+
     questBox.className = "";
     questBox.classList.remove("custom-quest");
     if (quest.teacher_quest === true || quest.is_custom === true) {
@@ -1390,62 +1415,6 @@ function closeQuest() {
         mvpSel.style.display = "none";
         mvpSel.innerHTML = '<option value="">Select MVP Quest</option>';
     }
-}
-
-// ==============================================
-// SECTION 21: FORGOT PASSWORD
-// ==============================================
-
-function setupForgotPassword() {
-    const forgotLink = document.getElementById('forgot-password-link');
-    const modal = document.getElementById('forgot-password-modal');
-    const cancelBtn = document.getElementById('reset-cancel-btn');
-    const submitBtn = document.getElementById('reset-submit-btn');
-    const emailInput = document.getElementById('reset-email-input');
-    const messageDiv = document.getElementById('reset-message');
-    if (!forgotLink) return;
-    forgotLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        modal.style.display = 'flex';
-        emailInput.value = '';
-        messageDiv.innerHTML = '';
-    });
-    cancelBtn.addEventListener('click', () => {
-        modal.style.display = 'none';
-    });
-    submitBtn.addEventListener('click', async () => {
-        const email = emailInput.value.trim();
-        if (!email) {
-            messageDiv.innerHTML = 'Please enter your email address.';
-            messageDiv.style.color = '#ff8888';
-            return;
-        }
-        messageDiv.innerHTML = 'Sending reset link...';
-        messageDiv.style.color = '#ffd700';
-        const { error } = await window.supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + '/reset-password.html'
-        });
-        if (error) {
-            messageDiv.innerHTML = error.message;
-            messageDiv.style.color = '#ff8888';
-        } else {
-            messageDiv.innerHTML = 'Reset link sent! Check your email.';
-            messageDiv.style.color = '#4caf50';
-            setTimeout(() => {
-                modal.style.display = 'none';
-            }, 3000);
-        }
-    });
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && modal.style.display === 'flex') {
-            modal.style.display = 'none';
-        }
-    });
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
 }
 
 // ==============================================
@@ -2015,7 +1984,7 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null) {
             const { data: urlData } = window.supabase.storage
                 .from('student-works')
                 .getPublicUrl(fileName);
-            imageUrl = urlData.publicUrl;
+            imageUrl = urlData.publicUrl + '?v=' + Date.now();
         }
         
         // Save metadata to database
@@ -2157,17 +2126,16 @@ if (searchInput) {
                 <span>${quest.title}</span>
             `;
             div.onclick = () => {
-                const mapId = getMapForQuest(id);
-                if (mapId && mapId !== currentMap) {
-                    switchMap(mapId);
-                }
-                scale = 1;
-                const mapViewport = document.getElementById("map-viewport");
-                if (mapViewport) mapViewport.style.transform = "scale(1)";
-                openQuest(id);
-                searchResults.innerHTML = "";
-                searchInput.value = "";
-            };
+        // Reset zoom when jumping via search
+        scale = 1;
+        const container = document.getElementById("map-container");
+        if (container) container.style.transform = "scale(1)";
+
+        openQuest(id);
+
+        searchResults.innerHTML = "";
+        searchInput.value = "";
+    };
             searchResults.appendChild(div);
         });
     });
@@ -3100,6 +3068,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false) {
                     }
                 });
                 localStorage.setItem('pendingSelfAssessment_' + cityId, JSON.stringify(tempAssessment));
+                localStorage.setItem('pendingSelfAssessmentQuest', cityId);
                 
                 let allFilled = true;
                 allDropdowns.forEach(d => {
@@ -3144,7 +3113,9 @@ async function openRubricPopup(cityId, isSelfAssessment = false) {
                         d.dispatchEvent(new Event('change'));
                     }
                 });
-                localStorage.removeItem('pendingSelfAssessment_' + cityId);
+                // Do NOT remove the pending key here — keep it until the student
+                // actually submits, so an interrupted session can still be recovered.
+                localStorage.setItem('pendingSelfAssessmentQuest', cityId);
             } catch (e) {
                 console.error("Error loading pending self-assessment:", e);
             }
@@ -3247,6 +3218,7 @@ async function saveSelfAssessment(questId, assessment) {
     
     // Clear pending auto-save
     localStorage.removeItem('pendingSelfAssessment_' + questId);
+    localStorage.removeItem('pendingSelfAssessmentQuest');
     
     // Close the rubric overlay (self-assessment mode)
     const overlay = document.getElementById("rubric-overlay");
@@ -6014,8 +5986,10 @@ async function addCustomQuestHotspots() {
         return;
     }
     isAddingHotspots = true;
+
     try {
         const hasCustomQuests = Object.keys(quests).some(id => id.startsWith('custom_'));
+
         if (!hasCustomQuests) {
             console.log("Custom quests missing from quests object, refreshing...");
             const freshQuests = await getAllQuestsForStudent(true);
@@ -6024,62 +5998,71 @@ async function addCustomQuestHotspots() {
             console.log("Quests refreshed, now has:", Object.keys(quests).length, "quests");
             console.log("Custom quests now:", Object.keys(quests).filter(id => id.startsWith('custom_')));
         }
+
         if (!quests || Object.keys(quests).length === 0) {
             console.log("Quests not loaded yet, waiting...");
             setTimeout(() => addCustomQuestHotspots(), 500);
             return;
         }
+
         const customQuests = await loadTeacherCustomQuests();
         console.log("Adding custom quest hotspots, found:", customQuests.length);
+
         const mapContainer = document.getElementById('map-container');
         if (!mapContainer) return;
+
         const existingHotspots = document.querySelectorAll('.hotspot.custom-quest-hotspot');
         existingHotspots.forEach(hotspot => hotspot.remove());
+
+        // MS: All custom quests on single map
         const customPositions = [
-            { top: "71.8%", left: "23.2%" },
-            { top: "71%", left: "5%" },
-            { top: "83.5%", left: "22.6%" },
-            { top: "88.3%", left: "10%" },
-            { top: "93.8%", left: "26%" }
+            { top: "53.4%", left: "73.2%" },
+            { top: "53.8%", left: "81.6%" },
+            { top: "59.3%", left: "81.6%" },
+            { top: "61.5%", left: "75.6%" },
+            { top: "64%",   left: "83.4%" }
         ];
+
         for (let i = 0; i < customQuests.length && i < customPositions.length; i++) {
             const quest = customQuests[i];
             const pos = customPositions[i];
+
             if (!quests[quest.quest_id]) {
                 console.log(`Warning: Quest ${quest.quest_id} not found in quests object`);
                 continue;
             }
+
             const hotspot = document.createElement('div');
             hotspot.className = 'hotspot debug custom-quest-hotspot';
             hotspot.setAttribute('data-city', quest.quest_id);
-            hotspot.setAttribute('data-map', 'map2');
             hotspot.style.top = pos.top;
             hotspot.style.left = pos.left;
             hotspot.style.position = 'absolute';
             hotspot.title = quest.title;
+
             hotspot.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log("Custom quest clicked:", quest.quest_id);
-                console.log("Quest exists in quests?", !!quests[quest.quest_id]);
                 if (quests[quest.quest_id]) {
                     openQuest(quest.quest_id);
                 } else {
                     console.error("Quest not found in quests object!");
                 }
             });
+
             mapContainer.appendChild(hotspot);
-            console.log("Added custom quest hotspot for:", quest.title, "on map2");
+            console.log("Added custom quest hotspot for:", quest.title);
         }
-        bindHotspots();
+
         updateHotspotVisibility();
+
     } catch (error) {
         console.error("Error adding custom quest hotspots:", error);
     } finally {
         isAddingHotspots = false;
     }
 }
-
 // ==============================================
 // SECTION 56: RESPONSIVE HELPER FUNCTIONS
 // ==============================================
@@ -8029,7 +8012,6 @@ document.addEventListener("DOMContentLoaded", () => {
         initializeNewQuestSystem();
         initializeFloatingNavigation();
         initializeFullscreenViewer();
-        setupForgotPassword();
         bindHotspots();
         updateProfileStandardsTable();
         renderRadarChart();
@@ -8070,11 +8052,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         
         // UI event listeners
-        const mapSelector = document.getElementById("map-selector");
-        mapSelector?.addEventListener("change", () => {
-            switchMap(mapSelector.value);
-        });
-
         document.getElementById("path-selector")?.addEventListener("change", handlePathChange);
         document.getElementById("mvp-quests")?.addEventListener("change", function() {
             if (this.value) openQuest(this.value);
