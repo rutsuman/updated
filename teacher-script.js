@@ -262,6 +262,9 @@ async function getAllQuestsForTeacher(forceRefresh = false) {
     const allQuests = { ...baseQuests };
 
     for (const custom of customQuests) {
+        //only include custom quests matching the current grade level ───
+        const customGrade = custom.grade_level || 'hs';   // default to hs if missing
+        if (customGrade !== currentGradeLevel) continue;
         allQuests[custom.quest_id] = {
             path: [custom.path],
             difficulty: custom.difficulty,
@@ -578,54 +581,6 @@ async function verifyTeacherPassword() {
     });
 }
 
-function setupTeacherForgotPassword() {
-    const forgotLink = document.getElementById('teacher-forgot-password-link');
-    const modal = document.getElementById('forgot-password-modal');
-    const cancelBtn = document.getElementById('reset-cancel-btn');
-    const submitBtn = document.getElementById('reset-submit-btn');
-    const emailInput = document.getElementById('reset-email-input');
-    const messageDiv = document.getElementById('reset-message');
-
-    if (!forgotLink) return;
-
-    forgotLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        modal.style.display = 'flex';
-        emailInput.value = '';
-        messageDiv.innerHTML = '';
-    });
-
-    cancelBtn.addEventListener('click', () => {
-        modal.style.display = 'none';
-    });
-
-    submitBtn.addEventListener('click', async () => {
-        const email = emailInput.value.trim();
-        if (!email) {
-            messageDiv.innerHTML = 'Please enter your email address.';
-            messageDiv.style.color = '#ff8888';
-            return;
-        }
-
-        messageDiv.innerHTML = 'Sending reset link...';
-        messageDiv.style.color = '#ffd700';
-
-        const { error } = await window.supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + '/reset-password.html'
-        });
-
-        if (error) {
-            messageDiv.innerHTML = error.message;
-            messageDiv.style.color = '#ff8888';
-        } else {
-            messageDiv.innerHTML = 'Reset link sent! Check your email.';
-            messageDiv.style.color = '#4caf50';
-            setTimeout(() => {
-                modal.style.display = 'none';
-            }, 3000);
-        }
-    });
-}
 
 
 // ==========================================================
@@ -848,6 +803,11 @@ function switchGradeLevel(level) {
     if (analyticsTab && analyticsTab.style.display !== 'none') {
         loadAnalyticsData();
     }
+
+    const reqSection = document.getElementById("required-quest-section");
+    if (reqSection && reqSection.offsetParent !== null && currentQuestData) {
+        renderRequiredQuestSection(currentQuestData.id);
+    }
 }
 
 function updateToggleButtons(level) {
@@ -960,6 +920,8 @@ async function renderQuestsAccordion() {
     if (!auth) return;
 
     const allQuests = await getAllQuestsForTeacher();
+    const requiredMap = await loadRequiredQuestsByGrade();
+
 
     const validPaths = ['Painter Path', 'Sketcher Path', 'Watercolor Path', '3D Path'];
     const questsByPath = {
@@ -1019,15 +981,24 @@ async function renderQuestsAccordion() {
         quests.forEach(quest => {
             const questLink = document.createElement('div');
             questLink.className = 'quest-link-item';
+            
             if (quest.isMVP) questLink.classList.add('mvp-quest-link');
             if (quest.isCustom) questLink.classList.add('custom-quest-item');
 
-            questLink.innerHTML = `
-                <span class="quest-link-title">${escapeHtml(quest.title)}</span>
-                ${quest.isMVP ? '<span class="mvp-badge">👑 MVP</span>' : ''}
-                ${quest.isCustom ? '<span class="custom-quest-badge">📝 Custom</span>' : ''}
-                ${quest.isCustom ? '<button class="delete-custom-quest-btn" data-quest-id="' + quest.id + '" data-quest-title="' + escapeHtml(quest.title) + '" title="Delete Custom Quest">🗑️</button>' : ''}
-            `;
+                // Build the inner spans
+                questLink.innerHTML = `
+                    <span class="quest-link-title">${escapeHtml(quest.title)}</span>
+                    ${quest.isMVP ? '<span class="mvp-badge">👑 MVP</span>' : ''}
+                    ${quest.isCustom ? '<span class="custom-quest-badge">📝 Custom</span>' : ''}
+                    ${quest.isCustom ? '<button class="delete-custom-quest-btn" data-quest-id="' + quest.id + '" data-quest-title="' + escapeHtml(quest.title) + '" title="Delete Custom Quest">🗑️</button>' : ''}
+                `;
+
+                // Insert the 🎯 badge right after the title span
+                const requiredBadge = buildRequiredBadge(quest.id, requiredMap);
+                if (requiredBadge) {
+                    const titleSpan = questLink.querySelector(".quest-link-title");
+                    titleSpan.insertAdjacentElement("afterend", requiredBadge);
+              }
 
             questLink.addEventListener('click', async (e) => {
                 if (e.target.classList.contains('delete-custom-quest-btn')) return;
@@ -1169,7 +1140,8 @@ async function renderCompletedQuestsAccordion() {
 }
 
 // Shared helper for active/completed accordions
-function renderQuestAccordionByPath(container, questsByPath, mode) {
+async function renderQuestAccordionByPath(container, questsByPath, mode) {
+    const requiredMap = await loadRequiredQuestsByGrade();
     const pathOrder = ['Painter Path', 'Sketcher Path', 'Watercolor Path', '3D Path'];
     const allPathHeaders = [];
     const allPathContents = [];
@@ -1214,6 +1186,13 @@ function renderQuestAccordionByPath(container, questsByPath, mode) {
                 <span class="${badgeClass}">${quest.studentCount} student${quest.studentCount !== 1 ? 's' : ''}</span>
                 ${quest.isMVP ? '<span class="mvp-badge">👑 MVP</span>' : ''}
             `;
+
+            // Insert the 🎯 badge right after the title span
+            const requiredBadge = buildRequiredBadge(quest.id, requiredMap);
+            if (requiredBadge) {
+                const titleSpan = questLink.querySelector(".quest-link-title");
+                titleSpan.insertAdjacentElement("afterend", requiredBadge);
+            }
 
             questLink.addEventListener('click', async (e) => {
                 e.stopPropagation();
@@ -1471,6 +1450,7 @@ function setupQuestDetailsTabs() {
             if (prereqTab) {
                 prereqTab.style.display = 'block';
                 if (currentQuestData) loadPrerequisitesAndLeadsTo(currentQuestData.id, currentQuestData.allQuests);
+            renderRequiredQuestSection(currentQuestData.id);
             }
         } else if (tabId === 'standards') {
             if (standardsTab) {
@@ -1551,6 +1531,235 @@ function loadPrerequisitesAndLeadsTo(questId, allQuests) {
     }, 50);
 }
 
+// --- Required quests — section in the Prerequisites tab
+
+async function renderRequiredQuestSection(questId) {
+    const container = document.getElementById("required-quest-section");
+    if (!container) return;
+
+    const quest = (await getAllQuestsForTeacher())[questId];
+    if (!quest) {
+        container.innerHTML = "";
+        return;
+    }
+
+    // Which classes match the current grade-level toggle?
+    const visibleClasses = teacherClasses.filter(cls => {
+        const clsLevel = cls.grade_level || 'hs';
+        return clsLevel === currentGradeLevel;
+    });
+
+    // Fetch the classes this quest is currently required for
+    const requiredClassIds = await loadRequiredClassesForQuest(questId);
+
+    // ----- Build the HTML -----
+    const gradeLabel = currentGradeLevel === 'ms' ? 'MS' : 'HS';
+
+    let classesHtml = "";
+    if (visibleClasses.length === 0) {
+        classesHtml = `<div class="required-empty">
+            No ${gradeLabel} classes yet. Create one in the Classes tab.
+        </div>`;
+    } else {
+        classesHtml = visibleClasses.map(cls => {
+            const checked = requiredClassIds.has(cls.id) ? 'checked' : '';
+            return `
+                <label class="required-class-item">
+                    <input type="checkbox"
+                           class="required-class-checkbox"
+                           data-class-id="${cls.id}"
+                           ${checked}>
+                    <span>${escapeHtml(cls.name)}</span>
+                </label>
+            `;
+        }).join("");
+    }
+
+    container.innerHTML = `
+        <div class="required-section-title">🎯Required Quest</div>
+        <div class="required-section-note">
+            Check the classes you want this quest to be a MUST do.
+        </div>
+
+        <div class="required-check-all-row">
+            <label class="required-class-item required-check-all">
+                <input type="checkbox" id="required-check-all">
+                <span>Check all ${gradeLabel} classes</span>
+            </label>
+            <span class="required-tooltip-icon" title="This checks all ${gradeLabel} classes only. If you want to check ${currentGradeLevel === 'hs' ? 'MS' : 'HS'} classes as well, you MUST do it from the ${currentGradeLevel === 'hs' ? 'MS' : 'HS'} quest menu.">?</span>
+        </div>
+
+        <div class="required-classes-grid">
+            ${classesHtml}
+        </div>
+    `;
+
+    // ----- Wire events -----
+    wireRequiredSectionEvents(questId, visibleClasses);
+}
+
+async function loadRequiredClassesForQuest(questId) {
+    const auth = await checkTeacherAuth();
+    if (!auth) return new Set();
+
+    const { data, error } = await window.supabase
+        .from('teacher_quest_requirements')
+        .select('class_id')
+        .eq('teacher_id', auth.teacher.id)
+        .eq('quest_id', questId);
+
+    if (error) {
+        console.error("Error loading required classes:", error);
+        return new Set();
+    }
+
+    return new Set((data || []).map(r => r.class_id));
+}
+
+function wireRequiredSectionEvents(questId, visibleClasses) {
+    const checkboxes = document.querySelectorAll('.required-class-checkbox');
+    const checkAll = document.getElementById('required-check-all');
+
+    // ---- Individual class checkbox ----
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', async () => {
+            const classId = cb.dataset.classId;
+            await setRequiredForClass(questId, classId, cb.checked);
+            syncCheckAllState();
+        });
+    });
+
+    // ---- Check-all master ----
+    if (checkAll) {
+        checkAll.addEventListener('change', async () => {
+            const wantChecked = checkAll.checked;
+            checkboxes.forEach(cb => cb.checked = wantChecked);
+            // Persist each change; run sequentially to avoid hammering the DB
+            for (const cb of checkboxes) {
+                await setRequiredForClass(questId, cb.dataset.classId, wantChecked);
+            }
+        });
+    }
+
+    syncCheckAllState();
+
+    function syncCheckAllState() {
+        if (!checkAll || checkboxes.length === 0) return;
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        checkAll.checked = allChecked;
+        checkAll.indeterminate = !allChecked && Array.from(checkboxes).some(cb => cb.checked);
+    }
+}
+
+async function setRequiredForClass(questId, classId, required) {
+    const auth = await checkTeacherAuth();
+    if (!auth) return false;
+
+    let error;
+
+    if (required) {
+        const { error: upsertError } = await window.supabase
+            .from('teacher_quest_requirements')
+            .upsert({
+                teacher_id: auth.teacher.id,
+                quest_id: questId,
+                class_id: classId
+            }, { onConflict: 'teacher_id, quest_id, class_id', ignoreDuplicates: true });
+        error = upsertError;
+    } else {
+        const { error: deleteError } = await window.supabase
+            .from('teacher_quest_requirements')
+            .delete()
+            .eq('teacher_id', auth.teacher.id)
+            .eq('quest_id', questId)
+            .eq('class_id', classId);
+        error = deleteError;
+    }
+
+    if (error) {
+        console.error("Error saving requirement:", error);
+        alert("Error saving requirement: " + error.message);
+        return false;
+    }
+
+    // Refresh the visible badges now that the write has succeeded
+    await refreshRequiredBadges();
+
+    return true;
+}
+
+
+/**
+ * Returns a Map: questId -> Set of class names it's required for,
+ * filtered to classes matching the current grade-level toggle.
+ *
+ * Used to drive the 🎯 badge and its tooltip.
+ */
+async function loadRequiredQuestsByGrade() {
+    const auth = await checkTeacherAuth();
+    if (!auth) return new Map();
+
+    // Which classes match the current grade level?
+    const visibleClassIds = new Set(
+        teacherClasses
+            .filter(cls => (cls.grade_level || 'hs') === currentGradeLevel)
+            .map(cls => cls.id)
+    );
+
+    if (visibleClassIds.size === 0) return new Map();
+
+    const { data, error } = await window.supabase
+        .from('teacher_quest_requirements')
+        .select('quest_id, class_id')
+        .eq('teacher_id', auth.teacher.id)
+        .in('class_id', Array.from(visibleClassIds));
+
+    if (error) {
+        console.error("Error loading required quests:", error);
+        return new Map();
+    }
+
+    // Build a map: questId -> Set of class names
+    const classIdToName = new Map(
+        teacherClasses.map(c => [c.id, c.name])
+    );
+
+    const byQuest = new Map();
+    for (const row of (data || [])) {
+        if (!byQuest.has(row.quest_id)) byQuest.set(row.quest_id, new Set());
+        const name = classIdToName.get(row.class_id);
+        if (name) byQuest.get(row.quest_id).add(name);
+    }
+
+    return byQuest;
+}
+
+/**
+ * Builds the 🎯 badge element for a quest, or null if not required.
+ * `requiredMap` is the Map from loadRequiredQuestsByGrade().
+ */
+function buildRequiredBadge(questId, requiredMap) {
+    const classNames = requiredMap.get(questId);
+    if (!classNames || classNames.size === 0) return null;
+
+    const badge = document.createElement("span");
+    badge.className = "required-badge";
+    badge.textContent = "🎯";
+
+    const list = Array.from(classNames).sort().join(", ");
+    badge.title = `Required for: ${list}`;
+
+    return badge;
+}
+
+async function refreshRequiredBadges() {
+    // Re-render the currently visible accordion tab
+    const container = document.getElementById('quests-accordion-container');
+    if (container && container.offsetParent !== null) {
+        await renderAllQuestAccordions();
+    }
+}
+// --- Active students tab --
 async function loadActiveStudentsForQuest(questId) {
     const auth = await checkTeacherAuth();
     if (!auth) return;
@@ -1671,7 +1880,8 @@ async function saveTeacherQuestStandards(questId, selectedStandards, timerClasse
     const dataToSave = {
         teacher_id: auth.teacher.id,
         quest_id: questId,
-        selected_standards: selectedStandards,
+        // Normalize: never write null here — DB requires NOT NULL.
+        selected_standards: selectedStandards || [],
         updated_at: new Date().toISOString()
     };
 
@@ -2387,12 +2597,12 @@ async function loadStudentDetails(userId, studentName) {
             getAllQuestsForTeacher(),
             window.supabase
                 .from('student_progress')
-                .select('completed_quests, quest_grades, earned_badges, quest_accepted, quest_start_times, standard_deductions')
+                .select('completed_quests, quest_grades, earned_badges, quest_accepted, quest_start_times, standard_deductions, self_assessments')
                 .eq('user_id', userId)
                 .maybeSingle(),
             window.supabase
                 .from('student_works')
-                .select('quest_id, grading_status, title, image_url, uploaded_at, description, size, media')
+                .select('quest_id, grading_status, title, image_url, uploaded_at, description, size, media, research_pdf_url, research_pdf_name')
                 .eq('user_id', userId),
             window.supabase
                 .from('profiles')
@@ -2711,7 +2921,10 @@ function renderStudentProgressData(userId, progress, works, allQuests) {
             grading_status: work.grading_status,
             title: work.title,
             hasImage: !!work.image_url,
-            uploaded_at: work.uploaded_at
+            uploaded_at: work.uploaded_at,
+            hasResearchPdf: !!work.research_pdf_url,
+            research_pdf_url: work.research_pdf_url,
+            research_pdf_name: work.research_pdf_name
         });
     });
 
@@ -2844,7 +3057,7 @@ function renderStudentProgressData(userId, progress, works, allQuests) {
             const isVisible = detailsDiv.style.display === 'block';
             detailsDiv.style.display = isVisible ? 'none' : 'block';
             expandBtn.textContent = isVisible ? '▼' : '▲';
-            if (!isVisible) loadRubricForQuest(questId, quest, questGrades, detailsDiv, userId);
+            if (!isVisible) loadRubricForQuest(questId, quest, questGrades, detailsDiv, userId, progress);
         });
 
         const viewWorkBtn = clone.querySelector('.teacher-view-work-btn');
@@ -2909,6 +3122,7 @@ function renderStudentWorksData(userId, works, allQuests) {
             <div class="teacher-gallery-info">
                 <div class="teacher-gallery-title">${work.title || 'Untitled'}</div>
                 <div class="teacher-gallery-quest">Quest: ${questTitle}</div>
+                 ${work.research_pdf_url? `<div class="teacher-gallery-research" style="font-size: 11px; color: #ffd700; margin-top: 4px;">📄 Research attached</div>`: ''}
                 <button class="teacher-gallery-view-btn" data-quest="${work.quest_id}">View Details</button>
             </div>
         `;
@@ -2927,8 +3141,57 @@ function renderStudentWorksData(userId, works, allQuests) {
 // ==========================================================
 // 10. GRADING
 // ==========================================================
+// Map a grade value to a description-column index (0 = highest level, 3 = lowest)
+// so we can highlight the correct column in the rubric table.
+function gradeToLevelIndex(gradeValue, isNCAS, isIB, isIGCSE) {
+    if (gradeValue === null || gradeValue === undefined || gradeValue === '') return null;
 
-async function loadRubricForQuest(questId, quest, questGrades, detailsDiv, userId) {
+    if (isIGCSE) {
+        // Letter grades: A*/A → 0, B/C → 1, D/E → 2, F/G → 3
+        const letter = String(gradeValue).toUpperCase().trim();
+        if (letter === 'A*' || letter === 'A') return 0;
+        if (letter === 'B' || letter === 'C') return 1;
+        if (letter === 'D' || letter === 'E') return 2;
+        if (letter === 'F' || letter === 'G') return 3;
+        // Numeric fallback (1–8): 7–8 → 0, 5–6 → 1, 3–4 → 2, 1–2 → 3
+        const num = parseFloat(letter);
+        if (!isNaN(num)) {
+            if (num >= 7) return 0;
+            if (num >= 5) return 1;
+            if (num >= 3) return 2;
+            if (num >= 1) return 3;
+        }
+        return null;
+    }
+
+    if (isIB) {
+        // IB bands stored as text '7-8' etc. or numeric
+        const s = String(gradeValue).trim();
+        if (s === '7-8') return 0;
+        if (s === '5-6') return 1;
+        if (s === '3-4') return 2;
+        if (s === '1-2') return 3;
+        const num = parseFloat(s);
+        if (!isNaN(num)) {
+            if (num >= 7) return 0;
+            if (num >= 5) return 1;
+            if (num >= 3) return 2;
+            if (num >= 1) return 3;
+        }
+        return null;
+    }
+
+    // NCAS: 4 / 3.5 / 3 / 2.5 / 2 / 1.5 / 1  →  col 0..3
+    const num = parseFloat(gradeValue);
+    if (isNaN(num)) return null;
+    if (num >= 4) return 0;
+    if (num >= 3) return 1;
+    if (num >= 2) return 2;
+    if (num >= 1) return 3;
+    return null;
+}
+
+async function loadRubricForQuest(questId, quest, questGrades, detailsDiv, userId, progress) {
     const rubricContainer = detailsDiv.querySelector('.teacher-rubric-container');
 
     if (!quest.rubric) {
@@ -2959,17 +3222,23 @@ async function loadRubricForQuest(questId, quest, questGrades, detailsDiv, userI
     let headerLabel = '';
 
     if (isNCAS) {
-        if (isMS) {
-            itemsToShow = MS_STANDARDS.map(std => ({
-                ...std,
-                levels: quest.rubric.standards?.find(s => s.code === std.code)?.levels || { "4": "", "3": "", "2": "", "1": "" }
-            }));
-        } else {
-            itemsToShow = quest.rubric.standards;
-        }
-        gradeLevels = ['4', '3', '2', '1'];
-        gradeInputMax = 4;
-        headerLabel = 'Standard';
+    // Use the quest's own rubric standards (source of truth for which standards
+    // apply to this quest). Merge MS metadata (name) if the quest entry is missing it.
+    if (isMS) {
+        itemsToShow = (quest.rubric.standards || []).map(qStd => {
+            const msStd = MS_STANDARDS.find(s => s.code === qStd.code);
+            return {
+                ...qStd,
+                name: qStd.name || msStd?.name || '',
+                levels: qStd.levels || { "4": "", "3": "", "2": "", "1": "" }
+            };
+        });
+    } else {
+        itemsToShow = quest.rubric.standards;
+    }
+    gradeLevels = ['4', '3', '2', '1'];
+    gradeInputMax = 4;
+    headerLabel = 'Standard';
     } else if (isIB) {
         itemsToShow = quest.rubric.criteria;
         gradeLevels = ['7-8', '5-6', '3-4', '1-2'];
@@ -3011,32 +3280,60 @@ async function loadRubricForQuest(questId, quest, questGrades, detailsDiv, userI
 
     const column = quest.style === "mvp" ? "mvpGrade" : "grade";
     const grades = questGrades[questId]?.[column] || {};
+    // Pull the student's self-assessment for this quest (if any)
+    const selfAssessments = progress?.self_assessments || {};
+    const selfAssessment = selfAssessments[questId] || {};
+
+    // Debug log so we can confirm the data is arriving
+    console.log('[Grading] self-assessment for', questId, ':', selfAssessment);
 
     let html = `<table class="rubric-table">
         <thead><tr><th>${headerLabel}</th><th>${gradeLevels[0]}</th><th>${gradeLevels[1]}</th><th>${gradeLevels[2]}</th><th>${gradeLevels[3]}</th><th>Grade</th></tr></thead>
         <tbody>`;
 
     for (const item of itemsToShow) {
-        const savedGrade = grades[item.code] || "";
-        let displayValue = savedGrade;
-        if (isIGCSE && savedGrade) displayValue = convertNumberToLetterGrade(parseInt(savedGrade));
+    const savedGrade = grades[item.code] || "";
+    let displayValue = savedGrade;
+    if (isIGCSE && savedGrade) displayValue = convertNumberToLetterGrade(parseInt(savedGrade));
 
-        html += `<tr>
-            <td><strong>${item.code}</strong>${item.name ? `: ${item.name}` : ''}</td>
-            <td>${item.levels[gradeLevels[0]] || ""}</td>
-            <td>${item.levels[gradeLevels[1]] || ""}</td>
-            <td>${item.levels[gradeLevels[2]] || ""}</td>
-            <td>${item.levels[gradeLevels[3]] || ""}</td>
-            <td>`;
+    // --- Which column did the student pick for this standard? (teal highlight) ---
+    const selfGrade = selfAssessment[item.code] || "";
+    const selfLevelIndex = gradeToLevelIndex(selfGrade, isNCAS, isIB, isIGCSE);
 
-        if (isIGCSE) {
-            html += `<input type="text" value="${displayValue}" class="teacher-grade-input" data-standard="${item.code}" data-quest="${questId}" placeholder="A*-G" maxlength="2">`;
-        } else {
-            html += `<input type="number" step="0.5" min="1" max="${gradeInputMax}" value="${savedGrade}" class="teacher-grade-input" data-standard="${item.code}" data-quest="${questId}">`;
-        }
+    // --- Which column did the teacher already pick? (gold highlight) ---
+    const teacherLevelIndex = gradeToLevelIndex(savedGrade, isNCAS, isIB, isIGCSE);
 
-        html += `</td></tr>`;
+    // Build the class list for each description cell
+    const cellClasses = [0, 1, 2, 3].map(idx => {
+        const classes = [];
+        if (teacherLevelIndex === idx) classes.push('teacher-highlight');
+        if (selfLevelIndex === idx) classes.push('self-highlight');
+        return classes.join(' ');
+    });
+
+    html += `<tr>
+        <td><strong>${item.code}</strong>${item.name ? `: ${item.name}` : ''}</td>
+        <td class="${cellClasses[0]}">${item.levels[gradeLevels[0]] || ""}</td>
+        <td class="${cellClasses[1]}">${item.levels[gradeLevels[1]] || ""}</td>
+        <td class="${cellClasses[2]}">${item.levels[gradeLevels[2]] || ""}</td>
+        <td class="${cellClasses[3]}">${item.levels[gradeLevels[3]] || ""}</td>
+        <td>`;
+
+    if (isIGCSE) {
+        html += `<input type="text" value="${displayValue}" class="teacher-grade-input" data-standard="${item.code}" data-quest="${questId}" placeholder="A*-G" maxlength="2">`;
+    } else {
+        html += `<input type="number" step="0.5" min="1" max="${gradeInputMax}" value="${savedGrade}" class="teacher-grade-input" data-standard="${item.code}" data-quest="${questId}">`;
     }
+
+    // --- Teal badge showing the student's self-grade ---
+    if (selfGrade) {
+        html += `<div class="self-assessment-badge" title="Student's self-assessment">${escapeHtml(String(selfGrade))}</div>`;
+    } else {
+        html += `<div class="self-assessment-badge empty" title="Student has not self-assessed this standard">—</div>`;
+    }
+
+    html += `</td></tr>`;
+}
 
     html += `</tbody></table>
     <button class="teacher-save-grades-btn" data-quest="${questId}">Save Grades</button>`;
@@ -3805,8 +4102,6 @@ async function confirmDeleteStudents() {
     const SUPABASE_URL = 'https://qzxvwoyigrrpdywvhckk.supabase.co';
 
     for (const studentId of selectedStudentsForDelete) {
-        let authDeleted = false;
-
         try {
             const { data: { session } } = await window.supabase.auth.getSession();
             const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
@@ -3819,35 +4114,28 @@ async function confirmDeleteStudents() {
             });
 
             if (!response.ok) {
+                const errBody = await response.json().catch(() => ({}));
+                console.error('Delete failed for', studentId, errBody);
                 errorCount++;
             } else {
-                authDeleted = true;
+                deletedCount++;
             }
         } catch (err) {
+            console.error('Delete exception for', studentId, err);
             errorCount++;
         }
+    }
 
-        if (authDeleted) {
-            const { error: profileError } = await window.supabase
-                .from('profiles')
-                .delete()
-                .eq('id', studentId);
+        alert(`Deleted ${deletedCount} student(s). ${errorCount} error(s).`);
+        await updateStudentLimitDisplay();
+        deleteMode = false;
+        selectedStudentsForDelete.clear();
 
-            if (profileError) errorCount++;
-            else deletedCount++;
+        const deleteBtn = document.getElementById('delete-students-btn');
+        if (deleteBtn) {
+            deleteBtn.classList.remove('active');
+            deleteBtn.textContent = '🗑️ Delete Students';
         }
-    }
-
-    alert(`Deleted ${deletedCount} student(s). ${errorCount} error(s).`);
-    await updateStudentLimitDisplay();
-    deleteMode = false;
-    selectedStudentsForDelete.clear();
-
-    const deleteBtn = document.getElementById('delete-students-btn');
-    if (deleteBtn) {
-        deleteBtn.classList.remove('active');
-        deleteBtn.textContent = '🗑️ Delete Students';
-    }
 
     invalidateStudentsCache();
     invalidateTabCache('students');
@@ -6033,7 +6321,8 @@ async function canCreateCustomQuest() {
         .from('teacher_custom_quests')
         .select('*', { count: 'exact', head: true })
         .eq('teacher_id', auth.teacher.id)
-        .eq('deleted', false);
+        .eq('deleted', false)
+        .eq('grade_level', currentGradeLevel);
 
     if (error) return true;
     return count < 5;
@@ -6123,7 +6412,8 @@ async function saveCustomQuest() {
         .from('teacher_custom_quests')
         .select('*', { count: 'exact', head: true })
         .eq('teacher_id', auth.teacher.id)
-        .eq('deleted', false);
+        .eq('deleted', false)
+        .eq('grade_level', currentGradeLevel);
 
     const customImages = ["charimage/custom1.gif", "charimage/custom2.gif", "charimage/custom3.gif", "charimage/custom4.gif", "charimage/custom5.gif"];
     const customImage = customImages[count] || "charimage/teacher_quest.png";
@@ -7112,7 +7402,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMainTabs();
     initWorkModal();
     setupModalEscapeHandling();
-    setupTeacherForgotPassword();
     setupQuestDetailsTabs();
     setupQuestDetailsClose();
     setupICSImport();
@@ -7120,6 +7409,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initContestManagement();
     initEditContestModal();
     setupDateRangeTabs();
+    initResetPasswordModal();
 
     // Schedule range buttons
     document.getElementById('add-range-btn')?.addEventListener('click', addDateRange);
@@ -7255,6 +7545,205 @@ function showAllQuestAccordions() {
     if (container) container.querySelectorAll('.quest-accordion-item').forEach(item => item.style.display = 'block');
 }
 
+// ==========================================================
+// 23. RESET STUDENT PASSWORD (teacher-initiated)
+// ==========================================================
+
+const SUPABASE_FUNCTIONS_URL = 'https://qzxvwoyigrrpdywvhckk.supabase.co/functions/v1';
+
+function generateStrongPassword() {
+  // 12 chars, avoiding ambiguous characters (0/O, 1/l/I)
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let pwd = '';
+  const array = new Uint32Array(12);
+  crypto.getRandomValues(array);
+  for (let i = 0; i < 12; i++) {
+    pwd += chars[array[i] % chars.length];
+  }
+  return pwd;
+}
+
+function openResetPasswordModal() {
+  if (!currentStudentId) {
+    alert("No student selected.");
+    return;
+  }
+
+  const studentName = document.getElementById('selected-student-name')?.textContent
+                     || document.getElementById('teacher-profile-name')?.textContent
+                     || 'this student';
+
+  document.getElementById('reset-password-student-name').textContent =
+    `Student: ${studentName}`;
+
+  // Start blank — teacher or student types it (or uses Generate)
+  const input = document.getElementById('reset-password-input');
+  input.value = '';
+  input.type = 'password';   // reset visibility state
+  const eyeBtn = document.getElementById('toggle-reset-password-visibility');
+  if (eyeBtn) {
+    eyeBtn.textContent = '👁️';
+    eyeBtn.title = 'Show password';
+  }
+
+  document.getElementById('reset-password-message').innerHTML = '';
+
+  document.getElementById('reset-password-modal').style.display = 'flex';
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeResetPasswordModal() {
+  document.getElementById('reset-password-modal').style.display = 'none';
+  document.getElementById('reset-password-input').value = '';
+  document.getElementById('reset-password-message').innerHTML = '';
+}
+
+function toggleResetPasswordVisibility() {
+  const input = document.getElementById('reset-password-input');
+  const btn = document.getElementById('toggle-reset-password-visibility');
+  if (!input || !btn) return;
+
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈';
+    btn.title = 'Hide password';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁️';
+    btn.title = 'Show password';
+  }
+}
+
+async function confirmResetPassword() {
+  const studentUserId = currentStudentId;
+  const newPassword = document.getElementById('reset-password-input').value;
+  const msgEl = document.getElementById('reset-password-message');
+
+  if (!studentUserId) {
+    msgEl.textContent = 'No student selected.';
+    msgEl.style.color = '#ff8888';
+    return;
+  }
+
+  if (!newPassword || newPassword.length < 6) {
+    msgEl.textContent = 'Password must be at least 6 characters.';
+    msgEl.style.color = '#ff8888';
+    return;
+  }
+
+  // Require the teacher to confirm their own password (same pattern as other destructive actions)
+  const teacherPasswordValid = await verifyTeacherPassword();
+  if (!teacherPasswordValid) {
+    msgEl.textContent = 'Teacher password verification failed.';
+    msgEl.style.color = '#ff8888';
+    return;
+  }
+
+  msgEl.textContent = 'Resetting password...';
+  msgEl.style.color = '#ffd700';
+
+  try {
+    const { data: { session } } = await window.supabase.auth.getSession();
+
+    const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/reset-student-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`
+      },
+      body: JSON.stringify({ studentUserId, newPassword })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      msgEl.textContent = `Error: ${result.error || 'Reset failed'}`;
+      msgEl.style.color = '#ff8888';
+      return;
+    }
+
+    // Success — show the password prominently so the teacher can read/copy it
+    msgEl.innerHTML = `
+      <div style="background: rgba(76,175,80,0.15); border: 1px solid #4caf50;
+                  padding: 12px; border-radius: 6px; margin-top: 8px;">
+        <div style="color: #4caf50; font-weight: bold; margin-bottom: 8px;">
+          ✅ Password changed successfully
+        </div>
+        <div style="font-size: 12px; color: #ddd; margin-bottom: 6px;">
+          Share this with the student (click to copy):
+        </div>
+        <div id="new-password-display"
+             style="font-family: monospace; font-size: 16px; color: #ffd700;
+                    background: rgba(0,0,0,0.4); padding: 10px; border-radius: 4px;
+                    letter-spacing: 1px; cursor: pointer; user-select: all;
+                    text-align: center;"
+             title="Click to copy">
+          ${newPassword}
+        </div>
+      </div>
+    `;
+
+    const pwdDisplay = document.getElementById('new-password-display');
+    if (pwdDisplay) {
+      pwdDisplay.addEventListener('click', () => {
+        navigator.clipboard.writeText(newPassword).then(() => {
+          const original = pwdDisplay.textContent;
+          pwdDisplay.textContent = '✅ Copied!';
+          setTimeout(() => { pwdDisplay.textContent = original; }, 1200);
+        }).catch(() => {
+          alert('Copy failed. Please select and copy manually.');
+        });
+      });
+    }
+  } catch (err) {
+    console.error('Reset password error:', err);
+    msgEl.textContent = 'An unexpected error occurred.';
+    msgEl.style.color = '#ff8888';
+  }
+}
+
+function initResetPasswordModal() {
+  document.getElementById('change-student-password-link')
+    ?.addEventListener('click', (e) => {
+      e.preventDefault();
+      openResetPasswordModal();
+    });
+
+  document.getElementById('generate-password-btn')
+    ?.addEventListener('click', () => {
+      const input = document.getElementById('reset-password-input');
+      input.value = generateStrongPassword();
+      // If it was hidden, reveal it briefly so the teacher sees what was generated
+      if (input.type === 'password') {
+        toggleResetPasswordVisibility();
+      }
+    });
+
+  document.getElementById('toggle-reset-password-visibility')
+    ?.addEventListener('click', toggleResetPasswordVisibility);
+
+  document.getElementById('confirm-reset-password-btn')
+    ?.addEventListener('click', confirmResetPassword);
+
+  document.getElementById('cancel-reset-password-btn')
+    ?.addEventListener('click', closeResetPasswordModal);
+
+  document.querySelector('#reset-password-modal .teacher-work-close')
+    ?.addEventListener('click', closeResetPasswordModal);
+
+  const modal = document.getElementById('reset-password-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeResetPasswordModal();
+    });
+  }
+
+  // Submit on Enter key inside the password input
+  document.getElementById('reset-password-input')
+    ?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') confirmResetPassword();
+    });
+}
 
 // ==========================================================
 // SCHEDULE RANGE TABS + ICS IMPORT (kept at end)
@@ -7623,7 +8112,7 @@ async function viewStudentWork(userId, questId) {
         const quest = allQuests[questId];
         const questTitle = quest?.title || questId;
 
-        content.innerHTML = `
+                content.innerHTML = `
             <div style="max-width: 600px; margin: 0 auto;">
                 <h3 style="color: #ffd700;">${escapeHtml(work.title || questTitle)}</h3>
                 <div class="teacher-work-details">
@@ -7633,6 +8122,16 @@ async function viewStudentWork(userId, questId) {
                 </div>
                 <p><strong>Description:</strong><br>${escapeHtml(work.description || 'No description')}</p>
                 ${work.image_url ? `<div class="teacher-work-image" style="margin-top: 15px;"><img src="${work.image_url}" alt="Student work" style="max-width: 100%; border-radius: 8px;"></div>` : ''}
+                ${work.research_pdf_url ? `
+                    <div style="margin-top: 15px; padding: 12px; background: rgba(255,215,0,0.1);
+                                border: 1px solid rgba(255,215,0,0.35); border-radius: 8px;">
+                        <div style="color: #ffd700; font-weight: bold; margin-bottom: 6px;">📄 Research Document</div>
+                        <a href="${work.research_pdf_url}" target="_blank" download
+                           style="color: #b0f0e0; text-decoration: underline; word-break: break-all;">
+                            ${escapeHtml(work.research_pdf_name || 'Download PDF')}
+                        </a>
+                    </div>
+                ` : ''}
             </div>
         `;
 
