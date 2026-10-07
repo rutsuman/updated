@@ -8,8 +8,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 </head>
 <body>
+    <!------------------------ Active Quest Timer Button  --------------------------------------------------------->
+<div id="floating-active-quest" title="Active Quest" style="display: none;">
+    ⏱️ <span id="active-quest-timer">--:--</span>
+</div>
 
-<!-- ✅ SINGLE SCROLLABLE MAP CONTAINER -->
+<!------------------------------------- SINGLE SCROLLABLE MAP CONTAINER ------------------------------------------->
 <div id="map-container" class="ms-map-container">
     
     <!-- Single map image (one large scrollable map) -->
@@ -111,17 +115,50 @@
     <div class="hotspot debug" style="top:13.6%; left:97.3%;" data-city="quest77"></div>
     <div class="hotspot debug" style="top:14.8%; left:67%;" data-city="quest81"></div>
 </div> 
-<!-- Floating Navigation for Gallery -->
-    <div id="floating-nav" class="floating-nav" style="display: flex;">
-        <div class="floating-nav-item" id="floating-gallery" title="View Art Gallery">
-            🖼️ Gallery
+    
+<!------------------------------------- Floating Action Buttons Cluster ------------------------------------------->
+<div id="floating-cluster" role="toolbar" aria-label="Quick actions">
+
+    <!-- LEFT-SIDE BUTTONS (expand leftwards) -->
+    <button type="button" class="cluster-btn cluster-expand-left" id="cluster-gallery" title="Gallery">
+        <span class="cluster-label">Gallery</span>
+        <span class="cluster-icon">🖼️</span>
+    </button>
+
+    <button type="button" class="cluster-btn cluster-expand-left" id="cluster-achievements" title="Achievements">
+        <span class="cluster-label">Achievements</span>
+        <span class="cluster-icon">🏆</span>
+    </button>
+
+    <!-- CENTER BUTTON (search, click-to-toggle) -->
+    <div class="cluster-search-wrapper" id="cluster-search-wrapper">
+        <!-- Input floats above-left; results panel sits to the right of the input -->
+        <div class="cluster-search-panel" id="cluster-search-panel" aria-hidden="true">
+            <input
+                type="text"
+                id="cluster-search-input"
+                class="cluster-search-input"
+                placeholder="Search quest"
+                autocomplete="off">
+            <div class="cluster-search-results" id="cluster-search-results"></div>
         </div>
+        <button type="button" class="cluster-btn cluster-btn-search" id="cluster-search" title="Search">
+            <span class="cluster-icon">🔍</span>
+        </button>
     </div>
 
-    <!-- Active Quest Timer Button (no container needed) -->
-    <div class="floating-nav-item" id="floating-active-quest" title="Active Quest" style="display: none;">
-        ⏱️ <span id="active-quest-timer">--:--</span>
-    </div>
+    <!-- RIGHT-SIDE BUTTONS (expand rightwards) -->
+    <button type="button" class="cluster-btn cluster-expand-right" id="cluster-tree" title="Quest Tree">
+        <span class="cluster-icon">🌳</span>
+        <span class="cluster-label">Quest Tree</span>
+    </button>
+
+    <button type="button" class="cluster-btn cluster-expand-right" id="cluster-calendar" title="Calendar">
+        <span class="cluster-icon">📅</span>
+        <span class="cluster-label">Calendar</span>
+    </button>
+
+</div>
 <!----------------------------------------- Dropdown menu container ----------------------------------------------->
 <div id="dropdown-container">
     <select id="path-selector">
@@ -135,26 +172,20 @@
     <select id="mvp-quests" style="display:none;">
         <option value="">Select MVP Quest</option>
     </select>
-
-    <!--search engine info-->
-    <div id="quest-search-container">
-        <input
-            type="text"
-            id="quest-search"
-            placeholder="Search quest"
-            autocomplete="off"/>
-        <div id="quest-search-results"></div>
-    </div>
 </div>
 <!----------------------------------------- QUEST POP UP OVERLAY--------------------------------------------------->
 <div id="quest-overlay">
     <div id="quest-box">
         <span id="close-quest" onclick="closeQuest()">✖</span>
-        <!-- First row: Painter path, timer button, completed checkbox, difficulty -->
+
+        <!-- First row: Paths, Cancel Quest, Difficulty -->
         <div class="quest-row">
             <div class="quest-cell">
-                <strong> Paths:</strong>
+                <strong>Paths:</strong>
                 <span id="quest-paths"></span>
+            </div>
+            <div class="quest-cell cancel-quest-cell" id="cancel-quest-cell">
+                <strong id="cancel-quest-btn" style="cursor: pointer;">Cancel Quest</strong>
             </div>
             <div class="quest-cell difficulty">
                 <strong>Difficulty:</strong>
@@ -162,104 +193,112 @@
             </div>
         </div>
 
-        <!-- Second row: Quest title -->
+        <!-- Second row: Title / Check Box | Accept / Timer | Rationale -->
         <div class="quest-row">
             <div class="quest-cell full">
                 <h2 id="quest-title"></h2>
-                
+                <!-- Check Box-->
+                  <label id="quest-interest-label" class="quest-interest-label" style="display: none;">
+                  <input type="checkbox" id="quest-interest-checkbox">
+                  <span class="quest-interest-tooltip">I am interested in this quest</span>
+                  </label>
             </div>
-            <div class="quest-cell timer-cell">
-                <strong>Timer:</strong>
-                <div class="timer-controls">
-                    <button id="quest-accept" class="timer-accept-btn">Accept Quest</button>
-                    <div id="timer-display" class="timer-display">--:--</div>
-                </div>
+            <div class="quest-cell timer-cell clickable-cell" id="quest-accept-cell">
+                <strong id="quest-accept">Accept Quest</strong>
+                <div id="timer-display" class="timer-display" style="display:none;">--:--</div>
             </div>
-
-
-            <div class="quest-cell rationale-cell">
-                <h2 id="quest-rationale"></h2>
+            <div class="quest-cell rationale-cell clickable-cell" id="quest-rationale-cell">
+                <h2 id="quest-rationale">Rationale</h2>
             </div>
         </div>
 
-        <!-- Third row: Image, description, requirements -->
-         
+        <!-- Third row: Image | Description | Requirements -->
         <div class="quest-row">
             <div class="quest-cell image-cell">
                 <img id="quest-character" />
             </div>
-
             <div class="quest-cell description-cell">
                 <p id="quest-text"></p>
             </div>
-
             <div class="quest-cell requirements-cell">
                 <p id="quest-requirements"></p>
             </div>
         </div>
 
-        <!-- Fourth row: Rubric and prerequisites/leads tabs -->
+        <!-- Fourth row: Rubric | Prereq / Leads -->
         <div class="quest-row">
-            <div class="quest-cell rubric-cell">
-                <p id="quest-rubric"></p>
+            <div class="quest-cell rubric-cell clickable-cell" id="quest-rubric-cell">
+                <p id="quest-rubric">Rubric</p>
             </div>
-
-            
             <div class="quest-cell prereq-leads">
-                <!-- Tab buttons -->
                 <div class="tabs">
                     <button class="tab-button active" data-tab="prereq">Prerequisites (formative)</button>
                     <button class="tab-button" data-tab="leads">Leads To (Summative)</button>
                 </div>
-
-                <!-- Tab content -->
                 <div class="tab-content" id="tab-prereq">
-                    <ul id="quest-prereq-leads-prereq">
-                        <li>None</li>
-                    </ul>
+                    <ul id="quest-prereq-leads-prereq"><li>None</li></ul>
                 </div>
-
                 <div class="tab-content" id="tab-leads" style="display: none">
-                    <ul id="quest-prereq-leads-to">
-                        <li>None</li>
-                    </ul>
+                    <ul id="quest-prereq-leads-to"><li>None</li></ul>
                 </div>
             </div>
         </div>
 
-        <!-- Fifth row: Links, finished works and Reward -->
+        <!-- Fifth row: Links | Finished Work | Reward -->
         <div class="quest-row">
             <div class="quest-cell links-cell">
                 <ul id="quest-links"></ul>
             </div>
-            <div class="quest-cell work-cell" id="open-work-overlay">
-        <ul id="work-links"></ul>
-        <strong id="finished-work-btn" style="cursor: pointer;">Finished Work</strong>
-    </div>
+            <div class="quest-cell work-cell clickable-cell" id="open-work-overlay">
+                <ul id="work-links"></ul>
+                <strong id="finished-work-btn">Finished Work</strong>
+            </div>
             <div class="quest-cell reward-cell">
                 <strong>Reward</strong>
                 <p id="quest-reward"></p>
             </div>
-            </div>
         </div>
+    </div>
 </div>
-<!------------------------------------------- WORKS OVERLAY ------------------------------------------------------->
+<!------------------------------------------- WORK OVERLAY ------------------------------------------------------->
 <div id="work-overlay" class="work-overlay">
   <div class="overlay-content">
-    <!-- Close Button (optional but recommended) -->
+    <!-- Close Button -->
     <button class="close-overlay" type="button">×</button>
-    <!-- Photo Field -->
-    <div class="work-image-section">
-      <label for="work-image">Upload Photo</label>
-      <input type="file" id="work-image" name="work-image" accept="image/*">
-      <!-- Preview image (optional, useful later with JS) -->
-      <img id="image-preview" alt="Work preview">
+
+    <!-- ===================== UPLOAD ZONE (new) ===================== -->
+    <div class="work-upload-zone">
+
+      <div class="work-upload-title">Upload photo</div>
+
+      <div class="work-preview-wrap">
+        <img id="image-preview" alt="Work preview">
+      </div>
+
+      <!-- PDF status line: saved / just picked / hidden -->
+      <div class="work-pdf-status" id="work-pdf-status"></div>
+
+      <div class="work-upload-buttons">
+        <button type="button" id="upload-image-btn" class="work-btn work-btn-image">
+          Upload Image 📷
+        </button>
+        <button type="button" id="upload-pdf-btn" class="work-btn work-btn-pdf">
+          Upload PDF 📄
+        </button>
+      </div>
+
+      <div class="work-size-note">
+        Images and PDFs cannot be larger than 5 MB.
+      </div>
+
+      <!-- Hidden real file inputs (the buttons above trigger them) -->
+      <input type="file" id="work-image" name="work-image" accept="image/*" style="display:none;">
+      <input type="file" id="work-research-pdf" accept="application/pdf" style="display:none;">
+
     </div>
-    <button type="button" id="delete-work-image" class="delete-image-btn">Delete</button>
- <button type="button" class="save-work">Save</button>
+    <!-- =================== END UPLOAD ZONE =================== -->
 
-
-    <!-- Editable Fields -->
+    <!-- ===================== EDITABLE FIELDS (unchanged) ===================== -->
     <form class="work-details-form">
       <!-- First Line: Title / Size / Media -->
       <div class="work-main-info">
@@ -276,13 +315,37 @@
           <input type="text" id="work-media" name="work-media" placeholder="e.g. Acrylic on canvas">
         </div>
       </div>
+
       <!-- Second Line: Description -->
       <div class="field-group">
         <label for="work-description">Description</label>
-         <button type="button" class="help-btn" id="helpButton" aria-label="Description help">?</button>
-        <textarea id="work-description" name="work-description" rows="4" placeholder="Write a short description.No more than 60 words.."></textarea>
+        <button type="button" class="help-btn" id="helpButton" aria-label="Description help">?</button>
+        <textarea id="work-description" name="work-description" rows="4" placeholder="Write a short description. No more than 60 words."></textarea>
       </div>
     </form>
+    <!-- =================== END EDITABLE FIELDS =================== -->
+
+    <!-- ===================== ACTION BAR (new) ===================== -->
+    <div class="work-action-bar">
+      <div class="work-action-left">
+        <button type="button" id="delete-image-btn" class="work-btn work-btn-image" disabled>
+          Delete image 🗑️
+        </button>
+        <button type="button" id="delete-pdf-btn" class="work-btn work-btn-pdf" disabled>
+          Delete PDF 🗑️
+        </button>
+      </div>
+      <div class="work-action-right">
+        <button type="button" id="delete-all-btn" class="work-btn work-btn-danger" disabled>
+          Delete all
+        </button>
+        <button type="button" class="save-work work-btn work-btn-save" disabled>
+          Save
+        </button>
+      </div>
+    </div>
+    <!-- =================== END ACTION BAR =================== -->
+
   </div>
 </div>
 <!-------------------------------------- Fullscreen Image Viewer Overlay -------------------------------------->
@@ -346,6 +409,40 @@
       <p class="example">"In this piece, I explore how cultural identity shifts between private and public spaces by contrasting internal desire with the restrictive Superego. I used layered acrylic glazes and palette knife textures to build depth and emotional tension. The asymmetrical composition and high-contrast lighting reinforce a sense of isolation."</p>
     </div>
   </div>
+</div>
+<!-- =========================================PROGRESS TREE OVERLAY-----======================================== -->
+<div id="quest-tree-overlay">
+    <div id="quest-tree-panel">
+
+        <!-- Header -->
+        <div class="tree-header">
+            <!-- Student avatar — visual only, bottom-left of the tree panel -->
+            <h2 class="tree-title">Quest Progress Tree</h2>
+            <button id="close-quest-tree" class="tree-close-btn" aria-label="Close">✕</button>
+        </div>
+            <img id="tree-student-avatar"
+                class="tree-student-avatar"
+                src="profile.png"
+                alt="Student avatar">
+
+        <!-- Scrollable body -->
+        <div class="tree-body">
+
+            <!-- Summative trees go here -->
+            <div id="tree-grid" class="tree-grid">
+                <!-- Filled by JS in step 4 -->
+            </div>
+
+            <!-- Free assignments strip -->
+            <div id="tree-free-strip" class="tree-free-strip">
+                <div class="tree-free-title">Free Assignments</div>
+                <div id="tree-free-list" class="tree-free-list">
+                    <!-- Filled by JS in step 5 -->
+                </div>
+            </div>
+
+        </div>
+    </div>
 </div>
 <!------------------------------------------ GALLERY OVERLAY ------------------------------------------------------>
 <div id="gallery-overlay" class="quest-overlay" style="display:none;">
@@ -447,10 +544,6 @@
 </div>
 <!--parchment sound-->
 <audio id="unroll-sound" src="unroll.m4a" preload="auto"></audio>
- <!-- Calendar Button -->
-<button id="calendar-btn" class="calendar-btn">📅 Calendar</button>
-<!-- Achievements Button -->
-<button id="achievements-btn" class="achievements-btn">🏆 Achievements</button>
 <!-------------------------------------------- ACHIEVEMENTS OVERLAY------------------------------------------------>
 <div id="achievements-overlay" class="quest-overlay">
   <div class="quest-box">
@@ -640,22 +733,6 @@
         <button class="restriction-close" onclick="closeAcceptQuestRestrictionPopup()">OK</button>
     </div>
 </div>
-<!--------------------------------- New Quest Announcement Overlay ------------------------------------------------>
-<div id="new-quest-overlay" class="new-quest-overlay" style="display: none;">
-    <div id="new-quest-box">
-        <div class="new-quest-header">
-            <h2>✨ New Quests Added! ✨</h2>
-            <button id="close-new-quest" class="close-new-quest">×</button>
-        </div>
-        <div class="new-quest-content">
-            <p>New adventures await in Artheim:</p>
-            <ul id="new-quest-list"></ul>
-        </div>
-        <div class="new-quest-footer">
-            <button id="new-quest-continue" class="new-quest-btn">Continue Journey</button>
-        </div>
-    </div>
-</div>
 <!--------------------------------------- Student Calendar Modal ------------------------------------------------->
 <div id="calendar-modal" class="quest-overlay" style="display: none;">
     <div class="quest-box" style="max-width: 800px; width: 90%;">
@@ -741,12 +818,20 @@
         </div>
     </div>
 </div>
-<!-- Student Work Details Modal (for contest artwork) -->
+<!--------------------------------- Student Work Details Modal (for contest artwork) ------------------------------->
 <div id="teacher-work-modal" class="quest-overlay" style="display: none;">
     <div class="quest-box" style="max-width: 500px; width: 90%;">
         <span class="close-btn" style="position: absolute; top: 15px; right: 20px;">✖</span>
         <div id="teacher-work-content"></div>
     </div>
+</div>
+<!------------------------------------------- Hotspot hover tooltip ---------------------------------------------->
+<div id="hotspot-tooltip" class="hotspot-tooltip" role="tooltip" aria-hidden="true">
+    <div class="hotspot-tooltip-title">
+        <span class="hotspot-tooltip-title-text"></span>
+        <span class="hotspot-tooltip-check" style="display: none;">✓</span>
+    </div>
+    <div class="hotspot-tooltip-path"></div>
 </div>
 <!------------------------------------ Supabase client library ---------------------------------------------------->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -760,3 +845,4 @@
 <script src="script.js"></script>
 </body>
 </html>
+
