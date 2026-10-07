@@ -1219,6 +1219,196 @@ select:focus {
   display: block;
   border-radius: 0; /* Remove any rounding */
 }
+
+
+
+
+/* ==========================================================
+   EXP BAR — under the profile button
+   ========================================================== */
+
+.exp-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 3px;
+    padding: 0 2px;
+    width: 100%;
+}
+
+.exp-bar {
+    position: relative;
+    flex: 1;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 215, 0, 0.25);
+}
+
+.exp-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ffb300 0%, #ffd700 55%, #ffe97a 100%);
+    box-shadow: 0 0 6px rgba(255, 215, 0, 0.55);
+    border-radius: 4px 0 0 4px;
+    transition: width 600ms cubic-bezier(.2, .9, .3, 1.2);
+}
+
+.exp-level {
+    font-size: 10px;
+    font-weight: 700;
+    color: #ffd700;
+    letter-spacing: 0.5px;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+    white-space: nowrap;
+    line-height: 1;
+}
+
+/* Flash animation — triggered via JS when EXP is added */
+.exp-bar-fill.exp-pulse {
+    animation: expPulse 700ms ease-out;
+}
+
+@keyframes expPulse {
+    0%   { filter: brightness(1);   }
+    35%  { filter: brightness(1.9) drop-shadow(0 0 8px #ffd700); }
+    100% { filter: brightness(1);   }
+}
+
+/* Floating "+5" indicator near the bar */
+.exp-float {
+    position: absolute;
+    right: 6px;
+    top: -14px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #ffd700;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.95);
+    pointer-events: none;
+    opacity: 0;
+}
+
+.exp-float.go {
+    animation: expFloat 1100ms ease-out forwards;
+}
+
+@keyframes expFloat {
+    0%   { opacity: 0; transform: translateY(4px)   scale(0.9); }
+    25%  { opacity: 1; transform: translateY(-2px)  scale(1.1); }
+    100% { opacity: 0; transform: translateY(-18px) scale(1.0); }
+}
+
+/* ==========================================================
+   LEVEL-UP CELEBRATION (modal overlay)
+   ========================================================== */
+
+#levelup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 25000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+    animation: levelupFadeIn 300ms ease-out;
+}
+
+#levelup-overlay.show {
+    display: flex;
+}
+
+#levelup-overlay .levelup-box {
+    background: linear-gradient(160deg, #1a1a3e 0%, #0f0f24 100%);
+    border: 2px solid #ffd700;
+    border-radius: 18px;
+    padding: 36px 48px;
+    text-align: center;
+    max-width: 420px;
+    box-shadow: 0 0 60px rgba(255, 215, 0, 0.35), 0 0 120px rgba(255, 215, 0, 0.12);
+    animation: levelupPop 550ms cubic-bezier(.2, .9, .3, 1.4);
+    position: relative;
+}
+
+#levelup-overlay .levelup-crown {
+    font-size: 54px;
+    line-height: 1;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 0 12px #ffd700);
+    animation: levelupCrown 1.4s ease-in-out infinite;
+}
+
+#levelup-overlay .levelup-title {
+    font-size: 22px;
+    color: #ffd700;
+    font-weight: 800;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.6);
+}
+
+#levelup-overlay .levelup-level {
+    font-size: 56px;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 2px;
+    margin: 12px 0 6px;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.9);
+}
+
+#levelup-overlay .levelup-sub {
+    font-size: 14px;
+    color: #cfc9a5;
+    margin-bottom: 22px;
+}
+
+#levelup-overlay .levelup-btn {
+    background: linear-gradient(180deg, #ffd700, #d4a400);
+    border: none;
+    color: #1a1a2e;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 1px;
+    padding: 12px 30px;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(255, 215, 0, 0.45);
+    transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+#levelup-overlay .levelup-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 22px rgba(255, 215, 0, 0.7);
+}
+
+#levelup-overlay .levelup-btn:active {
+    transform: translateY(0);
+}
+
+@keyframes levelupFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes levelupPop {
+    0%   { transform: scale(0.7) rotate(-3deg); opacity: 0; }
+    60%  { transform: scale(1.05) rotate(1deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes levelupCrown {
+    0%, 100% { transform: translateY(0) rotate(-4deg); }
+    50%      { transform: translateY(-6px) rotate(4deg); }
+}
+
+
+
+
+
+
+
 /* OVERLAY (same as quest) */
 .overlay {
   position: fixed;
@@ -10171,6 +10361,16 @@ input:focus,
     word-wrap: break-word;
     max-width: 140px;
     min-width: 70px;
+    transition: background-color 350ms ease, color 350ms ease,
+                box-shadow 350ms ease, border-color 350ms ease;
+}
+
+.tree-svg path {
+    transition: stroke 400ms ease;
+}
+
+.tree-svg line {
+    transition: stroke 400ms ease;
 }
 .tree-node-formative:hover {
     filter: brightness(0.96);
@@ -10688,4 +10888,36 @@ input:focus,
 /* Kill the redundant <br> spacing from the JS-generated markup */
 .cluster-search-panel .cluster-search-results .search-result br {
     display: none;
+}
+
+
+/* ==========================================================
+   EXP BAR CUSTOM TOOLTIP
+   ========================================================== */
+
+.exp-bar-tooltip {
+    position: fixed;
+    z-index: 26000;
+    background: rgba(20, 20, 40, 0.98);
+    border: 1px solid #ffd700;
+    border-radius: 6px;
+    color: #f0e6d2;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65);
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+}
+
+.exp-bar-tooltip.show {
+    opacity: 1;
+}
+
+.exp-bar-tooltip .exp-bar-tooltip-level {
+    color: #ffd700;
+    font-weight: 800;
+    margin-right: 6px;
 }
