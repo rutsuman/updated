@@ -104,6 +104,29 @@ let cachedScheduleData = {
     frequencyDays: []
 };
 let currentContestForSubmission = null;
+
+// --- EXP SYSTEM STATE ---
+let expTotal = 0;
+let expLog = {};              // { "quest:quest42": 50, "badge:master_perspective": 100, ... }
+let _expSaveDebounce = null;
+
+const EXP_RULES = {
+    FORMATIVE_COMPLETE:    50,
+    SUMMATIVE_COMPLETE:   150,
+    VOTE:                  15,
+    SUBMIT_ART_BATTLE:     40,
+    COMMENT:                5,
+    BADGE_UNLOCKED:       100,   // first Quest Completer tier
+    BADGE_TIER_2:         150,   // Quest Completer II
+    BADGE_TIER_3:         200,   // Quest Completer III
+    FIRST_UPLOAD_OF_WEEK:  25,
+    EXTRA_UPLOAD_SAME_WEEK: 5,
+    ALL_STANDARDS_HIGH:     5,   // every self-assessed standard ≥ 3.5
+    BEFORE_TIME_FORMATIVE:  5,
+    BEFORE_TIME_SUMMATIVE: 20
+};
+
+
 window.raceJitterInterval = null;
 
 // --- Cache Invalidation Functions (NEW) ---
@@ -683,16 +706,33 @@ async function saveWorkData() {
         }
     }
 
-    saveWorkToCloud(questId, workData, imageFile, uploadId, pdfMeta).then(async success => {
+    // --- EXP: capture submission facts BEFORE the async cloud save,
+    // so the fact is present even if the DB write fails and we retry ---
+    const _expFacts = {
+        submittedAt: new Date().toISOString(),
+        submittedAtWeek: getISOWeekKey(),
+        beforeDeadline: (function () {
+            // No timer, no deadline → no before-deadline fact to record
+            if (!questStartTimes[questId]) return false;
+            return calculateRemainingMinutes(questId) > 0;
+        })()
+    };
+
+    saveWorkToCloud(questId, workData, imageFile, uploadId, pdfMeta, _expFacts).then(async success => {
         if (saveBtn) {
             saveBtn.textContent = "Save";
             saveBtn.disabled = false;
         }
 
-        // Release lock
         isSavingWork = false;
 
-                if (success) {
+        if (success) {
+            // --- EXP: attach facts to the local mirror so it's available
+            // even before the next cloud reload ---
+            if (!studentWorks[questId]) studentWorks[questId] = {};
+            studentWorks[questId].expFacts = _expFacts;
+            saveStudentWorks();
+
             alert("🎨 Work saved successfully!");
             await loadCloudWorksIntoGallery();
             snapshotWorkOverlay();
@@ -1194,6 +1234,574 @@ function getQuestsFileForFramework(framework) {
         default:
             return 'quests.json';
     }
+}
+// ==============================================
+// SECTION 8b: EXP SYSTEM — CORE HELPERS
+// ==============================================
+
+/**
+ * Load EXP state from localStorage. Called once at startup.
+ * The cloud version (loadStudentDataFromCloud) will overwrite these
+ * values after login if the student has progress on the server.
+ */
+function loadExpFromLocal() {
+    try {
+        const total = localStorage.getItem("expTotal");
+        const log = localStorage.getItem("expLog");
+        expTotal = total ? parseInt(total, 10) || 0 : 0;
+        expLog = log ? JSON.parse(log) : {};
+    } catch (e) {
+        console.warn("Failed to load EXP from localStorage:", e);
+        expTotal = 0;
+        expLog = {};
+    }
+}
+
+function saveExpToLocal() {
+    localStorage.setItem("expTotal", String(expTotal));
+    localStorage.setItem("expLog", JSON.stringify(expLog));
+}
+
+/**
+ * Level curve: level N requires 100 * N * (N+1) / 2 total EXP.
+ * L0 = 0–99, L1 = 100–299, L2 = 300–599, L3 = 600–999, ...
+ */
+function getLevelInfo(totalExp) {
+    let level = 0;
+    while (true) {
+        const nextLevelTotal = 100 * (level + 1) * (level + 2) / 2;
+        if (totalExp < nextLevelTotal) break;
+        level++;
+    }
+    const currentLevelFloor = level === 0 ? 0 : (100 * level * (level + 1) / 2);
+    const nextLevelCeil = 100 * (level + 1) * (level + 2) / 2;
+    return {
+        level,
+        current: totalExp - currentLevelFloor,
+        needed: nextLevelCeil - currentLevelFloor,
+        total: totalExp
+    };
+}
+
+/**
+ * Recompute expTotal from expLog. expLog is the source of truth;
+ * expTotal is a derived cache. Call this after ANY mutation of expLog.
+ */
+function recomputeExpTotal() {
+    expTotal = Object.values(expLog).reduce((s, v) => s + (v || 0), 0);
+    saveExpToLocal();
+    scheduleExpSaveToCloud();
+    renderExpBar();
+    return expTotal;
+}
+
+/**
+ * Award EXP. Dedupes by sourceKey when provided — calling twice with the
+ * same key silently does nothing. Use stable keys (see naming table below).
+ */
+function addExp(amount, sourceKey = null, reason = "") {
+    if (!amount || amount <= 0) return 0;
+    if (sourceKey && expLog[sourceKey] !== undefined) return 0;
+
+    const beforeLevel = getLevelInfo(expTotal).level;
+    if (sourceKey) expLog[sourceKey] = amount;
+    recomputeExpTotal();
+
+    // Explicit pulse + "+N" on the bar
+    renderExpBar({ delta: amount });
+
+    const afterLevel = getLevelInfo(expTotal).level;
+
+    console.log(`[EXP] +${amount} (${reason || sourceKey || "bonus"}) → total ${expTotal}`);
+    if (afterLevel > beforeLevel) {
+        console.log(`[EXP] Level up! ${beforeLevel} → ${afterLevel}`);
+        showLevelUpNotification(beforeLevel, afterLevel);
+    }
+    return amount;
+}
+
+/**
+ * Remove EXP by prefix. Matches keys that equal the prefix OR start
+ * with "<prefix>:" — so revokeExpPrefix("quest:quest42") also nukes
+ * "quest:quest42", "before_time:quest42" (via prefix "before_time:quest42"),
+ * etc. Caller decides which prefixes to clear.
+ */
+function revokeExpPrefix(prefix) {
+    // Tolerate callers passing "test:" instead of "test"
+    const cleanPrefix = prefix.endsWith(":") ? prefix.slice(0, -1) : prefix;
+    let removed = 0;
+    for (const key of Object.keys(expLog)) {
+        if (key === cleanPrefix || key.startsWith(cleanPrefix + ":")) {
+            removed += expLog[key] || 0;
+            delete expLog[key];
+        }
+    }
+    if (removed > 0) {
+        console.log(`[EXP] revoked ${removed} for prefix "${prefix}"`);
+        recomputeExpTotal();
+    }
+    return removed;
+}
+
+/**
+ * Cloud persistence — debounced so multiple awards in one tick
+ * only hit the DB once.
+ */
+function scheduleExpSaveToCloud() {
+    clearTimeout(_expSaveDebounce);
+    _expSaveDebounce = setTimeout(saveExpToCloud, 800);
+}
+
+async function saveExpToCloud() {
+    if (isLoadingFromCloud) return;
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (!session) return;
+    const { error } = await window.supabase
+        .from("student_progress")
+        .update({
+            exp_total: expTotal,
+            exp_log: expLog,
+            updated_at: new Date().toISOString()
+        })
+        .eq("user_id", session.user.id);
+    if (error) console.error("[EXP] cloud save failed:", error);
+}
+
+/**
+ * ISO week key, e.g. "2026-W41". Used for weekly upload bonuses.
+ */
+function getISOWeekKey(date = new Date()) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/**
+ * Achievement EXP. Achievements are derived from completedQuests, so we
+ * re-run this after every state change; the sourceKey dedupes.
+ */
+function checkAchievementExp() {
+    if (!achievementsData) return;
+    for (const ach of achievementsData) {
+        const key = `achievement:${ach.title}`;
+        if (expLog[key] !== undefined) continue;
+        const complete = ach.questsNeeded.every(qid => completedQuests[qid]);
+        if (!complete) continue;
+        const amount = ach.exp || 0;
+        if (amount <= 0) continue;
+        addExp(amount, key, `Achievement: ${ach.title}`);
+        if (typeof showBadgeNotification === "function") {
+            showBadgeNotification(`🏆 ${ach.title} (+${amount} EXP)`);
+        }
+    }
+}
+
+/**
+ * Badge EXP. Awarded on first earn (any tier) and on tier upgrades.
+ * Tier-1 (first earn) = 100, tier-2 = 150, tier-3 = 200.
+ * Non-progression badges (path/skill) are one-time at 100.
+ * Keys: "badge:<id>:t1", "badge:<id>:t2", "badge:<id>:t3".
+ */
+function checkBadgeExp() {
+    if (!badgesData || !earnedBadges) return;
+    for (const badge of badgesData) {
+        const info = earnedBadges[badge.id];
+        if (!info || !info.earned) continue;
+
+        if (badge.progression && info.level) {
+            // info.level is 1-based ("I", "II", "III" mapped to numbers in JSON).
+            // Assume info.level is numeric; if it's a string roman numeral, we
+            // fall back to parsing.
+            const tier = typeof info.level === "number"
+                ? info.level
+                : ({"I": 1, "II": 2, "III": 3}[String(info.level).toUpperCase()] || 1);
+
+            const tierAmounts = {
+                1: EXP_RULES.BADGE_UNLOCKED,   // 100
+                2: EXP_RULES.BADGE_TIER_2,     // 150
+                3: EXP_RULES.BADGE_TIER_3      // 200
+            };
+            const amount = tierAmounts[tier] || EXP_RULES.BADGE_UNLOCKED;
+            const key = `badge:${badge.id}:t${tier}`;
+            if (expLog[key] === undefined) {
+                addExp(amount, key, `Badge: ${badge.name} (tier ${tier})`);
+                if (typeof showBadgeNotification === "function") {
+                    showBadgeNotification(`🎖️ ${badge.name} (+${amount} EXP)`);
+                }
+            }
+        } else {
+            // Non-progression badge → one-time 100.
+            const key = `badge:${badge.id}`;
+            if (expLog[key] === undefined) {
+                addExp(EXP_RULES.BADGE_UNLOCKED, key, `Badge: ${badge.name}`);
+                if (typeof showBadgeNotification === "function") {
+                    showBadgeNotification(`🎖️ ${badge.name} (+${EXP_RULES.BADGE_UNLOCKED} EXP)`);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Weekly upload bonus reconciler. Ensures the "first upload of the week"
+ * bonus only stands if at least one upload exists in that week, and
+ * removes any stale weekly keys whose quest IDs no longer exist.
+ */
+function reconcileWeeklyUploadBonuses() {
+    // Weeks that still have at least one upload recorded
+    const weeksWithUploads = new Set();
+    for (const key of Object.keys(expLog)) {
+        const m = key.match(/^upload:([^:]+):(.+)$/);
+        if (m) weeksWithUploads.add(m[2]);
+    }
+    // First-of-week bonus keys without a matching upload → revoke
+    for (const key of Object.keys(expLog)) {
+        const m = key.match(/^first_upload:(.+)$/);
+        if (m && !weeksWithUploads.has(m[1])) {
+            delete expLog[key];
+        }
+    }
+    recomputeExpTotal();
+}
+
+/**
+ * Full EXP reconciler. Idempotent — safe to call after any state change.
+ * Order matters: revoke derived EXP first, then re-derive.
+ */
+function reconcileExp() {
+    // Badges & achievements are derived from completedQuests → recompute.
+    for (const key of Object.keys(expLog)) {
+        if (key.startsWith("badge:") || key.startsWith("achievement:")) {
+            delete expLog[key];
+        }
+    }
+    reconcileWeeklyUploadBonuses();
+    if (typeof checkAllBadges === "function") checkAllBadges(false);
+    checkBadgeExp();
+    checkAchievementExp();
+
+    // Deferred EXP from graded work (upload bonuses, before-time, high standards)
+    try { syncExpFromGradedWork(); } catch (e) { console.warn("[EXP] sync failed:", e); }
+
+    recomputeExpTotal();
+}
+
+// ==============================================
+// SECTION 8c: DEFERRED EXP — SUBMISSION-FACT SYSTEM
+// ==============================================
+//
+// EXP tied to a submission is awarded only when the teacher grades it.
+// Facts captured at submit time (submittedAt, submittedAtWeek, beforeDeadline)
+// live in `expFacts` on studentWorks[questId] and in the DB column
+// `student_works.exp_metadata`. The award happens in syncExpFromGradedWork().
+
+/**
+ * Returns true if the quest has at least one graded standard that is
+ * considered "earned" for EXP purposes.
+ *
+ * - Excludes `teacher_comment` and `completed_at` (bookkeeping keys).
+ * - Treats `0`, null, undefined, "" as "no grade" — a 0 is a legitimate
+ *   teacher-assigned score but it does not count for EXP.
+ * - Framework-agnostic: works for NCAS (numeric), IB (bands), IGCSE (letters).
+ */
+function hasAnyEarnedGradeForQuest(questId) {
+    const quest = quests[questId];
+    if (!quest) return false;
+    const column = quest.style === "mvp" ? "mvpGrade" : "grade";
+    const grades = questGrades[questId]?.[column];
+    if (!grades || typeof grades !== "object") return false;
+
+    return Object.entries(grades).some(([key, v]) => {
+        if (key === "teacher_comment") return false;
+        if (key === "completed_at") return false;
+        if (v === null || v === undefined || v === "") return false;
+        // `0` (number or numeric string) does NOT count
+        if (typeof v === "number" && v === 0) return false;
+        if (typeof v === "string" && v.trim() === "0") return false;
+        return true;
+    });
+}
+
+/**
+ * Sync deferred EXP for every completed quest whose submission facts
+ * were captured at upload time.
+ *
+ * Idempotent — every award is keyed in expLog, so calling this repeatedly
+ * is safe and cheap.
+ *
+ * Called from:
+ *   - refreshStudentData()          (after cloud load)
+ *   - reconcileExp()                (at the end, after badge/achievement reset)
+ */
+function syncExpFromGradedWork() {
+    if (!completedQuests) return;
+
+      for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+        if (isCompleted !== true) continue;
+
+        // Gate: only award if the teacher actually graded something
+        if (!hasAnyEarnedGradeForQuest(questId)) continue;
+
+        const quest = quests[questId];
+
+        // --- Quest completion EXP (once per quest) ---
+        const completionKey = `quest:${questId}`;
+        if (expLog[completionKey] === undefined && quest) {
+            addExp(
+                quest.style === "mvp" ? EXP_RULES.SUMMATIVE_COMPLETE : EXP_RULES.FORMATIVE_COMPLETE,
+                completionKey,
+                `${quest.style === "mvp" ? "Summative" : "Formative"} complete: ${quest.title || questId}`
+            );
+        }
+
+        const work = studentWorks[questId];
+        const facts = work?.expFacts;
+        if (!facts || !facts.submittedAtWeek) continue;
+
+        const week = facts.submittedAtWeek;
+
+        // --- 1. First upload of that (submission) week ---
+        const firstKey = `first_upload:${week}`;
+        if (expLog[firstKey] === undefined) {
+            addExp(
+                EXP_RULES.FIRST_UPLOAD_OF_WEEK,
+                firstKey,
+                `First upload of week ${week} (awarded at grade time)`
+            );
+        }
+
+        // --- 2. Per-quest upload bonus for that week ---
+        const uploadKey = `upload:${questId}:${week}`;
+        if (expLog[uploadKey] === undefined) {
+            addExp(
+                EXP_RULES.EXTRA_UPLOAD_SAME_WEEK,
+                uploadKey,
+                `Upload bonus for ${questId} (week ${week})`
+            );
+        }
+
+        // --- 3. Before-deadline bonus (once per quest) ---
+        const beforeKey = `before_time:${questId}`;
+        if (facts.beforeDeadline === true && expLog[beforeKey] === undefined) {
+            const quest = quests[questId];
+            const isMVP = quest?.style === "mvp";
+            addExp(
+                isMVP ? EXP_RULES.BEFORE_TIME_SUMMATIVE : EXP_RULES.BEFORE_TIME_FORMATIVE,
+                beforeKey,
+                `Before-deadline bonus (${isMVP ? "summative" : "formative"}): ${questId}`
+            );
+        }
+
+        // --- 4. All-standards-high bonus (numeric only, ≥ 3.5) ---
+        const highKey = `high_standards:${questId}`;
+        if (expLog[highKey] === undefined) {
+            const assessment = window.selfAssessments?.[questId];
+            if (assessment && typeof assessment === "object") {
+                const entries = Object.entries(assessment).filter(
+                    ([k]) => k !== "teacher_comment" && k !== "completed_at"
+                );
+                if (entries.length > 0) {
+                    // All values must be numeric AND ≥ 3.5
+                    let allNumericHigh = true;
+                    for (const [, v] of entries) {
+                        const num = parseFloat(v);
+                        if (isNaN(num)) { allNumericHigh = false; break; }
+                        if (num < 3.5) { allNumericHigh = false; break; }
+                    }
+                    if (allNumericHigh) {
+                        addExp(
+                            EXP_RULES.ALL_STANDARDS_HIGH,
+                            highKey,
+                            `All standards ≥ 3.5 for ${questId}`
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Award EXP for approved art battle submissions.
+ * Called when the student opens the Art Battle overlay (no realtime —
+ * they see the reward the next time they check the contest).
+ *
+ * Idempotent — keyed by contest ID.
+ */
+async function syncArtBattleSubmissionExp() {
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (!session) return;
+
+    const { data: submissions, error } = await window.supabase
+        .from('art_battle_submissions')
+        .select('contest_id, status')
+        .eq('student_id', session.user.id)
+        .eq('status', 'approved');
+
+    if (error) {
+        console.warn("[EXP] art battle sync failed:", error.message);
+        return;
+    }
+
+    for (const sub of (submissions || [])) {
+        const key = `submit_battle:${sub.contest_id}`;
+        if (expLog[key] === undefined) {
+            addExp(
+                EXP_RULES.SUBMIT_ART_BATTLE,
+                key,
+                `Art battle submission approved (contest ${sub.contest_id})`
+            );
+        }
+    }
+}
+
+// ==============================================
+// SECTION 8d: EXP BAR RENDERING & LEVEL-UP
+// ==============================================
+
+/**
+ * Render the EXP bar under the profile button.
+ * Safe to call at any time — if the DOM elements are missing, it no-ops.
+ *
+ * @param {Object} [opts]
+ * @param {number} [opts.delta]  — when set, plays the pulse animation
+ *                                 and shows a floating "+N" indicator.
+ * @param {number} [opts.fromLevel] — when set, plays nothing special;
+ *                                    level-up is handled separately.
+ */
+let _lastRenderedLevel = null;
+
+function renderExpBar(opts = {}) {
+    const wrap = document.getElementById("exp-bar-wrap");
+    const fill = document.getElementById("exp-bar-fill");
+    const levelText = document.getElementById("exp-level-text");
+    if (!wrap || !fill || !levelText) return; // not on this page
+
+    const info = getLevelInfo(expTotal);
+    const pct = info.needed > 0
+        ? Math.max(0, Math.min(100, (info.current / info.needed) * 100))
+        : 0;
+
+    // Bar fill width
+    fill.style.width = pct.toFixed(2) + "%";
+
+    // Level text
+    const newLevelLabel = `Lv ${info.level}`;
+    if (levelText.textContent !== newLevelLabel) {
+        levelText.textContent = newLevelLabel;
+    }
+
+        // --- Custom tooltip (instant, unlike native title) ---
+    // --- Custom tooltip (instant, unlike native title) ---
+    if (!wrap._expTooltipHooked) {
+        wrap._expTooltipHooked = true;
+
+        // Remove any orphaned tooltip from a previous session
+        document.querySelectorAll(".exp-bar-tooltip").forEach(el => el.remove());
+
+        const tip = document.createElement("div");
+        tip.className = "exp-bar-tooltip";
+        document.body.appendChild(tip);
+
+        const show = (e) => {
+            const cur = getLevelInfo(expTotal);
+            tip.innerHTML = `<span class="exp-bar-tooltip-level">Lv ${cur.level}</span>`
+                          + `${cur.current} / ${cur.needed} EXP`;
+            tip.classList.add("show");
+            position(e);
+        };
+        const hide = () => tip.classList.remove("show");
+        const position = (e) => {
+            const rect = wrap.getBoundingClientRect();
+            const tr = tip.getBoundingClientRect();
+
+            const left = rect.right - tr.width;
+            tip.style.left = `${left}px`;
+
+            let top = rect.bottom + 6;
+            if (top + tr.height > window.innerHeight - 8) {
+                top = rect.top - tr.height - 6;
+            }
+            tip.style.top = `${top}px`;
+
+            if (left < 8) {
+                tip.style.left = "8px";
+            }
+        };
+
+        wrap.addEventListener("mouseenter", show);
+        wrap.addEventListener("mousemove", position);
+        wrap.addEventListener("mouseleave", hide);
+    }
+
+    // Pulse + floating delta
+    if (opts.delta && opts.delta > 0) {
+        fill.classList.remove("exp-pulse");
+        void fill.offsetWidth;   // force reflow to restart animation
+        fill.classList.add("exp-pulse");
+
+        const float = document.createElement("div");
+        float.className = "exp-float";
+        float.textContent = `+${opts.delta}`;
+        wrap.appendChild(float);
+        void float.offsetWidth;
+        float.classList.add("go");
+        setTimeout(() => float.remove(), 1200);
+    }
+
+    _lastRenderedLevel = info.level;
+}
+
+/**
+ * Level-up celebration.
+ * Fires whenever addExp crosses a level threshold.
+ */
+function showLevelUpNotification(fromLevel, toLevel) {
+    // Don't stack multiple modals if several level-ups happen in one sync
+    const existing = document.getElementById("levelup-overlay");
+    if (existing) {
+        // Update the text and re-trigger the pop animation
+        const lvlEl = existing.querySelector(".levelup-level");
+        if (lvlEl) lvlEl.textContent = `LEVEL ${toLevel}`;
+        const box = existing.querySelector(".levelup-box");
+        if (box) {
+            box.style.animation = "none";
+            void box.offsetWidth;
+            box.style.animation = "";
+        }
+        return;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.id = "levelup-overlay";
+    overlay.className = "show";
+    overlay.innerHTML = `
+        <div class="levelup-box">
+            <div class="levelup-crown">👑</div>
+            <div class="levelup-title">LEVEL UP!</div>
+            <div class="levelup-level">LEVEL ${toLevel}</div>
+            <div class="levelup-sub">You reached a new rank. Keep creating!</div>
+            <button class="levelup-btn" id="levelup-close-btn">CONTINUE</button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => {
+        overlay.classList.remove("show");
+        setTimeout(() => overlay.remove(), 250);
+    };
+
+    document.getElementById("levelup-close-btn").addEventListener("click", close);
+    overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) close();
+    });
+    // Auto-dismiss after 6s in case the student walks away
+    setTimeout(() => {
+        if (document.getElementById("levelup-overlay")) close();
+    }, 6000);
 }
 
 // ==============================================
@@ -1802,6 +2410,7 @@ function updateProfileUI() {
     if (profileBtnImg) {
         profileBtnImg.src = profile.character;
     }
+        renderExpBar();
 }
 
 function debugStudentProfile() {
@@ -1937,6 +2546,12 @@ async function logout() {
         questAccepted = {};
         questStartTimes = {};
         earnedBadges = {};
+        earnedBadges = {};
+        expTotal = 0;
+        expLog = {};
+        localStorage.removeItem("expTotal");
+        localStorage.removeItem("expLog");
+        _lastRenderedLevel = null;
         invalidateAllCaches();
         console.log("Logged out successfully - all data cleared");
         setTimeout(() => {
@@ -2533,7 +3148,11 @@ async function openQuest(cityId) {
 function markQuestCompleteFromWork(questId) {
     const quest = quests[questId];
     if (!quest) return;
+    const wasAlreadyCompleted = completedQuests[questId] === true;
     completedQuests[questId] = true;
+
+    // --- EXP: quest completion is now awarded in syncExpFromGradedWork,
+    // which is called from refreshStudentData after cloud reload.
     if (activeQuestId === questId) {
         activeQuestId = null;
         if (questAccepted[questId]) {
@@ -2987,7 +3606,9 @@ async function saveStudentDataToCloud() {
         user_id: userId,
         quest_accepted: questAccepted,
         quest_start_times: questStartTimes,
-        updated_at: new Date().toISOString()
+        exp_total: expTotal,
+        exp_log: expLog,
+    updated_at: new Date().toISOString()
     };
     console.log("Student saving ONLY timer data to cloud:", {
         acceptedCount: Object.keys(questAccepted).length
@@ -3067,6 +3688,11 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 saveQuestAccepted();
                 saveQuestStartTimes();
                 localStorage.removeItem('selfAssessments');
+                expTotal = 0;
+                expLog = {};
+                localStorage.removeItem("expTotal");
+                localStorage.removeItem("expLog");
+                try { reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
             } else {
                 console.error("Error loading from cloud:", error);
             }
@@ -3097,6 +3723,11 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 saveQuestAccepted();
                 saveQuestStartTimes();
                 localStorage.removeItem('selfAssessments');
+                expTotal = 0;
+                expLog = {};
+                localStorage.removeItem("expTotal");
+                localStorage.removeItem("expLog");
+                try { reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
                 checkAllQuestWarnings();
                 if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
                 if (typeof renderRadarChart === 'function') renderRadarChart();
@@ -3112,6 +3743,18 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 if (data.completed_quests) completedQuests = data.completed_quests;
                 if (data.quest_grades) questGrades = data.quest_grades;
                 if (data.quest_rewards) questRewards = data.quest_rewards;
+                // --- EXP fields ---
+                if (typeof data.exp_total === "number") {
+                    expTotal = data.exp_total;
+                } else {
+                    expTotal = 0;
+                }
+                if (data.exp_log && typeof data.exp_log === "object") {
+                    expLog = data.exp_log;
+                } else {
+                    expLog = {};
+                }
+                saveExpToLocal();
                 if (data.earned_badges) {
                     const mergedBadges = { ...data.earned_badges, ...earnedBadges };
                     earnedBadges = mergedBadges;
@@ -3194,6 +3837,7 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 }
                 
                 console.log("All displays updated with cloud data");
+                try { reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
             }
         }
         
@@ -3248,7 +3892,7 @@ async function manualRefreshGrades() {
 // SECTION 25: WORK CLOUD SAVE
 // ==============================================
 
-async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pdfMeta = null) {
+async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pdfMeta = null, expFacts = null) {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
         console.log("Not logged in");
@@ -3321,6 +3965,7 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
                 grading_status: 'pending',
                 uploaded_at: new Date().toISOString()
             };
+            if (expFacts) updateData.exp_metadata = expFacts;
 
             if (!imageUrl) delete updateData.image_url;
 
@@ -3349,7 +3994,7 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
                 grading_status: 'pending',
                 uploaded_at: new Date().toISOString()
             };
-
+            if (expFacts) insertData.exp_metadata = expFacts;
             if (pdfMeta) {
                 insertData.research_pdf_url = pdfMeta.url;
                 insertData.research_pdf_name = pdfMeta.name;
@@ -3494,87 +4139,104 @@ const achievementsData = [
     {
         title: "The Master of Perspective",
         note: "Complete all perspective quests",
-        questsNeeded: ["quest42","quest43","quest44","quest45","quest46", "quest47"]
+        questsNeeded: ["quest42","quest43","quest44","quest45","quest46", "quest47"],
+        exp: 400
     },
     {
         title: "The Master of touch",
         note: "Complete quests that teach how to create different textures",
-        questsNeeded: ["quest7","quest8","quest9","quest10","quest19","quest34","quest35", "quest64", "quest55"]
+        questsNeeded: ["quest7","quest8","quest9","quest10","quest19","quest34","quest35", "quest64", "quest55"],
+        exp: 600
     },
     {
         title: "The master of the East",
         note: "Complete all quests related to China\nPS: For 'The Story Tile of the Heart` use a chinese theme for the tile.",
-        questsNeeded: ["quest56","quest49","quest50"]
+        questsNeeded: ["quest56","quest49","quest50"],
+        exp: 200
     },
     {
         title: "The Facemaster",
         note: "Complete all quests related to portrature (non mvp)",
-        questsNeeded: ["quest18","quest20", "quest21","quest29","quest26","quest27","quest53"]
+        questsNeeded: ["quest18","quest20", "quest21","quest29","quest26","quest27","quest53"],
+        exp: 500
     },
     {
         title: "That who understand the principles",
         note: "Complete all quest related to the Principles of Design",
-        questsNeeded: ["quest59","quest60","quest61","quest62","quest63"]
+        questsNeeded: ["quest59","quest60","quest61","quest62","quest63"],
+        exp: 400
     },
     {
         title: "The Nature Chronicler",
         note: "Complete all landscape and natural subject quests.",
-        questsNeeded: ["quest10","quest17","quest24","quest23","quest65"]
+        questsNeeded: ["quest10","quest17","quest24","quest23","quest65"],
+        exp: 400
     },
     {
         title: "The Abstract Visionary",
         note: "Explore non-representational and pattern-based art across paths.",
-        questsNeeded: ["quest12","quest13","quest14","quest15","quest36"]
+        questsNeeded: ["quest12","quest13","quest14","quest15","quest36"],
+        exp: 400
     },
     {
         title: "The Traditionalist",
         note: "Complete all quests rooted in classical or cultural art traditions.",
-        questsNeeded: ["quest49","quest50","quest54","quest67"]
+        questsNeeded: ["quest49","quest50","quest54","quest67"],
+        exp: 300
     },
     {
         title: "The Architectural Scholar",
         note: "Excel in architectural drawing, perspective, and structure.",
-        questsNeeded: ["quest42", "quest43", "quest44", "quest25", "quest58", "quest66"]
+        questsNeeded: ["quest42", "quest43", "quest44", "quest25", "quest58", "quest66"],
+        exp: 500
     },
     {
         title: "The Seasonal Storyteller",
         note: "Create art inspired by holidays and seasonal themes.",
-        questsNeeded: ["quest51", "quest52"]
+        questsNeeded: ["quest51", "quest52"],
+        exp: 150
     },
     {
         title: "The Still Life Connoisseur",
         note: "Excel at observing and rendering still life across mediums.",
-        questsNeeded: ["quest5", "quest16", "quest22", "quest41"]
+        questsNeeded: ["quest5", "quest16", "quest22", "quest41"],
+        exp: 350
     },
     {
         title: "The Light & Shadow Adept",
         note: "Master the use of value, light, and shadow across media.",
-        questsNeeded: ["quest5", "quest8", "quest9", "quest33", "quest64"]
+        questsNeeded: ["quest5", "quest8", "quest9", "quest33", "quest64"],
+        exp: 400
     },
     {
         title: "The Acrylic Master",
         note: "Complete all quests that specifically cite 'acrylic painting'",
-        questsNeeded: ["quest1", "quest4", "quest5", "quest6", "quest10", "quest11", "quest19", "quest33", "quest34", "quest35", "quest36", "quest37", "quest66"]
+        questsNeeded: ["quest1", "quest4", "quest5", "quest6", "quest10", "quest11", "quest19", "quest33", "quest34", "quest35", "quest36", "quest37", "quest66"],
+        exp: 800
     },
     {
         title: "The Water Sage",
         note: "Complete all watercolor-specific quests.",
-        questsNeeded: ["quest32", "quest22", "quest23", "quest24", "quest25", "quest26", "quest27", "quest49", "quest50", "quest65"]
+        questsNeeded: ["quest32", "quest22", "quest23", "quest24", "quest25", "quest26", "quest27", "quest49", "quest50", "quest65"],
+        exp: 600
     },
     {
         title: "The 3D Master",
         note: "Complete all 3D quests",
-        questsNeeded: ["quest53", "quest54", "quest56", "quest57", "quest58", "quest59", "quest60", "quest61", "quest62", "quest63", "quest68"]
+        questsNeeded: ["quest53", "quest54", "quest56", "quest57", "quest58", "quest59", "quest60", "quest61", "quest62", "quest63", "quest68"],
+        exp: 700
     },
     {
         title: "The Sketch Master",
         note: "Complete all quests that specifically require pencil, ink or charcoal drawing\nPS: for this achievement, the quest 'Trial of Textured Cubes' need to be done pencil, charcoal or ink",
-        questsNeeded: ["quest53", "quest54", "quest56", "quest57", "quest58", "quest59", "quest60", "quest61", "quest62", "quest63", "quest68"]
+        questsNeeded: ["quest53", "quest54", "quest56", "quest57", "quest58", "quest59", "quest60", "quest61", "quest62", "quest63", "quest68"],
+        exp: 700
     },
     {
         title: "The MVP Conquistador",
         note: "Complete all high-difficulty summative quests.",
-        questsNeeded: ["quest4","quest11","quest16","quest27", "quest35", "quest36", "quest50", "quest66"]
+        questsNeeded: ["quest4","quest11","quest16","quest27", "quest35", "quest36", "quest50", "quest66"],
+        exp: 800
     },
 ];
 
@@ -7511,8 +8173,12 @@ async function loadCloudWorksIntoGallery() {
                 image: work.image_url || "",
                 image_url: work.image_url || "",
                 lastModified: work.uploaded_at || new Date().toISOString(),
-                research_pdf_url: work.research_pdf_url || null,   // NEW
-                research_pdf_name: work.research_pdf_name || null  // NEW
+                research_pdf_url: work.research_pdf_url || null,
+                research_pdf_name: work.research_pdf_name || null,
+                // --- EXP facts (submission-time snapshot) ---
+                expFacts: (work.exp_metadata && typeof work.exp_metadata === "object")
+                    ? work.exp_metadata
+                    : null
             };
         });
     }
@@ -8259,6 +8925,8 @@ function renderBadges() {
 function updateBadgesAfterQuest() {
     console.log("Updating badges after quest completion...");
     checkAllBadges(true);
+    checkBadgeExp();
+    checkAchievementExp();
     if (document.getElementById("profile-overlay").style.display === "flex") {
         renderBadges();
     }
@@ -8369,6 +9037,7 @@ async function refreshStudentData() {
     invalidateStudentDataCache();
     await loadStudentDataFromCloud(true);
     await loadScheduleForStudent();
+    try { syncExpFromGradedWork(); } catch (e) { console.warn("[EXP] sync failed:", e); }
     updateProfileUI();
     updateProfileStandardsTable();
     renderRadarChart();
@@ -8399,6 +9068,7 @@ async function openArtBattle() {
     const content = document.getElementById('artbattle-content');
     content.innerHTML = '<div class="artbattle-loading">Loading competitions...</div>';
     overlay.style.display = 'flex';
+    try { await syncArtBattleSubmissionExp(); } catch (e) { console.warn("[EXP] art battle sync failed:", e); }
     await loadArtBattleContests();
 }
 
@@ -8523,6 +9193,10 @@ async function voteForSubmission(contestId, submissionId) {
         return;
     }
     await window.supabase.rpc('increment_vote_count', { submission_id: submissionId });
+
+    // --- EXP: vote in art battle (once per submission) ---
+    addExp(EXP_RULES.VOTE, `vote:${contestId}:${submissionId}`, `Voted in art battle`);
+
     const remainingVotes = maxVotes - (currentVoteCount + 1);
     if (remainingVotes > 0) {
         alert(`Vote cast! You have ${remainingVotes} more vote${remainingVotes > 1 ? 's' : ''} remaining.`);
@@ -8769,9 +9443,13 @@ async function submitContestArtwork() {
                 votes: 0,
                 submitted_at: new Date().toISOString()
             });
-        if (insertError) {
+                if (insertError) {
             throw insertError;
         }
+
+        // --- EXP: submitted to art battle (once per contest) ---
+        addExp(EXP_RULES.SUBMIT_ART_BATTLE, `submit_battle:${currentContestForSubmission}`, `Submitted to art battle`);
+
         messageDiv.innerHTML = '✅ Artwork submitted! Waiting for teacher approval.';
         messageDiv.style.color = '#4caf50';
         setTimeout(() => {
@@ -9334,7 +10012,8 @@ async function renderResultsView(contestId) {
 // ==============================================
 
 document.addEventListener("DOMContentLoaded", () => {
-    // Load quests using caching
+    loadExpFromLocal();
+    renderExpBar();
     getQuestsWithLocalCache().then(questsData => {
         quests = questsData;
         cachedQuests = questsData;          // ← Mark in-memory cache as set
