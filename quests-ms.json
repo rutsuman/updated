@@ -27,9 +27,9 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
-            "4": "Detailed, thoughtful reflection; clear artist statement explaining choices.",
+            "4": "Detailed reflection; clear artist statement explaining choices.",
             "3": "Good reflection; clear statement with minor gaps.",
             "2": "Basic reflection; statement incomplete or unclear.",
             "1": "No reflection or artist statement."
@@ -67,22 +67,12 @@
       "standards": [
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of the master's style; accurate reproduction of key elements.",
             "3": "Good understanding; accurate reproduction with minor errors.",
             "2": "Basic understanding; some elements reproduced incorrectly.",
             "1": "Poor understanding; major deviations from original style."
-          }
-        },
-        {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Exceptional understanding of the movement's history and cultural context.",
-            "3": "Good understanding of the movement's context.",
-            "2": "Basic understanding of the movement.",
-            "1": "Little understanding of the movement or its context."
           }
         },
         {
@@ -104,7 +94,7 @@
     "reward": "",
     "character": "charimage/char2.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 150},
     "accepted": false,
@@ -128,18 +118,8 @@
       "overall": "The Grand Codex of Art Movements",
       "standards": [
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Exceptional research; deep understanding of each movement's history and context.",
-            "3": "Good research; clear understanding of each movement.",
-            "2": "Basic research; incomplete or vague understanding of movements.",
-            "1": "Minimal research; poor understanding of movements."
-          }
-        },
-        {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Masterful understanding of movements; illustrations perfectly capture each style.",
             "3": "Clear understanding; illustrations represent movements accurately.",
@@ -164,9 +144,9 @@
       {"type": "174 Art Movements", "url": "https://www.theartstory.org/movements/"}
     ],
     "reward": "",
-    "character": "charimage/char3.png",
+    "character": "charimage/char3.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -200,7 +180,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of the movement; creative interpretation that shows mastery.",
             "3": "Good understanding; clear interpretation of the movement's ideas.",
@@ -209,13 +189,13 @@
           }
         },
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
           "levels": {
-            "4": "Exceptional understanding of the movement's cultural and historical context.",
-            "3": "Good understanding of the movement's context.",
-            "2": "Basic understanding of the movement's context.",
-            "1": "Little understanding of the movement's context."
+            "4": "Exceptional visual communication; expert composition; masterful use of color, form, space.",
+            "3": "Good visual communication; strong composition; clear application of movement's visual ideas.",
+            "2": "Basic visual communication; basic composition; partial application of movement's ideas.",
+            "1": "Poor visual communication; poor composition; no clear application of movement's ideas."
           }
         }
       ]
@@ -258,7 +238,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining value choices.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -276,7 +256,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char5.png",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 120},
     "accepted": false,
@@ -310,7 +290,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining blending choices.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -327,7 +307,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char6.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -361,7 +341,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of wood's natural patterns and surface quality.",
             "3": "Good understanding of wood's characteristics.",
@@ -378,7 +358,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char7.png",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -412,7 +392,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of reflective behavior and light interaction.",
             "3": "Good understanding of reflections and highlights.",
@@ -428,9 +408,9 @@
       {"type": "Video sample", "url": "https://www.youtube.com/watch?v=EVvyxjb4hn4"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char8.png",
+    "character": "charimage/char8.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -464,7 +444,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of luminous qualities and reflection logic.",
             "3": "Good understanding of light and material.",
@@ -481,7 +461,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char9.png",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -515,7 +495,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of nature's complexity and depth.",
             "3": "Good understanding of natural forms.",
@@ -533,7 +513,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char10.png",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -551,7 +531,8 @@
       "Paint the objects with accurate proportion and form",
       "Use value and shading to create depth and realism",
       "Capture surface textures convincingly",
-      "Arrange and paint the scene with balance and intention"
+      "Arrange and paint the scene with balance and intention",
+      "Document your process: setup photo, value study, composition thumbnails"
     ],
     "rubric": {
       "overall": "Duel of the Silent Master (Summative)",
@@ -567,8 +548,18 @@
           }
         },
         {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Detailed reflection; clear statement explaining choices and process.",
+            "3": "Good reflection; clear statement with minor gaps.",
+            "2": "Basic reflection; statement incomplete.",
+            "1": "No reflection or artist statement."
+          }
+        },
+        {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of form, value, and lighting.",
             "3": "Good understanding of form and lighting.",
@@ -577,13 +568,13 @@
           }
         },
         {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
           "levels": {
-            "4": "Detailed reflection; clear statement explaining choices and process.",
-            "3": "Good reflection; clear statement with minor gaps.",
-            "2": "Basic reflection; statement incomplete.",
-            "1": "No reflection or artist statement."
+            "4": "Exceptional research; clear connections between still life tradition and personal work.",
+            "3": "Good research; clear connections to still life tradition.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
           }
         }
       ]
@@ -595,7 +586,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char11.png",
     "style": "mvp",
-    "prerequisites": ["quest9", "quest8", "quest7", "quest1","quest5","quest64"],
+    "prerequisites": ["quest1", "quest5", "quest6", "quest9", "quest42"],
     "completed": false,
     "timer": {"allottedMinutes": 750},
     "accepted": false,
@@ -647,7 +638,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char13.png",
     "style": "",
-    "prerequisites": ["quest12"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 150},
     "accepted": false,
@@ -698,7 +689,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char14.png",
     "style": "",
-    "prerequisites": ["quest13", "quest12"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 150},
     "accepted": false,
@@ -750,7 +741,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char15.png",
     "style": "",
-    "prerequisites": ["quest13", "quest12", "quest11"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 150},
     "accepted": false,
@@ -784,7 +775,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining process and revisions.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -801,7 +792,7 @@
     "reward": "",
     "character": "charimage/char19a.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -836,7 +827,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of atmosphere and depth.",
             "3": "Good understanding of atmospheric effect.",
@@ -854,7 +845,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char33a.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -888,7 +879,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining texture choices.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -942,7 +933,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of gesture, form, and character.",
             "3": "Good understanding of gesture and form.",
@@ -951,13 +942,13 @@
           }
         },
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
           "levels": {
-            "4": "Exceptional connection between animal and its cultural or environmental context.",
-            "3": "Good connection to cultural or environmental context.",
-            "2": "Basic connection to context.",
-            "1": "Little connection to context."
+            "4": "Exceptional visual communication; strong gesture and clear form.",
+            "3": "Good visual communication; clear gesture and form.",
+            "2": "Basic visual communication; some gesture but unclear form.",
+            "1": "Poor visual communication; no clear gesture or form."
           }
         }
       ]
@@ -970,7 +961,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char35cat.gif",
     "style": "mvp",
-    "prerequisites": ["quest1","quest34","quest55","quest19","quest64"],
+    "prerequisites": ["quest1", "quest34", "quest43", "quest55", "quest19"],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -1011,6 +1002,16 @@
             "2": "Basic visual communication; composition shows some balance but is inconsistent.",
             "1": "Poor visual communication; composition is disorganized."
           }
+        },
+        {
+          "code": "VA:Re8.1.8a",
+          "name": "Interpretation",
+          "levels": {
+            "4": "Deep understanding of abstract expression; emotion and mood clearly conveyed.",
+            "3": "Good understanding; mood and emotion are readable.",
+            "2": "Basic understanding; mood is unclear or inconsistent.",
+            "1": "Poor understanding; no clear mood or emotion."
+          }
         }
       ]
     },
@@ -1024,7 +1025,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char36.gif",
     "style": "mvp",
-    "prerequisites": ["quest1","quest13","quest14","quest15","quest33"],
+    "prerequisites": ["quest1", "quest13", "quest14", "quest15", "quest33"],
     "completed": false,
     "timer": {"allottedMinutes": 375, "warningMinutes": 30},
     "accepted": false,
@@ -1109,7 +1110,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of narrative and emotional resonance.",
             "3": "Good understanding of narrative.",
@@ -1160,7 +1161,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of symbolism and emotional impact.",
             "3": "Good understanding of symbolism.",
@@ -1211,7 +1212,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining process and revisions.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -1228,7 +1229,7 @@
     "reward": "",
     "character": "charimage/char55.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -1262,7 +1263,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining choices and revisions.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -1279,7 +1280,7 @@
     "reward": "",
     "character": "charimage/char64.gif",
     "style": "",
-    "prerequisites": ["quest1"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 75},
     "accepted": false,
@@ -1324,7 +1325,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of composition and visual balance; balanced with strong focal points.",
             "3": "Good understanding; mostly balanced composition.",
@@ -1338,7 +1339,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char66.gif",
     "style": "mvp",
-    "prerequisites": ["quest1","quest42","quest43"],
+    "prerequisites": ["quest1", "quest42", "quest43", "quest7"],
     "completed": false,
     "timer": {"allottedMinutes": 525},
     "accepted": false,
@@ -1372,7 +1373,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining process and choices.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -1423,7 +1424,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of facial structure, form, and paint interaction.",
             "3": "Good understanding of form and structure.",
@@ -1432,8 +1433,18 @@
           }
         },
         {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Detailed reflection; revisions significantly improve accuracy and expression.",
+            "3": "Good reflection; revisions clearly improve the portrait.",
+            "2": "Basic reflection; minor revisions made with limited impact.",
+            "1": "No reflection; no meaningful revision evident."
+          }
+        },
+        {
           "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "name": "Cultural Context",
           "levels": {
             "4": "Exceptional connection between the portrait and its cultural or personal context.",
             "3": "Good connection to context.",
@@ -1452,7 +1463,7 @@
     "reward": "",
     "character": "charimage/char69.gif",
     "style": "mvp",
-    "prerequisites": ["quest18","quest20","quest21","quest29","quest1"],
+    "prerequisites": ["quest18", "quest20", "quest21", "quest29", "quest42"],
     "completed": false,
     "timer": {"allottedMinutes": 600},
     "accepted": false,
@@ -1489,7 +1500,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of form and light logic; light source is consistent and intentional; shadows and highlights work together to create convincing three-dimensionality.",
             "3": "Good understanding; light logic is mostly consistent.",
@@ -1506,13 +1517,23 @@
             "2": "Basic visual communication; some issues with value balance or focal point clarity.",
             "1": "Poor visual communication; no clear organization or intentional value placement."
           }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between monochromatic tradition and personal work.",
+            "3": "Good research; clear connections to context.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
+          }
         }
       ]
     },
     "links": [
       {"type": "Monochromatic painting tutorial", "url": "https://www.youtube.com/watch?v=cDzcoyeaRKI"},
       {"type": "Understanding value in painting", "url": "https://www.youtube.com/watch?v=bqu1VQh7ZLw"},
-      {"type": "Value painting demonstration", "url": "https://www.youtube.com/watch?v=vMr6eimcolc"},
+      {"type": "Value painting demonstration", "url": "https://m.youtube.com/watch?v=vMr6eimcolc"},
       {"type": "Creating atmosphere with value", "url": "https://www.youtube.com/watch?v=40QYTUuxTFo"}
     ],
     "reward": "",
@@ -1524,12 +1545,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
-
-
-
-
-
 
 
 
@@ -1575,7 +1590,7 @@
     "links": [
       {"type": "Drawing sample", "url": "https://media.posterstore.com/site_images/6862b3b57d2ae084e182626c_1467921930_PS51181-4.jpg"},
       {"type": "Drawing sample", "url": "https://www.boredpanda.com/blog/wp-content/uploads/2017/05/I-wrote-an-algorithm-for-doodle-style-single-line-drawings-592e843186df2__880.jpg"},
-      {"type": "Drawing sample", "url": "https://www.google.com.hk/search?newwindow=1&sca_esv=9437bc439e189606&rlz=1C1GCEA_enCN1095CN1095&udm=2&fbs=AIIjpHxU7SXXniUZfeShr2fp4giZ1Y6MJ25_tmWITc7uy4KIeoJTKjrFjVxydQWqI2NcOha3O1YqG67F0QIhAOFN_ob1xGdzU5Cnyn-oUzTul2B5TfPM2NnDzLPgL0CyoIAnI3TPm3GbtW1P5hWx2UQWr3f83bnlNqgtjIiyxTxr2apVrMYPv4UpjuPG-EMKbXUxSZu21DVw&q=one+line+drawing&sa=X&ved=2ahUKEwiCwJmIrfaRAxU5qVYBHeNhMtYQtKgLegQIExAB&biw=1422&bih=612&dpr=1.35"}
+      {"type": "Drawing sample", "url": "https://www.google.com.hk/search?newwindow=1&sca_esv=9437bc439e189606&rlz=1C1GCEA_enCN1095CN1095&udm=2&fbs=AIIjpHxU7SXXniUZfeShr2fp4giZ1Y6MJ25_tmWITc7uy4KIeoJTKjrFjVxydQWqI2NcOha3O1YqG67F0QIhAOFN_ob1xGdzU5Cnyn-oUzTul2B5TfPM2NnDzLPgL0CyoIAnI3TPm3GbtW1P5hWx2UQWr3f83bnlNqgtjIiyxTxr2apVrMYPv4UpjuPG-EMKbXUxSZu21DWv&q=one+line+drawing&sa=X&ved=2ahUKEwiCwJmIrfaRAxU5qVYBHeNhMtYQtKgLegQIExAB&biw=1422&bih=612&dpr=1.35"}
     ],
     "reward": "you got money!!!!",
     "character": "charimage/char12.png",
@@ -1614,7 +1629,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of anatomy and proportion; eyes are accurately proportioned with realistic anatomy and placement.",
             "3": "Good understanding; proportion is mostly accurate with minor anatomical errors.",
@@ -1667,7 +1682,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of structure; planes and structure are highly accurate and believable.",
             "3": "Good understanding; structure is mostly correct with minor errors.",
@@ -1721,22 +1736,12 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of proportion and construction; proportions are accurate and construction is highly solid.",
             "3": "Good understanding; proportions are mostly correct with minor issues.",
             "2": "Basic understanding; proportions are inconsistent or off in several areas.",
             "1": "Poor understanding; proportions are incorrect and construction is weak."
-          }
-        },
-        {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Exceptional connection to the cultural or personal context of the portrait.",
-            "3": "Good connection to context.",
-            "2": "Basic connection to context.",
-            "1": "Little connection to context."
           }
         }
       ]
@@ -1783,7 +1788,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of proportion and detail; proportions are accurate with refined detail and expression.",
             "3": "Good understanding; proportions are mostly correct with clear detail.",
@@ -1847,12 +1852,22 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of narrative and visual storytelling; scene communicates strong action and mood clearly.",
             "3": "Good understanding; scene communicates action and mood with minor gaps.",
             "2": "Basic understanding; scene partially communicates narrative; mood is unclear.",
             "1": "Poor understanding; scene lacks narrative and mood."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between manga tradition and personal work.",
+            "3": "Good research; clear connections to manga tradition.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
           }
         }
       ]
@@ -1866,7 +1881,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char30a.gif",
     "style": "mvp",
-    "prerequisites": ["quest39","quest42","quest43","quest44","quest45","quest46"],
+    "prerequisites": ["quest39", "quest42", "quest43", "quest47", "quest48"],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -1901,7 +1916,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of proportion and style; proportions match manga style with strong stylization.",
             "3": "Good understanding; proportions are mostly correct with recognizable style.",
@@ -1934,7 +1949,8 @@
       "Draw a still life using pencil or charcoal",
       "Include at least three objects",
       "Show correct proportions",
-      "Use shading to show form and light"
+      "Use shading to show form and light",
+      "Document your process: setup photo, value study, composition thumbnails"
     ],
     "rubric": {
       "overall": "The Master's Table",
@@ -1961,12 +1977,22 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of observation and visual accuracy; observation is detailed; materials and light are accurately represented.",
             "3": "Good understanding; observation is clear with mostly accurate details.",
             "2": "Basic understanding; observation is basic; some details are missing or inaccurate.",
             "1": "Poor understanding; observation is weak; details are missing or incorrect."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between still life tradition and personal work.",
+            "3": "Good research; clear connections to still life tradition.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
           }
         }
       ]
@@ -1978,7 +2004,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char35.gif",
     "style": "mvp",
-    "prerequisites": ["quest34","quest48"],
+    "prerequisites": ["quest34", "quest48", "quest42"],
     "completed": false,
     "timer": {"allottedMinutes": 300},
     "accepted": false,
@@ -2349,7 +2375,7 @@
   },
 
   "quest72": {
-    "path": ["Sketcher Path", "Mixed Media Path"],
+    "path": ["Sketcher Path"],
     "difficulty": 4,
     "title": "The Scroll of Unwritten Fates",
     "rationale": "<h2>The Scroll of Unwritten Fates</h2><p><strong>Why it's important:</strong><br>This summative quest combines narrative storytelling, character design, and sequential art—the core pillars of manga creation. Creating a complete comic requires students to integrate multiple artistic skills while managing pacing, composition, and visual flow across pages. The 10-page constraint teaches economy of storytelling, forcing focused narrative development and intentional panel design.</p><p><strong>Skills you will learn:</strong></p><ul><li>Sequential storytelling and narrative pacing</li><li>Character design and visual consistency</li><li>Panel composition and page layout</li><li>Inking and toning techniques</li><li>Visual communication of emotion and action</li></ul><p>This quest demonstrates mastery of comic art fundamentals while encouraging creative writing and visual problem-solving.</p>",
@@ -2386,23 +2412,23 @@
           }
         },
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Exceptional connection to manga tradition and cultural context; sophisticated story structure with clear beginning-middle-end.",
-            "3": "Good connection to manga tradition; clear narrative with logical progression.",
-            "2": "Basic connection to manga tradition; basic story structure; plot has gaps or unclear progression.",
-            "1": "Little connection to manga tradition; weak narrative; story is confusing or incomplete."
-          }
-        },
-        {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of character expression and visual communication; characters are highly expressive and consistent; visual storytelling clearly conveys emotions, actions, and relationships.",
             "3": "Good understanding; clear character expression and visual communication; mostly effective in conveying story elements.",
             "2": "Basic understanding; partial success in expression; some emotions or actions unclear.",
             "1": "Poor understanding; poor visual communication; characters lack expression or consistency."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between manga tradition and personal work.",
+            "3": "Good research; clear connections to manga tradition.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
           }
         }
       ]
@@ -2416,7 +2442,7 @@
     "reward": "",
     "character": "charimage/char72.gif",
     "style": "mvp",
-    "prerequisites": ["quest39", "quest47","quest42","quest43","quest44","quest45","quest46"],
+    "prerequisites": ["quest39", "quest42", "quest43", "quest47", "quest48"],
     "completed": false,
     "timer": {"allottedMinutes": 750},
     "accepted": false,
@@ -2450,8 +2476,8 @@
           }
         },
         {
-          "code": "VA:Cr2.1.8a",
-          "name": "Experimentation & Risk-Taking",
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
           "levels": {
             "4": "Bold experimentation with loops, overlaps, and density, creating a complex and engaging composition.",
             "3": "Clear effort to experiment with line movement and fill the space.",
@@ -2494,16 +2520,6 @@
       "overall": "The Fashionista's Sketchbook",
       "standards": [
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Deep, sophisticated research connects clearly to designs; mood board shows strong visual and conceptual cohesion; inspiration is thoughtfully translated into original work.",
-            "3": "Clear research with good connection to designs; mood board effectively communicates inspiration and palette.",
-            "2": "Basic research; connection to designs is vague or inconsistent; mood board lacks clarity.",
-            "1": "Minimal research; no clear connection between inspiration and final designs."
-          }
-        },
-        {
           "code": "VA:Cr2.1.7a",
           "name": "Skill Development",
           "levels": {
@@ -2525,12 +2541,22 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of collection cohesion and presentation; designs form a strongly unified collection with sophisticated color harmony and thoughtful variety; annotations and presentation are professional and insightful.",
             "3": "Good understanding; designs are cohesive with good color harmony; presentation is clear and annotations are informative.",
             "2": "Basic understanding; some cohesion issues; designs feel disconnected or presentation is uneven.",
             "1": "Poor understanding; little cohesion; designs appear random with poor presentation."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Deep, sophisticated research connects clearly to designs; mood board shows strong visual and conceptual cohesion; inspiration is thoughtfully translated into original work.",
+            "3": "Clear research with good connection to designs; mood board effectively communicates inspiration and palette.",
+            "2": "Basic research; connection to designs is vague or inconsistent; mood board lacks clarity.",
+            "1": "Minimal research; no clear connection between inspiration and final designs."
           }
         }
       ]
@@ -2544,7 +2570,7 @@
     "reward": "",
     "character": "charimage/char75.gif",
     "style": "mvp",
-    "prerequisites": ["quest39","quest34","quest73"],
+    "prerequisites": ["quest39", "quest34", "quest73"],
     "completed": false,
     "timer": {"allottedMinutes": 600},
     "accepted": false,
@@ -2580,7 +2606,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of proportion and feature placement; flawless proportions; all facial features are perfectly placed and sized relative to each other; head structure is solid and believable.",
             "3": "Good understanding; good proportions with minor errors; features are generally well-placed and balanced.",
@@ -2600,7 +2626,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; strong process documentation showing thoughtful development and revisions; artist statement reveals deep understanding of subject and technical choices.",
             "3": "Good reflection; clear process documentation with visible stages; artist statement explains approach effectively.",
@@ -2620,7 +2646,7 @@
     "reward": "",
     "character": "charimage/char78.gif",
     "style": "mvp",
-    "prerequisites": ["quest18", "quest20", "quest21", "quest29"],
+    "prerequisites": ["quest18", "quest20", "quest21", "quest29", "quest47"],
     "completed": false,
     "timer": {"allottedMinutes": 600},
     "accepted": false,
@@ -2657,7 +2683,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of anatomy and proportion; flawless anatomical understanding; proportions are perfect and the animal's structure feels solid and believable; skeletal and muscular logic is evident.",
             "3": "Good understanding; good anatomy with minor proportion errors; animal is recognizable and structurally sound.",
@@ -2676,13 +2702,13 @@
           }
         },
         {
-          "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
           "levels": {
-            "4": "Deep understanding of presence and expression; exceptional capture of the animal's character; the drawing conveys presence, emotion, or spirit beyond mere anatomical accuracy.",
-            "3": "Good understanding; clear sense of the animal's character; gesture or expression is evident and appropriate.",
-            "2": "Basic understanding; some sense of presence but animal feels generic or lifeless in places.",
-            "1": "Poor understanding; little to no character captured; animal appears stiff or taxidermic."
+            "4": "Detailed reflection; strong process documentation; deep understanding of presence and expression; exceptional capture of the animal's character.",
+            "3": "Good reflection; clear process documentation; good understanding of character and expression.",
+            "2": "Basic reflection; limited process documentation; some sense of presence but animal feels generic in places.",
+            "1": "No reflection; no process documentation; little to no character captured."
           }
         }
       ]
@@ -2697,14 +2723,199 @@
     "reward": "",
     "character": "charimage/char79.gif",
     "style": "mvp",
-    "prerequisites": ["quest19", "quest55", "quest34"],
+    "prerequisites": ["quest19", "quest55", "quest34", "quest43"],
     "completed": false,
     "timer": {"allottedMinutes": 600},
     "accepted": false,
     "acceptedAt": null
   },
 
+  "quest85": {
+    "path": ["Sketcher Path", "Mixed Media Path"],
+    "difficulty": 2,
+    "title": "The Archivist's Cover",
+    "rationale": "<h2>The Archivist's Cover</h2><p><strong>Why it's important:</strong><br>Book cover design combines illustration, typography, composition, and visual storytelling. It teaches students to communicate a book's essence visually while working within design constraints. No bookbinding knowledge required.</p><p><strong>Skills you will learn:</strong></p><ul><li>Visual communication and storytelling</li><li>Typography and layout</li><li>Illustration and imagery</li><li>Composition and hierarchy</li><li>Design thinking and audience awareness</li></ul>",
+    "description": "The Archivist's library holds thousands of books, but many covers have faded beyond recognition. You must select a book and redesign its cover, capturing its essence through original illustration and typography.",
+    "requirements": [
+      "Select a book (fiction or non-fiction)",
+      "Create a new cover design (front cover minimum, full wrap optional)",
+      "Include original illustration or imagery",
+      "Include title and author typography",
+      "Show clear connection to the book's content or themes",
+      "Finish with a clean, professional presentation"
+    ],
+    "rubric": {
+      "overall": "The Archivist's Cover",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Professional-level illustration and typography; polished finish.",
+            "3": "Good technique; clean work with minor issues.",
+            "2": "Basic technique; some rough areas.",
+            "1": "Poor technique; unfinished or messy."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Exceptional layout; strong hierarchy; visually compelling.",
+            "3": "Good composition; clear hierarchy.",
+            "2": "Basic composition; layout is unclear.",
+            "1": "Poor composition; disorganized."
+          }
+        },
+        {
+          "code": "VA:Re8.1.8a",
+          "name": "Interpretation",
+          "levels": {
+            "4": "Deep connection to book's themes; cover communicates essence effectively.",
+            "3": "Clear connection to book; cover is appropriate.",
+            "2": "Weak connection; cover is generic.",
+            "1": "No connection; cover unrelated to book."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Book cover design examples", "url": "https://www.google.com/search?q=book+cover+design+examples&udm=2"},
+      {"type": "Typography basics", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4A"}
+    ],
+    "reward": "",
+    "character": "charimage/char85.gif",
+    "style": "mvp",
+    "prerequisites": ["quest39", "quest42", "quest48", "quest67", "quest73"],
+    "completed": false,
+    "timer": {"allottedMinutes": 300},
+    "accepted": false,
+    "acceptedAt": null
+  },
 
+  "quest89": {
+    "path": ["Sketcher Path", "Painter Path"],
+    "difficulty": 3,
+    "title": "The Architect's Trial",
+    "rationale": "<h2>The Architect's Trial</h2><p><strong>Why it's important:</strong><br>Perspective is the backbone of spatial drawing. This summative challenges students to demonstrate mastery of multiple perspective systems in one cohesive work.</p><p><strong>Skills you will learn:</strong></p><ul><li>1-point, 2-point, 3-point, 4-point, and 5-point perspective</li><li>Foreshortening</li><li>Spatial coherence across multiple systems</li><li>Compositional planning</li><li>Line precision and consistency</li></ul>",
+    "description": "The Grand Architect challenges you to create a single drawing that demonstrates mastery of at least 3 different perspective systems. The composition should be cohesive, not a collection of separate studies.",
+    "requirements": [
+      "Create a single cohesive drawing",
+      "Demonstrate at least 3 perspective systems",
+      "Maintain spatial consistency",
+      "Show accurate vanishing points and horizon lines",
+      "Finish with clean, confident linework"
+    ],
+    "rubric": {
+      "overall": "The Architect's Trial",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "All perspective systems are accurate and consistent; vanishing points are precise.",
+            "3": "Most perspective systems are accurate with minor errors.",
+            "2": "Some perspective errors; spatial consistency is inconsistent.",
+            "1": "Perspective is incorrect or unclear."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Composition is cohesive and balanced; spatial relationships are clear across all systems.",
+            "3": "Composition is mostly cohesive; spatial relationships are readable.",
+            "2": "Composition is uneven; spatial relationships are confusing.",
+            "1": "Composition is disorganized; spatial relationships are unclear."
+          }
+        },
+        {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Thorough documentation of perspective studies and composition plan.",
+            "3": "Good documentation with minor gaps.",
+            "2": "Basic documentation; missing key stages.",
+            "1": "No documentation or process evidence."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between perspective tradition and personal work.",
+            "3": "Good research; clear connections to context.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Perspective mastery examples", "url": "https://www.google.com/search?q=combined+perspective+drawing&udm=2"},
+      {"type": "Combined perspective tutorial", "url": "https://www.youtube.com/watch?v=6NM8J5fmM3Y"}
+    ],
+    "reward": "",
+    "character": "charimage/char89.gif",
+    "style": "mvp",
+    "prerequisites": ["quest42", "quest43", "quest44", "quest45", "quest46", "quest47"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest90": {
+    "path": ["Sketcher Path", "Mixed Media Path"],
+    "difficulty": 1,
+    "title": "The Sunweaver's Alchemy",
+    "rationale": "<h2>The Sunweaver's Alchemy</h2><p><strong>Why it's important:</strong><br>Cyanotype is a 19th-century photographic printing process that uses sunlight and iron salts to create blue-toned images. It teaches composition, negative/positive space, and the interaction of light with materials—all without a darkroom or expensive equipment.</p><p><strong>Skills you will learn:</strong></p><ul><li>Composition with found objects and stencils</li><li>Understanding of light-sensitive processes</li><li>Negative and positive space</li><li>Patience and timing</li><li>Layering and exposure control</li></ul>",
+    "description": "The Sunweaver's Guild guards the secret of capturing light on paper. You are tasked with creating cyanotype prints—arranging objects, stencils, or drawings on treated paper and exposing them to sunlight to reveal blue-toned images.",
+    "requirements": [
+      "Create at least 2 cyanotype prints",
+      "Use found objects, stencils, or drawn transparencies",
+      "Show intentional composition",
+      "Demonstrate control of exposure time",
+      "Finish with proper washing and drying"
+    ],
+    "rubric": {
+      "overall": "The Sunweaver's Alchemy",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Excellent exposure control; crisp edges; deep blue tones.",
+            "3": "Good exposure; clear image with minor issues.",
+            "2": "Basic exposure; image is faint or overexposed.",
+            "1": "Poor exposure; image is unclear or missing."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Strong composition; intentional use of negative space.",
+            "3": "Good composition with clear intent.",
+            "2": "Basic composition; layout is unclear.",
+            "1": "Poor composition; no clear intent."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Cyanotype basics", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4A"},
+      {"type": "Cyanotype composition ideas", "url": "https://www.google.com/search?q=cyanotype+composition&udm=2"}
+    ],
+    "reward": "",
+    "character": "charimage/char90.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 150},
+    "accepted": false,
+    "acceptedAt": null
+  },
 
 
   "_Watercolour_Path_": "---------------------------------",
@@ -2735,7 +2946,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining process and choices.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -2787,7 +2998,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; clear statement explaining observation and refinement.",
             "3": "Good reflection; clear statement with minor gaps.",
@@ -2797,7 +3008,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of composition and structure; balanced with strong depth.",
             "3": "Good understanding; mostly balanced with good depth.",
@@ -2817,7 +3028,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char16.png",
     "style": "mvp",
-    "prerequisites": ["quest32", "quest22","quest23"],
+    "prerequisites": ["quest32", "quest22", "quest23", "quest42"],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -2852,7 +3063,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of atmosphere and depth; strong atmospheric perspective.",
             "3": "Good understanding; good depth but some layers lack clarity.",
@@ -2861,13 +3072,13 @@
           }
         },
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
           "levels": {
-            "4": "Exceptional connection between the landscape and its cultural or personal context.",
-            "3": "Good connection to context.",
-            "2": "Basic connection to context.",
-            "1": "Little connection to context."
+            "4": "Composition clearly conveys mood, atmosphere, and balance.",
+            "3": "Composition is strong but lacks some harmony or clarity.",
+            "2": "Composition is weak or uneven.",
+            "1": "Composition is confusing or unbalanced."
           }
         }
       ]
@@ -2882,7 +3093,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char17.png",
     "style": "mvp",
-    "prerequisites": ["quest24", "quest32","quest23","quest65"],
+    "prerequisites": ["quest24", "quest32", "quest23", "quest65"],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -2906,7 +3117,7 @@
       "standards": [
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Highly accurate interpretation of form, color, and value through watercolor technique.",
             "3": "Clear and accurate observation with effective use of watercolor.",
@@ -2969,22 +3180,12 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of form and observation; clear form and depth.",
             "3": "Good understanding; mostly accurate form.",
             "2": "Basic understanding; some forms are unclear.",
             "1": "Poor understanding; form is not visible."
-          }
-        },
-        {
-          "code": "VA:Cr2.3.8a",
-          "name": "Visual Communication",
-          "levels": {
-            "4": "Exceptional visual communication; colors are harmonious and natural.",
-            "3": "Good visual communication; good harmony with minor color inconsistencies.",
-            "2": "Basic visual communication; color is inconsistent or clashes.",
-            "1": "Poor visual communication; poor color harmony and muddy mixing."
           }
         }
       ]
@@ -2998,7 +3199,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char23.png",
     "style": "",
-    "prerequisites": ["quest32"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 175},
     "accepted": false,
@@ -3052,7 +3253,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char24.gif",
     "style": "",
-    "prerequisites": ["quest32"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 150},
     "accepted": false,
@@ -3097,12 +3298,22 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of composition and balance; balanced with strong focal structure.",
             "3": "Good understanding; balanced composition with minor issues.",
             "2": "Basic understanding; uneven composition.",
             "1": "Poor understanding; poor composition and balance."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between architectural tradition and personal work.",
+            "3": "Good research; clear connections to context.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
           }
         }
       ]
@@ -3117,7 +3328,7 @@
     "reward": "",
     "character": "charimage/char25.gif",
     "style": "mvp",
-    "prerequisites": ["quest32","quest65","quest42","quest43"],
+    "prerequisites": ["quest32", "quest65", "quest42", "quest43"],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -3152,22 +3363,12 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of proportion and observation; accurate facial proportions and strong observational detail.",
             "3": "Good understanding; mostly accurate proportions with minor issues.",
             "2": "Basic understanding; some proportion errors or missing details.",
             "1": "Poor understanding; incorrect proportions and weak observation."
-          }
-        },
-        {
-          "code": "VA:Cr2.3.8a",
-          "name": "Visual Communication",
-          "levels": {
-            "4": "Exceptional visual communication; natural skin tones and harmonious color choices.",
-            "3": "Good visual communication; good color harmony with minor issues.",
-            "2": "Basic visual communication; color harmony is weak or inconsistent.",
-            "1": "Poor visual communication; poor color harmony; skin tones are unnatural."
           }
         }
       ]
@@ -3182,7 +3383,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char26.gif",
     "style": "",
-    "prerequisites": ["quest32"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -3217,7 +3418,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of facial structure and accuracy; highly accurate proportions and strong likeness.",
             "3": "Good understanding; mostly accurate with minor proportional errors.",
@@ -3226,8 +3427,18 @@
           }
         },
         {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Detailed reflection; clear statement explaining choices and process.",
+            "3": "Good reflection; clear statement with minor gaps.",
+            "2": "Basic reflection; statement incomplete.",
+            "1": "No reflection or artist statement."
+          }
+        },
+        {
           "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "name": "Cultural Context",
           "levels": {
             "4": "Exceptional connection between the portrait and its cultural or mythological context.",
             "3": "Good connection to context.",
@@ -3247,7 +3458,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char41.gif",
     "style": "mvp",
-    "prerequisites": ["quest26","quest32","quest49"],
+    "prerequisites": ["quest26", "quest32", "quest49", "quest47"],
     "completed": false,
     "timer": {"allottedMinutes": 525},
     "accepted": false,
@@ -3288,16 +3499,6 @@
             "2": "Basic visual communication; composition is uneven or crowded.",
             "1": "Poor visual communication; composition lacks balance and clarity."
           }
-        },
-        {
-          "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
-          "levels": {
-            "4": "Deep understanding of expression and gesture; expressive gesture and rhythm are clear and consistent.",
-            "3": "Good understanding; gesture is mostly expressive with minor inconsistencies.",
-            "2": "Basic understanding; gesture is weak or inconsistent.",
-            "1": "Poor understanding; no gesture or expression visible."
-          }
         }
       ]
     },
@@ -3329,7 +3530,8 @@
       "Create a watercolor landscape inspired by the 青綠 (Blue-Green) style",
       "Use layered washes to build mountains and depth",
       "Apply controlled, decorative color",
-      "Show balance between detail and negative space"
+      "Show balance between detail and negative space",
+      "Document your reference: style study, color tests, sketches"
     ],
     "rubric": {
       "overall": "Legacy of Azure and Verdant Peaks",
@@ -3346,7 +3548,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of atmospheric depth; strong atmospheric depth with clear distance and layering.",
             "3": "Good understanding; good depth with minor clarity issues.",
@@ -3355,13 +3557,23 @@
           }
         },
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
           "levels": {
-            "4": "Exceptional connection to cultural tradition and historical context.",
-            "3": "Good connection to cultural context.",
-            "2": "Basic connection to cultural context.",
-            "1": "Little connection to cultural context."
+            "4": "Balanced decorative composition with clear harmony.",
+            "3": "Good composition with minor imbalance.",
+            "2": "Composition is uneven or lacks harmony.",
+            "1": "Composition lacks structure or balance."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional connection to cultural tradition and historical context; thorough documentation of style study, color tests, and process.",
+            "3": "Good connection to cultural context; good documentation with minor gaps.",
+            "2": "Basic connection to cultural context; basic documentation missing key stages.",
+            "1": "Little connection to cultural context; no documentation or process evidence."
           }
         }
       ]
@@ -3374,7 +3586,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char50.gif",
     "style": "mvp",
-    "prerequisites": ["quest32","quest49","quest17","quest65"],
+    "prerequisites": ["quest32", "quest49", "quest24", "quest65"],
     "completed": false,
     "timer": {"allottedMinutes": 375},
     "accepted": false,
@@ -3398,7 +3610,7 @@
       "standards": [
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of atmospheric perspective; masterfully applied with convincing depth and spatial clarity.",
             "3": "Good understanding; clear use of atmospheric perspective with effective depth cues.",
@@ -3426,7 +3638,7 @@
     "reward": "",
     "character": "charimage/char65.gif",
     "style": "",
-    "prerequisites": ["quest32"],
+    "prerequisites": [],
     "completed": false,
     "timer": {"allottedMinutes": 300},
     "accepted": false,
@@ -3460,16 +3672,6 @@
           }
         },
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Deep research evident; sophisticated understanding of the subject's symbolic meaning; composition thoughtfully planned to convey essence.",
-            "3": "Good research; clear understanding of the subject and its traditional representation.",
-            "2": "Basic research; subject is identifiable but connection to its traditional meaning is weak.",
-            "1": "Minimal research; subject choice is arbitrary with no clear understanding of its significance."
-          }
-        },
-        {
           "code": "VA:Cr2.3.8a",
           "name": "Visual Communication",
           "levels": {
@@ -3484,7 +3686,7 @@
     "links": [
       {"type": "The Four Gentlemen Explained", "url": "https://www.comuseum.com/painting/symbols/the-four-gentlemen/"},
       {"type": "Video: Basic Chinese Brush Painting Techniques", "url": "https://m.youtube.com/watch?v=9ZRr1YzrJ3w"},
-      {"type": "Video: How to Paint Bamboo", "url": "https://m.youtube.com/watch?v=wRUXn ХLvGs"},
+      {"type": "Video: How to Paint Bamboo", "url": "https://m.youtube.com/watch?v=wRUXnXLvGs"},
       {"type": "Article on Xieyi (Freehand Style)", "url": "https://www.britannica.com/art/Chinese-painting/Qing-dynasty-1644-1911-1912#ref1121243"}
     ],
     "reward": "",
@@ -3501,7 +3703,8 @@
 
 
   
-  
+
+
 
 
   "_3D's_Path_": "---------------------------------",
@@ -3544,7 +3747,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of expression and intent; expression is clear and strongly communicates emotion.",
             "3": "Good understanding; expression is visible and generally clear.",
@@ -3553,8 +3756,8 @@
           }
         },
         {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
           "levels": {
             "4": "Detailed reflection; clear process documentation with strong reflection and improvement steps.",
             "3": "Good reflection; good documentation showing progress and decisions.",
@@ -3571,7 +3774,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char53.gif",
     "style": "mvp",
-    "prerequisites": ["quest18","quest21","quest29"],
+    "prerequisites": ["quest18", "quest21", "quest29", "quest42"],
     "completed": false,
     "timer": {"allottedMinutes": 600},
     "accepted": false,
@@ -3589,7 +3792,8 @@
       "Start with a sketch of the design. It should be in colours and seen from different angles.",
       "Use air-dry clay",
       "Include repeating patterns and symmetry",
-      "Use texture to simulate metal and stones"
+      "Use texture to simulate metal and stones",
+      "Document your process: design sketches, pattern tests, cultural reference"
     ],
     "rubric": {
       "overall": "The Necklace of the Desert Moon",
@@ -3616,7 +3820,7 @@
         },
         {
           "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "name": "Cultural Context",
           "levels": {
             "4": "Exceptional connection to cultural context; sketches show strong planning and clear cultural research.",
             "3": "Good connection to cultural context; sketches show planning and some cultural understanding.",
@@ -3633,7 +3837,7 @@
     "reward": "you got money!!!!",
     "character": "charimage/char54.gif",
     "style": "mvp",
-    "prerequisites": ["quest13","quest67"],
+    "prerequisites": ["quest13", "quest67", "quest48", "quest59", "quest63"],
     "completed": false,
     "timer": {"allottedMinutes": 600},
     "accepted": false,
@@ -3678,12 +3882,22 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; sketches show strong planning and clear story development.",
             "3": "Good reflection; sketches show planning and some story clarity.",
             "2": "Basic reflection; sketches are basic and incomplete.",
             "1": "No reflection; no planning or sketch evidence."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional connection to cultural context; clear research behind the story.",
+            "3": "Good connection to cultural context; research is evident.",
+            "2": "Basic connection to cultural context; limited research.",
+            "1": "Little connection to cultural context; no research."
           }
         }
       ]
@@ -3696,7 +3910,7 @@
     "reward": "",
     "character": "charimage/char56.gif",
     "style": "mvp",
-    "prerequisites": [],
+    "prerequisites": ["quest48", "quest63", "quest59"],
     "completed": false,
     "timer": {"allottedMinutes": 675},
     "accepted": false,
@@ -3741,12 +3955,22 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Detailed reflection; process shows strong planning, tools, and steps.",
             "3": "Good reflection; process is documented with some detail.",
             "2": "Basic reflection; process is incomplete or unclear.",
             "1": "No reflection; no process documentation."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between wire sculpture tradition and personal work.",
+            "3": "Good research; clear connections to context.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
           }
         }
       ]
@@ -3758,7 +3982,7 @@
     "reward": "",
     "character": "charimage/char57.gif",
     "style": "mvp",
-    "prerequisites": ["quest73"],
+    "prerequisites": ["quest73", "quest48", "quest63"],
     "completed": false,
     "timer": {"allottedMinutes": 750},
     "accepted": false,
@@ -3775,7 +3999,8 @@
       "Create a building or house sculpture using mixed media",
       "Show clear structure and architectural form",
       "Include details such as windows, doors, or roof elements",
-      "Optional: create an abstract architectural form focusing on shapes"
+      "Optional: create an abstract architectural form focusing on shapes",
+      "Document your artistic reference: which architectural style or artist are you referencing?"
     ],
     "rubric": {
       "overall": "The Citadel of Forms",
@@ -3802,7 +4027,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Deep understanding of architectural detail and proportion; details are precise and proportional with strong design choices.",
             "3": "Good understanding; details are clear and proportional.",
@@ -3811,12 +4036,12 @@
           }
         },
         {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
           "levels": {
-            "4": "Detailed reflection; process shows strong planning, design sketches, and thoughtful revisions.",
-            "3": "Good reflection; process shows planning and design choices.",
-            "2": "Basic reflection; process is limited or lacks clarity.",
+            "4": "Detailed reflection; process shows strong planning, design sketches, and thoughtful revisions; thorough documentation of architectural reference.",
+            "3": "Good reflection; process shows planning and design choices; good documentation with minor gaps.",
+            "2": "Basic reflection; process is limited or lacks clarity; basic documentation missing key stages.",
             "1": "No reflection; no process evidence."
           }
         }
@@ -3829,7 +4054,7 @@
     "reward": "",
     "character": "charimage/char58.gif",
     "style": "mvp",
-    "prerequisites": ["quest48","quest63","quest43"],
+    "prerequisites": ["quest48", "quest63", "quest43", "quest7"],
     "completed": false,
     "timer": {"allottedMinutes": 600},
     "accepted": false,
@@ -3870,16 +4095,6 @@
             "3": "Good visual communication; visual balance is clear with good composition.",
             "2": "Basic visual communication; visual balance is weak or inconsistent.",
             "1": "Poor visual communication; visual balance is unclear or lacking."
-          }
-        },
-        {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
-          "levels": {
-            "4": "Detailed reflection; strong planning and documentation showing design decisions.",
-            "3": "Good reflection; good planning and process evidence.",
-            "2": "Basic reflection; limited planning or unclear process.",
-            "1": "No reflection; no process evidence."
           }
         }
       ]
@@ -3933,16 +4148,6 @@
             "2": "Basic visual communication; contrast is unclear or weak.",
             "1": "Poor visual communication; no visual impact."
           }
-        },
-        {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
-          "levels": {
-            "4": "Detailed reflection; process shows intentional contrast decisions and planning.",
-            "3": "Good reflection; process shows planning with some clarity.",
-            "2": "Basic reflection; process is limited or unclear.",
-            "1": "No reflection; no process evidence."
-          }
         }
       ]
     },
@@ -3994,16 +4199,6 @@
             "3": "Good visual communication; supporting elements generally support the focal point.",
             "2": "Basic visual communication; supporting elements are inconsistent.",
             "1": "Poor visual communication; supporting elements distract from focal point."
-          }
-        },
-        {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
-          "levels": {
-            "4": "Detailed reflection; planning shows strong intention and clear visual hierarchy.",
-            "3": "Good reflection; planning shows good intention.",
-            "2": "Basic reflection; planning is minimal or unclear.",
-            "1": "No reflection; no planning evidence."
           }
         }
       ]
@@ -4057,16 +4252,6 @@
             "2": "Basic visual communication; rhythm is inconsistent.",
             "1": "Poor visual communication; rhythm is absent."
           }
-        },
-        {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
-          "levels": {
-            "4": "Detailed reflection; process shows clear planning and movement decisions.",
-            "3": "Good reflection; process shows planning with some clarity.",
-            "2": "Basic reflection; process is limited or unclear.",
-            "1": "No reflection; no process evidence."
-          }
         }
       ]
     },
@@ -4118,16 +4303,6 @@
             "3": "Good visual communication; rhythm is clear and supports unity.",
             "2": "Basic visual communication; rhythm is weak or uneven.",
             "1": "Poor visual communication; no rhythm or unity."
-          }
-        },
-        {
-          "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
-          "levels": {
-            "4": "Detailed reflection; process shows intentional planning of pattern and rhythm.",
-            "3": "Good reflection; process shows planning with some clarity.",
-            "2": "Basic reflection; process is limited or unclear.",
-            "1": "No reflection; no process evidence."
           }
         }
       ]
@@ -4195,7 +4370,7 @@
         },
         {
           "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "name": "Cultural Context",
           "levels": {
             "4": "Exceptional connection to cosplay culture; thorough documentation clearly shows development, decisions, and individual roles.",
             "3": "Good connection to cosplay culture; documentation shows key stages and contributions.",
@@ -4213,7 +4388,7 @@
     "reward": "",
     "character": "charimage/char68.gif",
     "style": "mvp",
-    "prerequisites": ["quest34","quest81","quest39"],
+    "prerequisites": ["quest34", "quest81", "quest39", "quest42"],
     "completed": false,
     "timer": {"allottedMinutes": 750},
     "accepted": false,
@@ -4224,7 +4399,7 @@
     "path": ["3D Path"],
     "difficulty": 3,
     "title": "The Animist's Awakening",
-    "rationale": "<h2>The Animist's Awakening</h2><p><strong>Why it's important:</strong><br>This summative quest bridges functional design with artistic expression. Redesigning an everyday object teaches students to analyze form, function, and aesthetics while developing creative problem-solving skills. The challenge requires both technical 3D construction and conceptual thinking about how objects 'live' in our world.</p><p><strong>Skills developed:</strong></p><ul><li>Analytical observation of existing objects</li><li>Conceptual redesign and creative transformation</li><li>3D construction with mixed media</li><li>Functional and aesthetic balance</li><li>Process documentation from research to final product</li></ul><p>This quest prepares students for design thinking and encourages them to see the artistic potential in everyday items.</p>",
+    "rationale": "<h2>The Animist's Awakening</h2><p><strong>Why it's important:</strong><br>This summative quest bridges functional design with artistic expression. Redesigning an everyday object teaches students to analyze form, function, and aesthetics while developing creative problem-solving skills. The challenge requires both technical 3D construction and conceptual thinking about how objects 'live' in our world.</p><p><strong>Skills you will learn:</strong></p><ul><li>Analytical observation of existing objects</li><li>Conceptual redesign and creative transformation</li><li>3D construction with mixed media</li><li>Functional and aesthetic balance</li><li>Process documentation from research to final product</li></ul><p>This quest prepares students for design thinking and encourages them to see the artistic potential in everyday items.</p>",
     "description": "In the Workshop of Awakened Forms, the old tinkerer Móðir sits surrounded by mundane objects she calls 'sleeping spirits.' She believes every manufactured thing holds a latent personality, waiting to be revealed through redesign.\n\nShe hands you an ordinary, mass-produced object—a chair, lamp, table, or similar. 'This one,' she whispers, 'dreams of being more than it is. It yearns for a second life, a truer form.'\n\nYour task is to listen to the object's hidden character and redesign it into something that expresses its soul. You must respect its original function while transforming its appearance, materiality, and presence entirely. The final piece should feel like the object has awakened, revealing what it was always meant to be.",
     "requirements": [
       "Select one ordinary, mass-produced object as your starting point",
@@ -4237,16 +4412,6 @@
     "rubric": {
       "overall": "The Animist's Awakening (MVP)",
       "standards": [
-        {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Deep research into original object's design; sophisticated concept connecting form, function, and transformation.",
-            "3": "Clear research and concept development; logical connection between original and redesign.",
-            "2": "Basic research; concept is simplistic or unclear in its transformation logic.",
-            "1": "Minimal research; no clear conceptual foundation for the redesign."
-          }
-        },
         {
           "code": "VA:Cr2.1.7a",
           "name": "Skill Development",
@@ -4269,46 +4434,39 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Sophisticated analysis of original object's design flaws/opportunities; insightful reflection on transformation choices.",
             "3": "Clear analysis and reflection; understands strengths/weaknesses of redesign.",
             "2": "Basic analysis; reflection lacks depth or specificity.",
             "1": "Minimal analysis or reflection; cannot articulate design decisions."
           }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Deep research into original object's design; sophisticated concept connecting form, function, and transformation; thorough process documentation.",
+            "3": "Clear research and concept development; logical connection between original and redesign; good documentation with minor gaps.",
+            "2": "Basic research; concept is simplistic or unclear in its transformation logic; basic documentation missing key stages.",
+            "1": "Minimal research; no clear conceptual foundation for the redesign; no documentation."
+          }
         }
       ]
     },
     "links": [
-      {
-        "type": "Design Process Example",
-        "url": "https://www.youtube.com/watch?v=nZXc6AeDYDw&t=7s"
-      },
-      {
-        "type": "Object Transformation Inspiration",
-        "url": "https://www.youtube.com/watch?v=EJAGRJj7bpI"
-      },
-      {
-        "type": "Lamp design samples",
-        "url": "https://adorno.design/editorial/explore-the-top-10-contemporary-conceptual-lighting-designs/?srsltid=AfmBOopxv3b4tNFl6JH37yqa3aQrBa0c_xTpOkVPM2Wy7f___2tNHz6o"
-      },     
-      {
-        "type": "Table design samples",
-        "url": "https://adorno.design/editorial/15-conceptual-tables-unveiling-the-essense-of-design/?srsltid=AfmBOorkW-5idBXNu4HKk7SR3CfgIk7jeqjBis6ODuzAnNy_b9Wc1Xed"
-      },
-      {
-        "type": "Chair redesign samples",
-        "url": "https://miro.medium.com/v2/resize:fit:1100/format:webp/0*2bYl47VIhWJR94nG"
-      }
+      {"type": "Design Process Example", "url": "https://www.youtube.com/watch?v=nZXc6AeDYDw&t=7s"},
+      {"type": "Object Transformation Inspiration", "url": "https://www.youtube.com/watch?v=EJAGRJj7bpI"},
+      {"type": "Lamp design samples", "url": "https://adorno.design/editorial/explore-the-top-10-contemporary-conceptual-lighting-designs/?srsltid=AfmBOopxv3b4tNFl6JH37yqa3aQrBa0c_xTpOkVPM2Wy7f___2tNHz6o"},
+      {"type": "Table design samples", "url": "https://adorno.design/editorial/15-conceptual-tables-unveiling-the-essense-of-design/?srsltid=AfmBOorkW-5idBXNu4HKk7SR3CfgIk7jeqjBis6ODuzAnNy_b9Wc1Xed"},
+      {"type": "Chair redesign samples", "url": "https://miro.medium.com/v2/resize:fit:1100/format:webp/0*2bYl47VIhWJR94nG"}
     ],
     "reward": "",
     "character": "charimage/char70.gif",
     "style": "mvp",
     "prerequisites": ["quest34", "quest48", "quest59", "quest60"],
     "completed": false,
-    "timer": {
-      "allottedMinutes": 750
-    },
+    "timer": {"allottedMinutes": 750},
     "accepted": false,
     "acceptedAt": null
   },
@@ -4317,7 +4475,7 @@
     "path": ["3D Path"],
     "difficulty": 3,
     "title": "The Dreamweaver's Gambit",
-    "rationale": "<h2>The Dreamweaver's Gambit</h2><p><strong>Why it's important:</strong><br>This quest combines art history, technical craft, and conceptual translation. Needle felting requires patience, precision, and spatial thinking while reproducing a 2D painting in 3D wool teaches students to analyze color, composition, and texture in new dimensions. The challenge of translating brushstrokes into wool fibers develops both observational skills and material mastery.</p><p><strong>Skills developed:</strong></p><ul><li>Art historical analysis and interpretation</li><li>Needle felting technique and wool manipulation</li><li>Color theory application with fiber materials</li><li>Spatial translation from 2D to 3D form</li><li>Patience and precision in craft execution</li></ul><p>This quest demonstrates how traditional crafts can reinterpret fine art, bridging historical and contemporary making practices.</p>",
+    "rationale": "<h2>The Dreamweaver's Gambit</h2><p><strong>Why it's important:</strong><br>This quest combines art history, technical craft, and conceptual translation. Needle felting requires patience, precision, and spatial thinking while reproducing a 2D painting in 3D wool teaches students to analyze color, composition, and texture in new dimensions. The challenge of translating brushstrokes into wool fibers develops both observational skills and material mastery.</p><p><strong>Skills you will learn:</strong></p><ul><li>Art historical analysis and interpretation</li><li>Needle felting technique and wool manipulation</li><li>Color theory application with fiber materials</li><li>Spatial translation from 2D to 3D form</li><li>Patience and precision in craft execution</li></ul><p>This quest demonstrates how traditional crafts can reinterpret fine art, bridging historical and contemporary making practices.</p>",
     "description": "The village of Stillaheim is haunted by Mara, the Nightmare Weaver—a creature who traps minds in restless sleep by unraveling their memories into tangled wool. Her power grows from stolen dreams, which she hangs as spectral tapestries in her lair.\n\nOnly one art can counter her: the ancient craft of felting, which binds loose fibers into solid truth. The elders have discovered Mara's weakness—she cannot bear to see dreams made permanent, rendered with such conviction that they cannot be undone.\n\nYou are tasked with selecting a famous painting whose emotional power matches Mara's dark artistry. Through needle felting, you must recreate this masterpiece in wool, stitch by meticulous stitch. Your felted reproduction must capture not just the image, but the painting's soul—its color harmonies, its emotional weight, its very essence made tangible. Only a work of such crafted truth can unravel Mara's nightmares and restore peaceful sleep.",
     "requirements": [
       "Select one famous painting from any art movement or period",
@@ -4331,16 +4489,6 @@
       "overall": "The Dreamweaver's Gambit (MVP)",
       "standards": [
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Deep research into painting's context; sophisticated understanding of style, technique, and emotional intent translated into felted form.",
-            "3": "Clear research; good understanding of painting's elements effectively translated to wool medium.",
-            "2": "Basic research; some elements misunderstood or poorly translated between mediums.",
-            "1": "Minimal research; poor understanding of original artwork's qualities."
-          }
-        },
-        {
           "code": "VA:Cr2.1.7a",
           "name": "Skill Development",
           "levels": {
@@ -4352,7 +4500,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Brilliant translation from 2D to 3D; captures painting's essence while exploring wool's unique textural possibilities.",
             "3": "Clear translation; reproduces key elements accurately in felted form.",
@@ -4369,31 +4517,30 @@
             "2": "Uneven composition; color choices deviate significantly from original.",
             "1": "Poor composition; color harmony lacking or incorrect."
           }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Deep research into painting's context; sophisticated understanding of style, technique, and emotional intent translated into felted form.",
+            "3": "Clear research; good understanding of painting's elements effectively translated to wool medium.",
+            "2": "Basic research; some elements misunderstood or poorly translated between mediums.",
+            "1": "Minimal research; poor understanding of original artwork's qualities."
+          }
         }
       ]
     },
     "links": [
-      {
-        "type": "100 Famous paintings",
-        "url": "https://www.topofart.com/top-100-art-reproductions.php?srsltid=AfmBOoq3Mu9d5B0_t9VE6o76Uwu0Ets6grUDTPcYjp47AOSjLRea91r9"
-      },
-      {
-        "type": "Needle felting sample",
-        "url": "https://www.youtube.com/watch?v=RL_WeMkEjPU&list=PLjpPlDIx2xhDCkekNBT6ELa0LUDxveSSh&index=4"
-      },
-      {
-        "type": "Needle felting sample",
-        "url": "https://www.youtube.com/watch?v=iSXy9uYz-sE&list=PLjpPlDIx2xhDCkekNBT6ELa0LUDxveSSh"
-      }
+      {"type": "100 Famous paintings", "url": "https://www.topofart.com/top-100-art-reproductions.php?srsltid=AfmBOoq3Mu9d5B0_t9VE6o76Uwu0Ets6grUDTPcYjp47AOSjLRea91r9"},
+      {"type": "Needle felting sample", "url": "https://www.youtube.com/watch?v=RL_WeMkEjPU&list=PLjpPlDIx2xhDCkekNBT6ELa0LUDxveSSh&index=4"},
+      {"type": "Needle felting sample", "url": "https://www.youtube.com/watch?v=iSXy9uYz-sE&list=PLjpPlDIx2xhDCkekNBT6ELa0LUDxveSSh"}
     ],
     "reward": "",
     "character": "charimage/char71.gif",
     "style": "mvp",
     "prerequisites": ["quest34", "quest55", "quest67"],
     "completed": false,
-    "timer": {
-      "allottedMinutes": 750
-    },
+    "timer": {"allottedMinutes": 750},
     "accepted": false,
     "acceptedAt": null
   },
@@ -4402,7 +4549,7 @@
     "path": ["3D Path"],
     "difficulty": 3,
     "title": "The Sculptor's Menagerie",
-    "rationale": "<h2>The Sculptor's Menagerie</h2><p><strong>Why it's important:</strong><br>This summative quest introduces students to figurative sculpture through imaginative creature design. By working with air-dry clay over wire armature, students learn essential 3D construction principles: structural support, additive/subtractive techniques, surface texturing, and spatial thinking. The fantastical subject matter encourages creative risk-taking while still demanding anatomical believability and technical craftsmanship.</p><p><strong>Skills developed:</strong></p><ul><li>Armature construction for structural stability</li><li>3D form building and proportion</li><li>Surface texturing techniques (fur, scales, skin)</li><li>Understanding balance and weight distribution</li><li>Creative anatomy and creature design</li></ul><p>This quest builds confidence in sculptural practice and prepares students for more complex figurative work.</p>",
+    "rationale": "<h2>The Sculptor's Menagerie</h2><p><strong>Why it's important:</strong><br>This summative quest introduces students to figurative sculpture through imaginative creature design. By working with air-dry clay over wire armature, students learn essential 3D construction principles: structural support, additive/subtractive techniques, surface texturing, and spatial thinking. The fantastical subject matter encourages creative risk-taking while still demanding anatomical believability and technical craftsmanship.</p><p><strong>Skills you will learn:</strong></p><ul><li>Armature construction for structural stability</li><li>3D form building and proportion</li><li>Surface texturing techniques (fur, scales, skin)</li><li>Understanding balance and weight distribution</li><li>Creative anatomy and creature design</li></ul><p>This quest builds confidence in sculptural practice and prepares students for more complex figurative work.</p>",
     "description": "Deep in the Whispering Woods, the last Keeper of the Menagerie tends to creatures that exist only in dreams and stories. But the Keeper is aging, and their magic is fading. Soon, these fantastical beasts will be forgotten unless someone can preserve them in solid form.\n\nYou have been summoned to the Keeper's workshop, where sketches of impossible creatures line the walls—griffins with feathered serpents' tails, foxes with crystalline antlers, turtles with moss-grown shells. Your task is to choose one creature from the Keeper's sketches—or imagine your own—and bring it to life as a small sculpture.\n\nUsing wire to build its hidden skeleton and clay to give it flesh and texture, you must create a creature so convincing that it could almost breathe. The Keeper will know you have succeeded when your sculpture feels balanced, textured, and alive—a permanent guardian for the fading menagerie.",
     "requirements": [
       "Design an original fantastical creature or select one from provided references",
@@ -4428,7 +4575,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Creature anatomy is highly convincing and believable within its fantasy context; proportions are intentional and balanced from all angles.",
             "3": "Clear anatomical understanding; proportions are mostly consistent and form reads well.",
@@ -4438,7 +4585,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Textures are masterfully rendered and clearly communicate surface qualities (fur, scales, etc.); details enhance the creature's believability and character.",
             "3": "Effective texture application; surface qualities are identifiable and consistent.",
@@ -4448,7 +4595,7 @@
         },
         {
           "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
+          "name": "Cultural Context",
           "levels": {
             "4": "Highly original creature design with thoughtful concept development; documentation thoroughly shows process from armature to final piece.",
             "3": "Clear creative concept; documentation shows key stages with good detail.",
@@ -4459,31 +4606,17 @@
       ]
     },
     "links": [
-      {
-        "type": "Wire armature basics",
-        "url": "https://www.youtube.com/watch?v=js1_4ehETxI"
-      },
-      {
-        "type": "Sculpting fantasy creatures",
-        "url": "https://www.youtube.com/watch?v=2_BAaBJSwPI&list=PLziuS8DWCpjU7QFuM6wRH5C1R37aqb6OC"
-      },
-      {
-        "type": "Creating fur texture in clay",
-        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-      },
-      {
-        "type": "Creature design inspiration",
-        "url": "https://www.pinterest.com/ideas/fantasy-creature-sculpture/915234578901/"
-      }
+      {"type": "Wire armature basics", "url": "https://www.youtube.com/watch?v=js1_4ehETxI"},
+      {"type": "Sculpting fantasy creatures", "url": "https://www.youtube.com/watch?v=2_BAaBJSwPI&list=PLziuS8DWCpjU7QFuM6wRH5C1R37aqb6OC"},
+      {"type": "Creating fur texture in clay", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+      {"type": "Creature design inspiration", "url": "https://www.pinterest.com/ideas/fantasy-creature-sculpture/915234578901/"}
     ],
     "reward": "",
     "character": "charimage/char76.gif",
     "style": "mvp",
-    "prerequisites": ["quest48", "quest34", "quest73"],
+    "prerequisites": ["quest48", "quest34", "quest73", "quest43"],
     "completed": false,
-    "timer": {
-      "allottedMinutes": 600
-    },
+    "timer": {"allottedMinutes": 600},
     "accepted": false,
     "acceptedAt": null
   },
@@ -4492,7 +4625,7 @@
     "path": ["3D Path"],
     "difficulty": 3,
     "title": "The Weaver's Legacy",
-    "rationale": "<h2>The Weaver's Legacy</h2><p><strong>Why it's important:</strong><br>This culminating quest challenges students to bridge 2D design and 3D construction by creating a wearable piece of art. Students must synthesize figure drawing, textile understanding, and sculptural thinking to transform a flat design into a three-dimensional garment. The process requires planning, problem-solving, and craftsmanship while allowing for immense creative expression. This quest prepares students for costume design, fashion construction, and wearable art practices.</p><p><strong>Skills developed:</strong></p><ul><li>Translating 2D designs into 3D forms</li><li>Pattern making and construction techniques</li><li>Material selection and textile manipulation</li><li>Wearable structure and fit considerations</li><li>Integrated design process from concept to finished piece</li></ul><p>This quest demonstrates mastery of the full design cycle and the ability to bring imagined clothing into physical reality.</p>",
+    "rationale": "<h2>The Weaver's Legacy</h2><p><strong>Why it's important:</strong><br>This culminating quest challenges students to bridge 2D design and 3D construction by creating a wearable piece of art. Students must synthesize figure drawing, textile understanding, and sculptural thinking to transform a flat design into a three-dimensional garment. The process requires planning, problem-solving, and craftsmanship while allowing for immense creative expression. This quest prepares students for costume design, fashion construction, and wearable art practices.</p><p><strong>Skills you will learn:</strong></p><ul><li>Translating 2D designs into 3D forms</li><li>Pattern making and construction techniques</li><li>Material selection and textile manipulation</li><li>Wearable structure and fit considerations</li><li>Integrated design process from concept to finished piece</li></ul><p>This quest demonstrates mastery of the full design cycle and the ability to bring imagined clothing into physical reality.</p>",
     "description": "In the mountain loom-halls of the Weaver's Guild, an ancient tradition continues: each year, apprentices must create a single garment that tells a story. Not just any story—a story woven, stitched, and shaped into fabric that can be worn.\n\nThe Guild Master, an elderly woman named Elara who has woven garments for queens and kings, has chosen you for the final test. She places before you sketches from throughout history: a warrior's cloak, a dancer's dress, a scholar's robe. 'Choose your inspiration,' she says, 'but do not copy. Listen to what the fabric wants to become.'\n\nYour task is to create an original piece of clothing—a garment that can be worn, displayed on a form, or hung as sculpture. It must begin with the design skills you demonstrated in your fashion sketchbook, showing thoughtful development from 2D concept to 3D reality. Through fabric, stitching, and structure, you will weave your own legacy into the Guild's collection.",
     "requirements": [
       "Complete The Fashionista's Sketchbook as a prerequisite (designs must include the piece you plan to construct)",
@@ -4507,16 +4640,6 @@
       "overall": "The Weaver's Legacy",
       "standards": [
         {
-          "code": "VA:Cn11.1.8a",
-          "name": "Art & Cultural Context",
-          "levels": {
-            "4": "Exceptional connection between sketchbook design and final garment; thoughtful adaptations show sophisticated problem-solving and material understanding.",
-            "3": "Clear translation from 2D to 3D; design intent is preserved with appropriate material adaptations.",
-            "2": "Some connection between sketch and garment; translation challenges were partially resolved.",
-            "1": "Weak connection between design and final piece; translation appears unplanned or unsuccessful."
-          }
-        },
-        {
           "code": "VA:Cr2.1.7a",
           "name": "Skill Development",
           "levels": {
@@ -4528,7 +4651,7 @@
         },
         {
           "code": "VA:Re8.1.8a",
-          "name": "Art Interpretation",
+          "name": "Interpretation",
           "levels": {
             "4": "Exceptional material choices that enhance design intent; fabrics are manipulated skillfully to achieve desired effects and fit.",
             "3": "Good material choices appropriate to design; fabrics are handled effectively.",
@@ -4545,35 +4668,31 @@
             "2": "Adequate form; some fit or structural issues affect intended appearance.",
             "1": "Poor form; garment does not achieve intended silhouette or function."
           }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional connection between sketchbook design and final garment; thoughtful adaptations show sophisticated problem-solving and material understanding.",
+            "3": "Clear translation from 2D to 3D; design intent is preserved with appropriate material adaptations.",
+            "2": "Some connection between sketch and garment; translation challenges were partially resolved.",
+            "1": "Weak connection between design and final piece; translation appears unplanned or unsuccessful."
+          }
         }
       ]
     },
     "links": [
-      {
-        "type": "Pattern making basics",
-        "url": "https://www.youtube.com/watch?v=Q_1q8P9sK3M"
-      },
-      {
-        "type": "Garment construction techniques",
-        "url": "https://www.youtube.com/watch?v=vVUJ7w6Vz34"
-      },
-      {
-        "type": "Wearable art inspiration",
-        "url": "https://www.pinterest.com/ideas/wearable-art-sculpture/961234578901/"
-      },
-      {
-        "type": "Sustainable fabric choices",
-        "url": "https://www.youtube.com/watch?v=7xKjXq3m5X4"
-      }
+      {"type": "Pattern making basics", "url": "https://www.youtube.com/watch?v=Q_1q8P9sK3M"},
+      {"type": "Garment construction techniques", "url": "https://www.youtube.com/watch?v=vVUJ7w6Vz34"},
+      {"type": "Wearable art inspiration", "url": "https://www.pinterest.com/ideas/wearable-art-sculpture/961234578901/"},
+      {"type": "Sustainable fabric choices", "url": "https://www.youtube.com/watch?v=7xKjXq3m5X4"}
     ],
     "reward": "",
     "character": "charimage/char77.gif",
     "style": "mvp",
     "prerequisites": ["quest75", "quest34", "quest48", "quest58"],
     "completed": false,
-    "timer": {
-      "allottedMinutes": 600
-    },
+    "timer": {"allottedMinutes": 600},
     "accepted": false,
     "acceptedAt": null
   },
@@ -4582,7 +4701,7 @@
     "path": ["3D Path"],
     "difficulty": 2,
     "title": "The Foamsmith's Apprentice",
-    "rationale": "<h2>The Foamsmith's Apprentice</h2><p><strong>Why it's important:</strong><br>EVA foam is the primary material for modern cosplay construction. This quest teaches the fundamental techniques of cutting, shaping, sealing, and painting foam—skills that directly transfer to armor, weapons, and props. Without mastering these basics, students will struggle with the collaborative cosplay summative.</p><p><strong>Skills developed:</strong></p><ul><li>Safe cutting techniques with hobby knives</li><li>Heat shaping with heat guns</li><li>Contact cement application and seam hiding</li><li>PlastiDip/Komba sealing methods</li><li>Acrylic painting on flexible surfaces</li><li>Pattern transfer from 2D to 3D forms</li></ul><p>This quest builds the technical foundation required for the Master Forgemaster's Covenant.</p>",
+    "rationale": "<h2>The Foamsmith's Apprentice</h2><p><strong>Why it's important:</strong><br>EVA foam is the primary material for modern cosplay construction. This quest teaches the fundamental techniques of cutting, shaping, sealing, and painting foam—skills that directly transfer to armor, weapons, and props. Without mastering these basics, students will struggle with the collaborative cosplay summative.</p><p><strong>Skills you will learn:</strong></p><ul><li>Safe cutting techniques with hobby knives</li><li>Heat shaping with heat guns</li><li>Contact cement application and seam hiding</li><li>PlastiDip/Komba sealing methods</li><li>Acrylic painting on flexible surfaces</li><li>Pattern transfer from 2D to 3D forms</li></ul><p>This quest builds the technical foundation required for the Master Forgemaster's Covenant.</p>",
     "description": "In the workshop of Old Man Kaelen, the kingdom's finest armorsmith has retired to teaching the sacred craft of foam. 'Metal is heavy and unkind,' he grumbles, handing you a sheet of EVA foam. 'But foam... foam can become anything if you learn its secrets.'\n\nYour task is to create basic shapes using EVA foam, demonstrating all five stages of foamsmithing: pattern, cut, shape, seal, and paint.",
     "requirements": [
       "Create a cube, a convex shape and a half circle piece from EVA foam",
@@ -4606,7 +4725,7 @@
         },
         {
           "code": "VA:Cr3.1.7a",
-          "name": "Reflection & Artist Statement",
+          "name": "Reflection",
           "levels": {
             "4": "Professional paint job with smooth coverage, intentional shading/highlights, and convincing material effect (metal, leather, etc.).",
             "3": "Good paint coverage with basic shading; material effect is readable.",
@@ -4625,9 +4744,589 @@
     "style": "",
     "prerequisites": [],
     "completed": false,
-    "timer": {
-      "allottedMinutes": 375
+    "timer": {"allottedMinutes": 375},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest82": {
+    "path": ["3D Path"],
+    "difficulty": 3,
+    "title": "The Maskmaker's Ritual",
+    "rationale": "<h2>The Maskmaker's Ritual</h2><p><strong>Why it's important:</strong><br>Mask-making combines sculpture, painting, and wearable art. It teaches facial structure, surface building, and the translation of character into 3D form. Papier mâché is inexpensive, forgiving, and highly versatile—ideal for large-scale, lightweight construction.</p><p><strong>Skills you will learn:</strong></p><ul><li>Armature building and mold-making</li><li>Layering and surface building</li><li>Symmetry and facial proportion</li><li>Painting and finishing 3D surfaces</li><li>Wearable structure and comfort considerations</li></ul>",
+    "description": "In the Village of Masks, every face tells a story. The elders have commissioned you to create a mask for the Festival of Ancestors—a mask that captures a spirit, emotion, or character.\nUsing papier mâché, you must build a wearable mask that is both structurally sound and visually compelling.",
+    "requirements": [
+      "Create a wearable papier mâché mask",
+      "Build a mold or armature to support the form",
+      "Apply at least 4-6 layers of papier mâché",
+      "Show clear facial structure or character design",
+      "Paint and finish the mask with intentional color and detail",
+      "Ensure the mask is wearable (eye holes, comfortable fit)"
+    ],
+    "rubric": {
+      "overall": "The Maskmaker's Ritual",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Masterful layering, smooth surface, and professional finish.",
+            "3": "Good layering and surface with minor imperfections.",
+            "2": "Basic layering; surface is uneven or unfinished.",
+            "1": "Poor construction; mask is fragile or incomplete."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Highly refined design with strong character and detail.",
+            "3": "Clear design with good attention to form and finish.",
+            "2": "Basic design; some areas lack clarity or refinement.",
+            "1": "Little refinement; design is unclear or unfinished."
+          }
+        },
+        {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Thorough documentation of mold-making, layering, and finishing.",
+            "3": "Good documentation of key stages.",
+            "2": "Limited documentation or missing stages.",
+            "1": "No process documentation."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between mask traditions and personal work.",
+            "3": "Good research; clear connections to mask traditions.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
+          }
+        }
+      ]
     },
+    "links": [
+      {"type": "Papier mâché mask tutorial", "url": "https://www.youtube.com/watch?v=hSOXnvPnOyQ"}
+    ],
+    "reward": "",
+    "character": "charimage/char82.gif",
+    "style": "mvp",
+    "prerequisites": ["quest48", "quest59", "quest60", "quest61", "quest18", "quest21"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest83": {
+    "path": ["3D Path"],
+    "difficulty": 3,
+    "title": "The Paperwright's Colossus",
+    "rationale": "<h2>The Paperwright's Colossus</h2><p><strong>Why it's important:</strong><br>Large-scale papier mâché teaches structural engineering, proportion, and the transformation of humble materials into monumental form. This is distinctly different from clay and foam because it requires building hollow forms and managing weight.</p><p><strong>Skills you will learn:</strong></p><ul><li>Armature construction for large forms</li><li>Hollow form building and structural integrity</li><li>Proportion and scale management</li><li>Surface finishing and painting on curved forms</li><li>Problem-solving with lightweight materials</li></ul>",
+    "description": "The Paperwrights of the Eastern Guild are famous for creating towering sculptures from nothing but paper and paste. They challenge you to build a sculpture that stands at least 30cm tall, using papier mâché over a wire or cardboard armature.\nThe subject may be a creature, figure, or abstract form.",
+    "requirements": [
+      "Create a papier mâché sculpture (minimum 30cm in one dimension)",
+      "Build a wire or cardboard armature",
+      "Apply at least 5-8 layers of papier mâché",
+      "Show clear form and proportion",
+      "Paint and finish with intentional color and detail",
+      "Ensure structural stability (free-standing or wall-mounted)"
+    ],
+    "rubric": {
+      "overall": "The Paperwright's Colossus",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Masterful construction; smooth surface; excellent structural integrity.",
+            "3": "Good construction with minor surface or structural issues.",
+            "2": "Basic construction; uneven surface or weak structure.",
+            "1": "Poor construction; unstable or incomplete."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Form is highly convincing; proportions are accurate.",
+            "3": "Clear form with mostly accurate proportions.",
+            "2": "Form is unclear; proportions are inconsistent.",
+            "1": "Form is unrecognizable; proportions are incorrect."
+          }
+        },
+        {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Thorough documentation of armature, layering, and finishing.",
+            "3": "Good documentation of key stages.",
+            "2": "Limited documentation.",
+            "1": "No process documentation."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between paper sculpture tradition and personal work.",
+            "3": "Good research; clear connections to context.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Papier mâché sculpture tutorial", "url": "https://www.youtube.com/watch?v=7liPQf014II"}
+    ],
+    "reward": "",
+    "character": "charimage/char83.gif",
+    "style": "mvp",
+    "prerequisites": ["quest48", "quest57", "quest59", "quest63", "quest73"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest84": {
+    "path": ["3D Path"],
+    "difficulty": 3,
+    "title": "The Kinusaiga Master's Trial",
+    "rationale": "<h2>The Kinusaiga Master's Trial</h2><p><strong>Why it's important:</strong><br>Kinusaiga is a Japanese technique of creating pictures by cutting fabric into shapes and tucking them into grooves carved into a wooden board. No sewing or loom required — just fabric, a board, and a craft knife. It teaches color composition, precision, and the translation of 2D design into textile form.</p><p><strong>Skills you will learn:</strong></p><ul><li>Design transfer and composition planning</li><li>Precision cutting with craft knife</li><li>Color and pattern selection in fabric</li><li>Groove carving and fabric tucking</li><li>Patience and fine motor control</li></ul>",
+    "description": "In the textile villages of Ukonyama, kinusaiga artists transform discarded kimono fabric into stunning pictures. The village elder challenges you to create a kinusaiga piece that captures a scene or image using fabric scraps, a wooden board, and a craft knife.",
+    "requirements": [
+      "Create a kinusaiga textile painting",
+      "Design must be transferred to a foam or wooden board",
+      "Use at least 4 different fabrics/colors",
+      "Carve grooves to define shapes",
+      "Tuck fabric into grooves to fill the design",
+      "Finish with a clean border or frame"
+    ],
+    "rubric": {
+      "overall": "The Kinusaiga Master's Trial",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Masterful cutting and tucking; smooth fabric placement; professional finish.",
+            "3": "Good technique; clean cuts with minor fabric lifting.",
+            "2": "Basic technique; uneven cuts or fabric not fully tucked.",
+            "1": "Poor technique; fabric loose or design unclear."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Exceptional composition; fabric choices enhance the design.",
+            "3": "Good composition with clear color harmony.",
+            "2": "Basic composition; color choices inconsistent.",
+            "1": "Poor composition; colors clash or design is unclear."
+          }
+        },
+        {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Thorough planning; design transfer, fabric selection, and execution documented.",
+            "3": "Good planning and documentation.",
+            "2": "Limited planning; process unclear.",
+            "1": "No planning or documentation."
+          }
+        },
+        {
+          "code": "VA:Cn11.1.8a",
+          "name": "Cultural Context",
+          "levels": {
+            "4": "Exceptional research; clear connections between kinusaiga tradition and personal work.",
+            "3": "Good research; clear connections to kinusaiga tradition.",
+            "2": "Basic research; limited connection to context.",
+            "1": "Minimal research; no clear connection."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Kinusaiga tutorial", "url": "https://www.youtube.com/watch?v=C32As78Vwsw"},
+      {"type": "Kinusaiga design ideas", "url": "https://www.google.com/search?q=kinusaiga+design+ideas&udm=2"}
+    ],
+    "reward": "",
+    "character": "charimage/char84.gif",
+    "style": "mvp",
+    "prerequisites": ["quest13", "quest34", "quest63", "quest71", "quest48"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest88": {
+    "path": ["3D Path"],
+    "difficulty": 2,
+    "title": "The Mosaicist's Mandala",
+    "rationale": "<h2>The Mosaicist's Mandala</h2><p><strong>Why it's important:</strong><br>Mosaic teaches color theory, pattern, and patience while working with fragmented materials. It bridges 2D and 3D and is distinct from relief and tile work.</p><p><strong>Skills you will learn:</strong></p><ul><li>Color theory with fragmented materials</li><li>Pattern and repetition</li><li>Patience and precision</li><li>Composition with tesserae</li><li>Grouting and finishing</li></ul>",
+    "description": "The Mosaicist's Guild preserves the ancient art of arranging small pieces into grand images. You must create a mosaic using tile, glass, or found materials.",
+    "requirements": [
+      "Create a mosaic artwork (minimum 10x10cm)",
+      "Use at least 3 different colors of tesserae",
+      "Show pattern, image, or abstract design",
+      "Grout and finish the piece",
+      "Ensure all pieces are securely attached"
+    ],
+    "rubric": {
+      "overall": "The Mosaicist's Mandala",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Masterful placement and grouting; clean, secure finish.",
+            "3": "Good technique; pieces are secure with minor gaps.",
+            "2": "Basic technique; some pieces loose or grouting uneven.",
+            "1": "Poor technique; pieces falling off or grout messy."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Exceptional composition; color choices enhance the design.",
+            "3": "Good composition with clear color harmony.",
+            "2": "Basic composition; color choices inconsistent.",
+            "1": "Poor composition; colors clash or design unclear."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Mosaic basics", "url": "https://www.youtube.com/watch?v=JYvj96667ic"},
+      {"type": "Glass mosaic examples", "url": "https://www.google.com.hk/search?newwindow=1&sca_esv=5840f6a463163eea&sxsrf=APpeQntAywM40E0ZFbGPG8f1-v_nMVXZOQ:1791729505283&udm=2&fbs=ABfTbFVyMZGZf1hfvX9uKjN_-G8c4u0nXx4bEIpwm1lnNH832cY0rzciwbWdjW1sV3VNzLzR4RIindJxFrmQWQ1WCYgKdh4SxzhRaOVvt3n87StoAMoDgDvBnjZ4Njf4yAaLs3QhOmFAyDpw9_i3qcRrE3hq_HfYRuhUIW2IGakVmpMJ6tRNQeh__uTkxGdva2OaNUe00HhT&q=glass+mosaic+examples&sa=X&ved=2ahUKEwjRo8jFmLKXAxVlhysGHZKwH_QQtKgLegQIGhAB&biw=1366&bih=745&dpr=1.88"}
+    ],
+    "reward": "",
+    "character": "charimage/char88.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 225},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest91": {
+    "path": ["Sketcher Path"],
+    "difficulty": 1,
+    "title": "The Archivist's Initiation",
+    "rationale": "<h2>The Archivist's Initiation</h2><p><strong>Why it's important:</strong><br>Every sketchbook begins with an artist investigation. This quest teaches you how to research an artist, analyze their work, and connect it to your own practice. It builds the foundation for all future research and critical reflection.</p><p><strong>Skills you will learn:</strong></p><ul><li>Research skills (primary and secondary sources)</li><li>Visual analysis of artworks</li><li>Contextual understanding of an artist's practice</li><li>Personal connection to art history</li><li>Documentation and citation</li></ul><p>This quest is your first step toward a professional sketchbook practice.</p>",
+    "description": "The Archivist hands you a blank page and a single question: 'Who made something that moved you — and why?'\nYou must select one artist, research their work, and create a sketchbook page that presents your findings visually and critically.",
+    "requirements": [
+      "Select one artist (any period, any medium)",
+      "Include at least 3 images of their work (printed or drawn)",
+      "Write a 150-word analysis covering: subject, form, context",
+      "Include one personal sketch or response inspired by their work",
+      "Cite your sources"
+    ],
+    "rubric": {
+      "overall": "The Archivist's Initiation",
+      "standards": [
+        {
+          "code": "VA:Re8.1.8a",
+          "name": "Interpretation",
+          "levels": {
+            "4": "Exceptional visual analysis; identifies form, subject, and context with insight.",
+            "3": "Clear analysis of form and meaning with relevant details.",
+            "2": "Some analysis but missing key elements or context.",
+            "1": "Little to no analysis; description only."
+          }
+        },
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Deep research evident; artist's work analyzed thoroughly with clear connections to context and personal practice.",
+            "3": "Good research; artist's work analyzed with relevant details and context.",
+            "2": "Basic research; analysis is surface-level or lacks context.",
+            "1": "Minimal research; no clear analysis or connection."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "How to research an artist", "url": "https://www.youtube.com/watch?v=yMUmqBU4FDM"},
+      {"type": "Sketchbook examples", "url": "https://www.google.com/search?q=IB+visual+arts+sketchbook+examples&udm=2"}
+    ],
+    "reward": "",
+    "character": "charimage/char91.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 150},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest92": {
+    "path": ["Sketcher Path"],
+    "difficulty": 2,
+    "title": "The Comparative Eye",
+    "rationale": "<h2>The Comparative Eye</h2><p><strong>Why it's important:</strong><br>Comparative study is a core skill. This quest teaches you to analyze two works side by side, identifying similarities and differences in form, context, and meaning. It builds visual literacy and critical thinking.</p><p><strong>Skills you will learn:</strong></p><ul><li>Comparative analysis</li><li>Formal, contextual, and conceptual analysis</li><li>Critical thinking and visual literacy</li><li>Synthesis of research</li><li>Personal reflection</li></ul><p>This quest strengthens your ability to see connections across cultures, periods, and media.</p>",
+    "description": "The Archivist places two artworks before you — one from a traditional culture, one from the contemporary world. They share a theme but nothing else. You must compare them in a sketchbook spread.",
+    "requirements": [
+      "Select two artworks with a shared theme (e.g., identity, nature, war)",
+      "Include images of both works",
+      "Create a comparison chart (form, context, meaning)",
+      "Write a 200-word comparative analysis",
+      "Include a personal reflection: which work speaks to you and why?"
+    ],
+    "rubric": {
+      "overall": "The Comparative Eye",
+      "standards": [
+        {
+          "code": "VA:Re8.1.8a",
+          "name": "Interpretation",
+          "levels": {
+            "4": "Exceptional analysis; identifies similarities and differences with insight and nuance.",
+            "3": "Clear analysis of both works with relevant details.",
+            "2": "Some analysis but missing key differences or similarities.",
+            "1": "Little to no analysis; description only."
+          }
+        },
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Deep research into both works; sophisticated comparative analysis with clear connections.",
+            "3": "Good research; clear comparison of form, context, and meaning.",
+            "2": "Basic research; comparison is surface-level or incomplete.",
+            "1": "Minimal research; no clear comparison."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "How to compare artworks", "url": "https://www.youtube.com/watch?v=yrZ7Fp_RQ7s"},
+      {"type": "Comparative study examples", "url": "https://www.google.com/search?q=IB+comparative+study+visual+arts&udm=2"}
+    ],
+    "reward": "",
+    "character": "charimage/char92.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 225},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest93": {
+    "path": ["Sketcher Path"],
+    "difficulty": 1,
+    "title": "The Process Scroll",
+    "rationale": "<h2>The Process Scroll</h2><p><strong>Why it's important:</strong><br>Documenting your process is the backbone of sketchbook practice. This quest teaches you to show your thinking—from initial idea through experiments, failures, and revisions to the final work.</p><p><strong>Skills you will learn:</strong></p><ul><li>Process documentation</li><li>Experimentation and revision</li><li>Critical reflection</li><li>Visual storytelling of your own creative journey</li><li>Honest self-assessment</li></ul><p>This quest builds the habit of documenting everything, which will serve you in every future summative.</p>",
+    "description": "The Archivist wants to see how you think. You must create a sketchbook spread documenting a single artwork from start to finish. The final artwork can be simple — what matters is the journey.",
+    "requirements": [
+      "Include at least 5 stages: initial idea, sketches, experiment, revision, final work",
+      "Photograph or draw each stage",
+      "Write brief annotations explaining decisions at each stage",
+      "Include one failure or mistake and what you learned from it",
+      "Reflect on what you would do differently"
+    ],
+    "rubric": {
+      "overall": "The Process Scroll",
+      "standards": [
+        {
+          "code": "VA:Cr3.1.7a",
+          "name": "Reflection",
+          "levels": {
+            "4": "Thorough documentation with clear stages, thoughtful annotations, and honest reflection.",
+            "3": "Good documentation with visible stages and clear annotations.",
+            "2": "Basic documentation; some stages missing or unclear.",
+            "1": "Minimal documentation; no clear process shown."
+          }
+        },
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Strong evidence of revision and refinement; significant improvement from early to final work.",
+            "3": "Clear evidence of revision and improvement.",
+            "2": "Some revision but limited improvement.",
+            "1": "Little to no revision or refinement."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Process portfolio examples", "url": "https://www.google.com/search?q=IB+process+portfolio+visual+arts&udm=2"},
+      {"type": "How to document your process", "url": "https://www.youtube.com/watch?v=hd0Y4XMs9Fg"}
+    ],
+    "reward": "",
+    "character": "charimage/char93.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 150},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest94": {
+    "path": ["Sketcher Path"],
+    "difficulty": 2,
+    "title": "The Theme Weaver",
+    "rationale": "<h2>The Theme Weaver</h2><p><strong>Why it's important:</strong><br>Thematic investigation is a core skill. This quest teaches you to trace a theme through art history and contemporary practice, then connect it to your own artistic interests. It builds research depth and personal meaning-making.</p><p><strong>Skills you will learn:</strong></p><ul><li>Thematic investigation</li><li>Contextual research across cultures and periods</li><li>Personal connection to art history</li><li>Synthesis of multiple sources</li><li>Visual and written analysis</li></ul><p>This quest strengthens your ability to develop a body of work around a central idea.</p>",
+    "description": "A single thread runs through all art — but which thread will you follow? You must select a theme (e.g., 'the outsider,' 'nature's power,' 'memory') and investigate how different artists have explored it.",
+    "requirements": [
+      "Select one theme",
+      "Find at least 4 artworks from different periods/cultures that address this theme",
+      "Include images and brief analysis of each",
+      "Write a reflection: what draws you to this theme?",
+      "Include one original sketch or artwork inspired by your research"
+    ],
+    "rubric": {
+      "overall": "The Theme Weaver",
+      "standards": [
+        {
+          "code": "VA:Re8.1.8a",
+          "name": "Interpretation",
+          "levels": {
+            "4": "Exceptional analysis; identifies how each work addresses the theme with nuance.",
+            "3": "Clear analysis of each work with relevant details.",
+            "2": "Some analysis but missing key connections.",
+            "1": "Little to no analysis; description only."
+          }
+        },
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Deep research across multiple contexts; theme explored with insight and personal connection.",
+            "3": "Good research; clear thematic connections across artworks.",
+            "2": "Basic research; theme is identifiable but connections are weak.",
+            "1": "Minimal research; no clear theme or connections."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "How to develop a theme", "url": "https://www.youtube.com/watch?v=gThv7UhBNP8&list=PLqYzJxUXOdUimNo2KSwZ4hpoa-ku5-xEL"},
+      {"type": "Thematic study examples", "url": "https://www.google.com/search?q=IB+visual+arts+thematic+study&udm=2"}
+    ],
+    "reward": "",
+    "character": "charimage/char94.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 225},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest95": {
+    "path": ["Sketcher Path"],
+    "difficulty": 1,
+    "title": "The Material Witness",
+    "rationale": "<h2>The Material Witness</h2><p><strong>Why it's important:</strong><br>Material and technique research deepens your understanding of how art is made. This quest teaches you to research a material or technique—its history, science, and artistic applications—then test it yourself.</p><p><strong>Skills you will learn:</strong></p><ul><li>Material and technique research</li><li>Technical investigation</li><li>Experimentation documentation</li><li>Connecting historical practice to contemporary use</li><li>Hands-on testing and reflection</li></ul><p>This quest builds your ability to make informed technical choices in your own work.</p>",
+    "description": "The Archivist hands you a mysterious material — could be gold leaf, cyanotype chemicals, or egg tempera. You must research its history, properties, and uses, then create a test piece.",
+    "requirements": [
+      "Select one material or technique (e.g., fresco, batik, cyanotype)",
+      "Research: where it came from, how it works, who uses it",
+      "Include images of historical and contemporary examples",
+      "Write a 150-word summary of your findings",
+      "Create a small test piece using the material or technique",
+      "Reflect: what did you learn? What will you do with this knowledge?"
+    ],
+    "rubric": {
+      "overall": "The Material Witness",
+      "standards": [
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Masterful handling of material/technique; test piece demonstrates strong control.",
+            "3": "Good control; test piece is clear and intentional.",
+            "2": "Basic control; test piece is rough or incomplete.",
+            "1": "Poor control; test piece unsuccessful or missing."
+          }
+        },
+        {
+          "code": "VA:Cr2.3.8a",
+          "name": "Visual Communication",
+          "levels": {
+            "4": "Deep research into material/technique; clear connection between history and personal testing.",
+            "3": "Good research; material/technique understood and tested effectively.",
+            "2": "Basic research; limited understanding or testing.",
+            "1": "Minimal research; no clear understanding or test."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Material research guide", "url": "https://www.youtube.com/watch?v=W4NuqLa9i1Q"},
+      {"type": "Technique exploration examples", "url": "https://www.google.com/search?q=material+technique+research+sketchbook&udm=2"}
+    ],
+    "reward": "",
+    "character": "charimage/char95.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 150},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest96": {
+    "path": ["Sketcher Path"],
+    "difficulty": 2,
+    "title": "The Curator's Eye",
+    "rationale": "<h2>The Curator's Eye</h2><p><strong>Why it's important:</strong><br>Understanding how exhibitions are curated and how context affects meaning is essential for any artist. This quest teaches you to analyze display, layout, and narrative in an exhibition or collection.</p><p><strong>Skills you will learn:</strong></p><ul><li>Exhibition research and analysis</li><li>Curatorial thinking</li><li>Understanding context and display</li><li>Critical reflection on viewer experience</li><li>Proposing alternative curatorial choices</li></ul><p>This quest connects your research skills to the presentation and reception of art.</p>",
+    "description": "The Archivist takes you to a gallery — real or virtual. You must investigate how an exhibition is curated: what's included, what's excluded, how works are arranged, and what story is being told.",
+    "requirements": [
+      "Visit an exhibition (physical or virtual)",
+      "Include a floor plan or layout sketch",
+      "Select 3 artworks and analyze how they are displayed",
+      "Write a 200-word reflection: how does display affect meaning?",
+      "Propose one change you would make as curator"
+    ],
+    "rubric": {
+      "overall": "The Curator's Eye",
+      "standards": [
+        {
+          "code": "VA:Re8.1.8a",
+          "name": "Interpretation",
+          "levels": {
+            "4": "Exceptional analysis of how display affects meaning; thoughtful proposal for alternative curation.",
+            "3": "Clear analysis of exhibition impact with relevant reflection.",
+            "2": "Some analysis but limited insight into display impact.",
+            "1": "Little to no analysis of exhibition or display."
+          }
+        },
+        {
+          "code": "VA:Cr2.1.7a",
+          "name": "Skill Development",
+          "levels": {
+            "4": "Thorough research into exhibition design; insightful analysis of curatorial choices.",
+            "3": "Good research; clear analysis of display and context.",
+            "2": "Basic research; limited analysis of curatorial choices.",
+            "1": "Minimal research; no clear analysis."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "How to analyze an exhibition", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4F"},
+      {"type": "Virtual museum tours", "url": "https://www.travelandleisure.com/attractions/museums-galleries/museums-with-virtual-tours"}
+    ],
+    "reward": "",
+    "character": "charimage/char96.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 225},
     "accepted": false,
     "acceptedAt": null
   }
