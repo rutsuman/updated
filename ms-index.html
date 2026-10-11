@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Artheim - Middle School Quest Map</title>
-    <link rel="stylesheet" href="style.css?v=20261007-ms">
+    <link rel="stylesheet" href="style.css?v=20260725-ms">
     <link rel="icon" type="image/png" href="favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 </head>
@@ -34,7 +34,7 @@
     <div class="hotspot debug" style="top:47.3%; left:49.9%;" data-city="quest11"></div> <!--MVP-->
     <div class="hotspot debug" style="top:46.4%; left:87.8%;" data-city="quest13"></div>
     <div class="hotspot debug" style="top:29%; left:71.6%;" data-city="quest14"></div>
-    <div class="hotspot debug" style="top:65%; left:23.5%;" data-city="quest15"></div>
+    <div class="hotspot debug" style="top:33.9%; left:98%;" data-city="quest15"></div>
     <div class="hotspot debug" style="top:23.5%; left:91.7%;" data-city="quest19"></div>
     <div class="hotspot debug" style="top:38.3%; left:39.4%;" data-city="quest33"></div>
     <div class="hotspot debug" style="top:61.5%; left:26%;" data-city="quest34"></div>
@@ -73,6 +73,9 @@
     <div class="hotspot debug" style="top:32%; left:42.5%;" data-city="quest75"></div> <!--MVP-->
     <div class="hotspot debug" style="top:4.5%; left:95%;" data-city="quest78"></div><!--MVP-->
     <div class="hotspot debug" style="top:55.5%; left:5.2%;" data-city="quest79"></div><!--MVP change colour-->
+    <div class="hotspot debug" style="top:44.2%; left:95%;" data-city="quest85"></div>
+    <div class="hotspot debug" style="top: 26.5%; left:96%;" data-city="quest89"></div>
+    <div class="hotspot debug" style="top:4.2%; left:29.9%;" data-city="quest90"></div>
 
     <!-- ============================================= -->
     <!-- WATERCOLOR PATH QUESTS (scrollable list)     -->
@@ -102,7 +105,7 @@
     <div class="hotspot debug" style="top:3%; left:65%;" data-city="quest59"></div>
     <div class="hotspot debug" style="top:14%; left:93%;" data-city="quest60"></div>
     <div class="hotspot debug" style="top:6%; left:71%;" data-city="quest61"></div>
-    <div class="hotspot debug" style="top:6.7%; left:79%;" data-city="quest62"></div>
+    <div class="hotspot debug" style="top:31.7%; left:64.5%;" data-city="quest62"></div>
     <div class="hotspot debug" style="top:9.1%; left:96%;" data-city="quest63"></div>
     <div class="hotspot debug" style="top:2.1%; left:60%;" data-city="quest68"></div>
     <div class="hotspot debug" style="top:13%; left:87%;" data-city="quest70"></div><!--MVP-->
@@ -110,6 +113,20 @@
     <div class="hotspot debug" style="top:35%; left:49.4%;" data-city="quest76"></div><!--MVP-->
     <div class="hotspot debug" style="top:13.6%; left:97.3%;" data-city="quest77"></div>
     <div class="hotspot debug" style="top:14.8%; left:67%;" data-city="quest81"></div>
+    <div class="hotspot debug" style="top:19.2%; left:3%;" data-city="quest82"></div><!--MVP-->
+    <div class="hotspot debug" style="top:42.1%; left:73.5%;" data-city="quest83"></div><!--MVP-->
+    <div class="hotspot debug" style="top:65%; left:23.5%;" data-city="quest84"></div><!--MVP-->
+    <div class="hotspot debug" style="top:50.2%; left:52.4%;" data-city="quest88"></div>
+
+    <!-- ============================================= -->
+    <!-- RESEARCH QUESTS                               -->
+    <!-- ============================================= -->
+    <div class="hotspot debug" style="top:23%; left:6.2%;" data-city="quest91"></div>
+    <div class="hotspot debug" style="top:26%; left:7.8%;" data-city="quest92"></div>
+    <div class="hotspot debug" style="top:10%; left:25.4%;" data-city="quest93"></div>
+    <div class="hotspot debug" style="top:8.7%; left:35%;" data-city="quest94"></div>
+    <div class="hotspot debug" style="top:17%; left:39.9%;" data-city="quest95"></div>
+    <div class="hotspot debug" style="top:20.9%; left:45.15%;" data-city="quest96"></div>
 </div>
 
 <!------------------------ Active Quest Timer Button  --------------------------------------------------------->
@@ -418,10 +435,16 @@
 
         <!-- Header -->
         <div class="tree-header">
-            <!-- Student avatar — visual only, bottom-left of the tree panel -->
-            <h2 class="tree-title">Quest Progress Tree</h2>
-            <button id="close-quest-tree" class="tree-close-btn" aria-label="Close">✕</button>
-        </div>
+          <div class="tree-tabs" role="tablist">
+              <button class="tree-tab-btn active" data-tree-tab="quest-tree" role="tab" aria-selected="true">
+                  Quest Progress Tree
+              </button>
+              <button class="tree-tab-btn" data-tree-tab="completed" role="tab" aria-selected="false">
+                  Completed Quests
+              </button>
+          </div>
+          <button id="close-quest-tree" class="tree-close-btn" aria-label="Close">✕</button>
+       </div>
             <img id="tree-student-avatar"
                 class="tree-student-avatar"
                 src="profile.png"
@@ -430,16 +453,23 @@
         <!-- Scrollable body -->
         <div class="tree-body">
 
-            <!-- Summative trees go here -->
-            <div id="tree-grid" class="tree-grid">
-                <!-- Filled by JS in step 4 -->
+            <!-- Tab: Quest Progress Tree (existing content, untouched) -->
+            <div class="tree-tab-content" id="tree-tab-quest-tree">
+                <div id="tree-grid" class="tree-grid">
+                    <!-- Filled by JS in step 4 -->
+                </div>
+                <div id="tree-free-strip" class="tree-free-strip">
+                    <div class="tree-free-title">Free Assignments</div>
+                    <div id="tree-free-list" class="tree-free-list">
+                        <!-- Filled by JS in step 5 -->
+                    </div>
+                </div>
             </div>
 
-            <!-- Free assignments strip -->
-            <div id="tree-free-strip" class="tree-free-strip">
-                <div class="tree-free-title">Free Assignments</div>
-                <div id="tree-free-list" class="tree-free-list">
-                    <!-- Filled by JS in step 5 -->
+            <!-- Tab: Completed Quests (placeholder — filled in Step 3) -->
+            <div class="tree-tab-content" id="tree-tab-completed" style="display:none;">
+                <div id="tree-completed-panel" class="tree-completed-panel">
+                    <div class="tree-completed-empty">Loading…</div>
                 </div>
             </div>
 
@@ -540,15 +570,12 @@
   <div class="quest-box">
     <span id="close-achievements" class="close-btn">✖</span>
     <div class="achievements-tabs">
-      <button class="tab-button active" data-tab="completed">Completed Quests</button>
-      <button class="tab-button" data-tab="achievements">Achievements</button>
+      <button class="tab-button active" data-tab="achievements">Achievements</button>
+      <button class="tab-button" data-tab="mysterygift">Mystery Gift</button>
       <button class="tab-button" data-tab="questlist">Quest List</button>
       <button class="tab-button" data-tab="pathfinder">Pathfinder</button>
-    </div>
-    <div class="tab-content" id="tab-completed">
-      <div id="completed-quests-grid" class="completed-grid"></div>
-    </div>
-    <div class="tab-content" id="tab-achievements" style="display:none;">
+  </div>
+    <div class="tab-content" id="tab-achievements">
       <div id="achievements-list"></div>
     </div>
     <div class="tab-content" id="tab-questlist" style="display:none;">
@@ -598,7 +625,10 @@
   </div>
 </div>
 
-<!--Profile Button -->
+<!-- Featured quests — lower-left floating panel -->
+<div id="featured-quests-panel" class="featured-quests-panel" aria-hidden="true"></div>
+
+<!-- Profile Button -->
 <button id="profile-btn" class="profile-btn">
   <img src="profile.png" alt="Profile" />
   <div class="exp-bar-wrap" id="exp-bar-wrap">
@@ -608,7 +638,6 @@
     <div class="exp-level" id="exp-level-text"></div>
 </div>
 </button>
-
 
 <!-- Profile Overlay -->
 <div id="profile-overlay" class="overlay" style="display:none;">
@@ -628,10 +657,17 @@
             <div class="profile-action-buttons">
               <button id="logout-profile-btn" class="profile-btn-small logout-btn">🚪 Logout</button>
             </div>
-            <div class="profile-money">
-              <a href="#" id="profile-reward-link" class="money-link">Reward:</a>
-              <span id="profile-total-coins" class="money-amount">0</span>
-            </div>
+            <div class="profile-exp-block" id="profile-exp-block">
+    <div class="profile-exp-label">Experience</div>
+    <div class="profile-exp-bar-wrap" id="profile-exp-bar-wrap">
+        <div class="profile-exp-level" id="profile-exp-level">Lv 0</div>
+        <div class="profile-exp-bar-track">
+            <div class="profile-exp-bar-fill" id="profile-exp-bar-fill"></div>
+        </div>
+        <div class="profile-exp-numbers" id="profile-exp-numbers">0 / 100</div>
+    </div>
+    <div class="profile-exp-total" id="profile-exp-total">0 EXP total</div>
+</div>
           </div>
           <div class="profile-center" id="radar-chart-container">
             <canvas id="radar-chart"></canvas>
@@ -666,29 +702,13 @@
     </div>
 </div>
 
-<!-- Rewards Overlay -->
-<div id="rewards-overlay" class="rewards-overlay">
-    <div id="rewards-box">
-        <span id="close-rewards">&times;</span>
-        <h2 id="rewards-title">Rewards by Standard</h2>
-        <div id="rewards-total-summary"></div>
-        <table class="rewards-table">
-            <thead>
-                <tr>
-                    <th>Standard Code</th>
-                    <th>Standard Description</th>
-                    <th>Earned</th>
-                    <th>Deducted</th>
-                    <th>Net Available</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody id="rewards-table-body"></tbody>
-        </table>
-        <div style="text-align: center; margin-top: 15px; color: #aaddff; font-size: 0.9em;">
-            <em>Rewards are calculated as 10 💰 per grade point earned</em>
-        </div>
-    </div>
+<!-- EXPBreakdown Overlay -->
+<div id="rewards-overlay" style="display:none;">
+  <div class="exp-breakdown-box">
+    <span id="close-rewards" class="close-btn">✖</span>
+    <h2 class="exp-breakdown-title">EXP Breakdown</h2>
+    <div id="rewards-content" class="exp-breakdown-content"></div>
+  </div>
 </div>
 
 <!-- Restriction Popups -->
@@ -803,6 +823,36 @@
     </div>
 </div>
 
+<!-- Gift reveal modal (populated by JS) -->
+<div id="gift-reveal-overlay" class="gift-reveal-overlay" aria-hidden="true">
+    <div class="gift-reveal-stage">
+        <div class="gift-reveal-flash" id="gift-reveal-flash"></div>
+
+        <div class="gift-reveal-box-wrap" id="gift-reveal-box-wrap">
+            <img id="gift-reveal-box-img"
+                 class="gift-reveal-box-img"
+                 src="charimage/gift-box.png"
+                 alt="Gift box"
+                 draggable="false">
+        </div>
+
+        <div class="gift-reveal-result" id="gift-reveal-result" style="display: none;">
+            <img id="gift-reveal-gift-img"
+                 class="gift-reveal-gift-img"
+                 src=""
+                 alt="Your gift"
+                 draggable="false">
+            <div class="gift-reveal-title">Congratulations!</div>
+            <div class="gift-reveal-message" id="gift-reveal-message"></div>
+            <button class="gift-reveal-close-btn" id="gift-reveal-close-btn">Close</button>
+        </div>
+
+        <div class="gift-reveal-hint" id="gift-reveal-hint">Click the box to open your gift!</div>
+    </div>
+
+    <div class="gift-reveal-confetti" id="gift-reveal-confetti"></div>
+</div>
+
 <!-- Hotspot hover tooltip -->
 <div id="hotspot-tooltip" class="hotspot-tooltip" role="tooltip" aria-hidden="true">
     <div class="hotspot-tooltip-title">
@@ -820,6 +870,6 @@
    window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    console.log('Supabase initialized:', window.supabase);
 </script>
-<script src="ms-script.js?v=20261007-ms"></script>
+<script src="ms-script.js"></script>
 </body>
 </html>
