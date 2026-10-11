@@ -54,6 +54,107 @@
     "accepted": false,
     "acceptedAt": null
   },
+  "quest2": {
+  "path": ["Painter Path"],
+  "difficulty": 2,
+  "title": "Echoes of the Masters",
+  "rationale": "<h2>Echoes of the Masters</h2><p><strong>Why it's important:</strong><br>Copying masterworks trains your eye to see how great artists solve problems. You will learn to read a painting like a language.</p><p><strong>Skills developed:</strong></p><ul><li>Observation and visual analysis</li><li>Accurate copying of composition and form</li><li>Understanding color and brushwork</li><li>Building confidence through practice</li></ul><p>This prepares you to use these skills in your own work.</p>",
+  "description": "The Council of Scholars has issued a formidable challenge. Deep within the archives lie masterpieces forged by artists of great movements: Impressionism, Cubism, Surrealism, and beyond. You must choose one famous painting from any artistic movement and faithfully replicate it, studying its style, technique, and visual language.",
+  "requirements": [
+    "Select one famous painting from a recognized artistic movement",
+    "Replicate the artwork's composition, style, and technique as closely as possible"
+  ],
+  "rubric": {
+    "overall": "Echoes of the Masters",
+    "standards": [
+      {
+        "code": "Art.FA.RE.8.1.8A",
+        "name": "Art Interpretation",
+        "levels": {
+          "4": "Deep understanding of the master's style; accurate reproduction of key elements.",
+          "3": "Good understanding; accurate reproduction with minor errors.",
+          "2": "Basic understanding; some elements reproduced incorrectly.",
+          "1": "Poor understanding; major deviations from original style."
+        }
+      },
+      {
+        "code": "Art.FA.CR.2.1.IA",
+        "name": "Organization",
+        "levels": {
+          "4": "Composition expertly matches original; excellent visual clarity.",
+          "3": "Composition closely matches original; good visual clarity.",
+          "2": "Composition somewhat matches; some visual confusion.",
+          "1": "Composition poorly matches; unclear visual communication."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "10 Modern Art Movements", "url": "https://www.britannica.com/list/10-modernist-art-movements"},
+    {"type": "174 Art Movements", "url": "https://www.theartstory.org/movements/"}
+  ],
+  "reward": "",
+  "character": "charimage/char2.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {"allottedMinutes": 150},
+  "accepted": false,
+  "acceptedAt": null
+},
+
+"quest3": {
+  "path": ["Painter Path"],
+  "difficulty": 2,
+  "title": "The Grand Codex of Art Movements",
+  "rationale": "<h2>The Grand Codex of Art Movements</h2><p><strong>Why it's important:</strong><br>Learning about art movements helps you understand why art looks the way it does. You will learn to recognize different styles and use that knowledge in your own work.</p><p><strong>Skills developed:</strong></p><ul><li>Research and visual interpretation</li><li>Translating ideas into images</li><li>Designing clear visual information</li><li>Understanding art history</li></ul><p>This strengthens both your thinking and your art vocabulary.</p>",
+  "description": "The Archivist seeks a visual codex to preserve the knowledge of art across the ages. You have been chosen to create a powerful poster that brings together four different artistic movements; each recorded as its own illuminated entry. For every movement, you must gather and display its essential lore: the story of its origins, the names of its most influential artists, the defining characteristics that set it apart, and a hand-drawn illustration that captures its spirit.",
+  "requirements": [
+    "For each of the four artistic movements, your poster must include:",
+    "A clear description of the movement.",
+    "The names of important artists.",
+    "Key characteristics.",
+    "A drawing or illustration that represents the movement's style (any media)."
+  ],
+  "rubric": {
+    "overall": "The Grand Codex of Art Movements",
+    "standards": [
+      {
+        "code": "Art.FA.RE.8.1.8A",
+        "name": "Art Interpretation",
+        "levels": {
+          "4": "Masterful understanding of movements; illustrations perfectly capture each style.",
+          "3": "Clear understanding; illustrations represent movements accurately.",
+          "2": "Partial understanding; illustrations somewhat represent movements.",
+          "1": "Poor understanding; illustrations don't represent movements."
+        }
+      },
+      {
+        "code": "Art.FA.CR.2.1.IA",
+        "name": "Organization",
+        "levels": {
+          "4": "Exceptional design; information clear, layout visually compelling.",
+          "3": "Well-designed; information organized, layout logical.",
+          "2": "Design adequate; some organizational issues.",
+          "1": "Poor design; disorganized, difficult to read."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "10 Modern Art Movements", "url": "https://www.britannica.com/list/10-modernist-art-movements"},
+    {"type": "174 Art Movements", "url": "https://www.theartstory.org/movements/"}
+  ],
+  "reward": "",
+  "character": "charimage/char3.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {"allottedMinutes": 375},
+  "accepted": false,
+  "acceptedAt": null
+},
+
   "quest4": {
     "path": ["Painter Path"],
     "difficulty": 3,
@@ -313,7 +414,7 @@
       {"type": "Video sample", "url": "https://www.youtube.com/watch?v=EVvyxjb4hn4"}
     ],
     "reward": " you got money!!!!",
-    "character": "charimage/char8.png",
+    "character": "charimage/char8.gif",
     "style": "",
     "prerequisites": [],
     "completed": false,
@@ -3680,6 +3781,330 @@
     "accepted": false,
     "acceptedAt": null
   },
+  "quest91": {
+  "path": ["Sketcher Path"],
+  "difficulty": 1,
+  "title": "The Archivist's Initiation",
+  "rationale": "<h2>The Archivist's Initiation</h2><p><strong>Why it's important:</strong><br>Every sketchbook begins with an artist investigation. This quest teaches you how to research an artist, analyze their work, and connect it to your own practice. It builds the foundation for all future research and critical reflection.</p><p><strong>Skills developed:</strong></p><ul><li>Research skills (primary and secondary sources)</li><li>Visual analysis of artworks</li><li>Contextual understanding of an artist's practice</li><li>Personal connection to art history</li><li>Documentation and citation</li></ul><p>This quest is your first step toward a professional sketchbook practice.</p>",
+  "description": "The Archivist hands you a blank page and a single question: 'Who made something that moved you — and why?'\nYou must select one artist, research their work, and create a sketchbook page that presents your findings visually and critically.",
+  "requirements": [
+    "Select one artist (any period, any medium)",
+    "Include at least 3 images of their work (printed or drawn)",
+    "Write a 150-word analysis covering: subject, form, context",
+    "Include one personal sketch or response inspired by their work",
+    "Cite your sources"
+  ],
+  "rubric": {
+    "overall": "The Archivist's Initiation",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Research & Documentation",
+        "levels": {
+          "4": "Deep research evident; artist's work analyzed thoroughly with clear connections to context and personal practice.",
+          "3": "Good research; artist's work analyzed with relevant details and context.",
+          "2": "Basic research; analysis is surface-level or lacks context.",
+          "1": "Minimal research; no clear analysis or connection."
+        }
+      },
+      {
+        "code": "Art.FA.RE.8.1.8A",
+        "name": "Art Interpretation",
+        "levels": {
+          "4": "Exceptional visual analysis; identifies form, subject, and context with insight.",
+          "3": "Clear analysis of form and meaning with relevant details.",
+          "2": "Some analysis but missing key elements or context.",
+          "1": "Little to no analysis; description only."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "How to research an artist", "url": "https://www.youtube.com/watch?v=yMUmqBU4FDM"},
+    {"type": "Sketchbook examples", "url": "https://www.google.com/search?q=IB+visual+arts+sketchbook+examples&udm=2"}
+  ],
+  "reward": "",
+  "character": "charimage/char91.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {
+    "allottedMinutes": 150
+  },
+  "accepted": false,
+  "acceptedAt": null
+},
+
+"quest92": {
+  "path": ["Sketcher Path"],
+  "difficulty": 2,
+  "title": "The Comparative Eye",
+  "rationale": "<h2>The Comparative Eye</h2><p><strong>Why it's important:</strong><br>Comparative study is a core skill. This quest teaches you to analyze two works side by side, identifying similarities and differences in form, context, and meaning. It builds visual literacy and critical thinking.</p><p><strong>Skills developed:</strong></p><ul><li>Comparative analysis</li><li>Formal, contextual, and conceptual analysis</li><li>Critical thinking and visual literacy</li><li>Synthesis of research</li><li>Personal reflection</li></ul><p>This quest strengthens your ability to see connections across cultures, periods, and media.</p>",
+  "description": "The Archivist places two artworks before you — one from a traditional culture, one from the contemporary world. They share a theme but nothing else. You must compare them in a sketchbook spread.",
+  "requirements": [
+    "Select two artworks with a shared theme (e.g., identity, nature, war)",
+    "Include images of both works",
+    "Create a comparison chart (form, context, meaning)",
+    "Write a 200-word comparative analysis",
+    "Include a personal reflection: which work speaks to you and why?"
+  ],
+  "rubric": {
+    "overall": "The Comparative Eye",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Research & Documentation",
+        "levels": {
+          "4": "Deep research into both works; sophisticated comparative analysis with clear connections.",
+          "3": "Good research; clear comparison of form, context, and meaning.",
+          "2": "Basic research; comparison is surface-level or incomplete.",
+          "1": "Minimal research; no clear comparison."
+        }
+      },
+      {
+        "code": "Art.FA.RE.8.1.8A",
+        "name": "Art Interpretation",
+        "levels": {
+          "4": "Exceptional analysis; identifies similarities and differences with insight and nuance.",
+          "3": "Clear analysis of both works with relevant details.",
+          "2": "Some analysis but missing key differences or similarities.",
+          "1": "Little to no analysis; description only."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "How to compare artworks", "url": "https://www.youtube.com/watch?v=yrZ7Fp_RQ7s"},
+    {"type": "Comparative study examples", "url": "https://www.google.com/search?q=IB+comparative+study+visual+arts&udm=2"}
+  ],
+  "reward": "",
+  "character": "charimage/char92.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {
+    "allottedMinutes": 225
+  },
+  "accepted": false,
+  "acceptedAt": null
+},
+
+"quest93": {
+  "path": ["Sketcher Path"],
+  "difficulty": 1,
+  "title": "The Process Scroll",
+  "rationale": "<h2>The Process Scroll</h2><p><strong>Why it's important:</strong><br>Documenting your process is the backbone of sketchbook practice. This quest teaches you to show your thinking—from initial idea through experiments, failures, and revisions to the final work.</p><p><strong>Skills developed:</strong></p><ul><li>Process documentation</li><li>Experimentation and revision</li><li>Critical reflection</li><li>Visual storytelling of your own creative journey</li><li>Honest self-assessment</li></ul><p>This quest builds the habit of documenting everything, which will serve you in every future summative.</p>",
+  "description": "The Archivist wants to see how you think. You must create a sketchbook spread documenting a single artwork from start to finish. The final artwork can be simple — what matters is the journey.",
+  "requirements": [
+    "Include at least 5 stages: initial idea, sketches, experiment, revision, final work",
+    "Photograph or draw each stage",
+    "Write brief annotations explaining decisions at each stage",
+    "Include one failure or mistake and what you learned from it",
+    "Reflect on what you would do differently"
+  ],
+  "rubric": {
+    "overall": "The Process Scroll",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Process Documentation",
+        "levels": {
+          "4": "Thorough documentation with clear stages, thoughtful annotations, and honest reflection.",
+          "3": "Good documentation with visible stages and clear annotations.",
+          "2": "Basic documentation; some stages missing or unclear.",
+          "1": "Minimal documentation; no clear process shown."
+        }
+      },
+      {
+        "code": "Art.FA.CR.3.1.IA",
+        "name": "Refinement & Revision",
+        "levels": {
+          "4": "Strong evidence of revision and refinement; significant improvement from early to final work.",
+          "3": "Clear evidence of revision and improvement.",
+          "2": "Some revision but limited improvement.",
+          "1": "Little to no revision or refinement."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "Process portfolio examples", "url": "https://www.google.com/search?q=IB+process+portfolio+visual+arts&udm=2"},
+    {"type": "How to document your process", "url": "https://www.youtube.com/watch?v=hd0Y4XMs9Fg"}
+  ],
+  "reward": "",
+  "character": "charimage/char93.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {
+    "allottedMinutes": 150
+  },
+  "accepted": false,
+  "acceptedAt": null
+},
+
+"quest94": {
+  "path": ["Sketcher Path"],
+  "difficulty": 2,
+  "title": "The Theme Weaver",
+  "rationale": "<h2>The Theme Weaver</h2><p><strong>Why it's important:</strong><br>Thematic investigation is a core skill. This quest teaches you to trace a theme through art history and contemporary practice, then connect it to your own artistic interests. It builds research depth and personal meaning-making.</p><p><strong>Skills developed:</strong></p><ul><li>Thematic investigation</li><li>Contextual research across cultures and periods</li><li>Personal connection to art history</li><li>Synthesis of multiple sources</li><li>Visual and written analysis</li></ul><p>This quest strengthens your ability to develop a body of work around a central idea.</p>",
+  "description": "A single thread runs through all art — but which thread will you follow? You must select a theme (e.g., 'the outsider,' 'nature's power,' 'memory') and investigate how different artists have explored it.",
+  "requirements": [
+    "Select one theme",
+    "Find at least 4 artworks from different periods/cultures that address this theme",
+    "Include images and brief analysis of each",
+    "Write a reflection: what draws you to this theme?",
+    "Include one original sketch or artwork inspired by your research"
+  ],
+  "rubric": {
+    "overall": "The Theme Weaver",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Research & Documentation",
+        "levels": {
+          "4": "Deep research across multiple contexts; theme explored with insight and personal connection.",
+          "3": "Good research; clear thematic connections across artworks.",
+          "2": "Basic research; theme is identifiable but connections are weak.",
+          "1": "Minimal research; no clear theme or connections."
+        }
+      },
+      {
+        "code": "Art.FA.RE.8.1.8A",
+        "name": "Art Interpretation",
+        "levels": {
+          "4": "Exceptional analysis; identifies how each work addresses the theme with nuance.",
+          "3": "Clear analysis of each work with relevant details.",
+          "2": "Some analysis but missing key connections.",
+          "1": "Little to no analysis; description only."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "How to develop a theme", "url": "https://www.youtube.com/watch?v=gThv7UhBNP8&list=PLqYzJxUXOdUimNo2KSwZ4hpoa-ku5-xEL"},
+    {"type": "Thematic study examples", "url": "https://www.google.com/search?q=IB+visual+arts+thematic+study&udm=2"}
+  ],
+  "reward": "",
+  "character": "charimage/char94.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {
+    "allottedMinutes": 225
+  },
+  "accepted": false,
+  "acceptedAt": null
+},
+
+"quest95": {
+  "path": ["Sketcher Path"],
+  "difficulty": 1,
+  "title": "The Material Witness",
+  "rationale": "<h2>The Material Witness</h2><p><strong>Why it's important:</strong><br>Material and technique research deepens your understanding of how art is made. This quest teaches you to research a material or technique—its history, science, and artistic applications—then test it yourself.</p><p><strong>Skills developed:</strong></p><ul><li>Material and technique research</li><li>Technical investigation</li><li>Experimentation documentation</li><li>Connecting historical practice to contemporary use</li><li>Hands-on testing and reflection</li></ul><p>This quest builds your ability to make informed technical choices in your own work.</p>",
+  "description": "The Archivist hands you a mysterious material — could be gold leaf, cyanotype chemicals, or egg tempera. You must research its history, properties, and uses, then create a test piece.",
+  "requirements": [
+    "Select one material or technique (e.g., fresco, batik, cyanotype)",
+    "Research: where it came from, how it works, who uses it",
+    "Include images of historical and contemporary examples",
+    "Write a 150-word summary of your findings",
+    "Create a small test piece using the material or technique",
+    "Reflect: what did you learn? What will you do with this knowledge?"
+  ],
+  "rubric": {
+    "overall": "The Material Witness",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Research & Documentation",
+        "levels": {
+          "4": "Deep research into material/technique; clear connection between history and personal testing.",
+          "3": "Good research; material/technique understood and tested effectively.",
+          "2": "Basic research; limited understanding or testing.",
+          "1": "Minimal research; no clear understanding or test."
+        }
+      },
+      {
+        "code": "Art.FA.CR.1.2.IA",
+        "name": "Technique Development",
+        "levels": {
+          "4": "Masterful handling of material/technique; test piece demonstrates strong control.",
+          "3": "Good control; test piece is clear and intentional.",
+          "2": "Basic control; test piece is rough or incomplete.",
+          "1": "Poor control; test piece unsuccessful or missing."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "Material research guide", "url": "https://www.youtube.com/watch?v=W4NuqLa9i1Q"},
+    {"type": "Technique exploration examples", "url": "https://www.google.com/search?q=material+technique+research+sketchbook&udm=2"}
+  ],
+  "reward": "",
+  "character": "charimage/char95.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {
+    "allottedMinutes": 150
+  },
+  "accepted": false,
+  "acceptedAt": null
+},
+
+"quest96": {
+  "path": ["Sketcher Path"],
+  "difficulty": 2,
+  "title": "The Curator's Eye",
+  "rationale": "<h2>The Curator's Eye</h2><p><strong>Why it's important:</strong><br>Understanding how exhibitions are curated and how context affects meaning is essential for any artist. This quest teaches you to analyze display, layout, and narrative in an exhibition or collection.</p><p><strong>Skills developed:</strong></p><ul><li>Exhibition research and analysis</li><li>Curatorial thinking</li><li>Understanding context and display</li><li>Critical reflection on viewer experience</li><li>Proposing alternative curatorial choices</li></ul><p>This quest connects your research skills to the presentation and reception of art.</p>",
+  "description": "The Archivist takes you to a gallery — real or virtual. You must investigate how an exhibition is curated: what's included, what's excluded, how works are arranged, and what story is being told.",
+  "requirements": [
+    "Visit an exhibition (physical or virtual)",
+    "Include a floor plan or layout sketch",
+    "Select 3 artworks and analyze how they are displayed",
+    "Write a 300-word reflection: how does display affect meaning?",
+    "Propose one change you would make as curator"
+  ],
+  "rubric": {
+    "overall": "The Curator's Eye",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Research & Documentation",
+        "levels": {
+          "4": "Thorough research into exhibition design; insightful analysis of curatorial choices.",
+          "3": "Good research; clear analysis of display and context.",
+          "2": "Basic research; limited analysis of curatorial choices.",
+          "1": "Minimal research; no clear analysis."
+        }
+      },
+      {
+        "code": "Art.FA.PR.6.1.IA",
+        "name": "Exhibition Impact",
+        "levels": {
+          "4": "Exceptional analysis of how display affects meaning; thoughtful proposal for alternative curation.",
+          "3": "Clear analysis of exhibition impact with relevant reflection.",
+          "2": "Some analysis but limited insight into display impact.",
+          "1": "Little to no analysis of exhibition or display."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "How to analyze an exhibition", "url": "https://www.youtube.com/results?search_query=how+to+analize+an+art+exibition+"},
+    {"type": "Virtual museum tours", "url": "https://www.travelandleisure.com/attractions/museums-galleries/museums-with-virtual-tours"}
+  ],
+  "reward": "",
+  "character": "charimage/char96.gif",
+  "style": "",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {
+    "allottedMinutes": 225
+  },
+  "accepted": false,
+  "acceptedAt": null
+},
 
 
 
@@ -4840,8 +5265,7 @@
       ]
     },
     "links": [
-      {"type": "Papier mâché mask tutorial", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4A"},
-      {"type": "Mask making basics", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4B"}
+      {"type": "Papier mâché mask tutorial", "url": "https://www.youtube.com/watch?v=hSOXnvPnOyQ"}
     ],
     "reward": "",
     "character": "charimage/char82.gif",
@@ -4904,8 +5328,7 @@
       ]
     },
     "links": [
-      {"type": "Papier mâché sculpture tutorial", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4C"},
-      {"type": "Large-scale paper sculpture", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4D"}
+      {"type": "Papier mâché sculpture tutorial", "url": "https://www.youtube.com/watch?v=7liPQf014II"}
     ],
     "reward": "",
     "character": "charimage/char83.gif",
@@ -4923,7 +5346,7 @@
     "difficulty": 3,
     "title": "The Kinusaiga Master's Trial",
     "rationale": "<h2>The Kinusaiga Master's Trial</h2><p><strong>Why it's important:</strong><br>Kinusaiga is a Japanese technique of creating pictures by cutting fabric into shapes and tucking them into grooves carved into a wooden board. No sewing or loom required — just fabric, a board, and a craft knife. It teaches color composition, precision, and the translation of 2D design into textile form.</p><p><strong>Skills developed:</strong></p><ul><li>Design transfer and composition planning</li><li>Precision cutting with craft knife</li><li>Color and pattern selection in fabric</li><li>Groove carving and fabric tucking</li><li>Patience and fine motor control</li></ul>",
-    "description": "In the textile villages of Japan, kinusaiga artists transform discarded kimono fabric into stunning pictures. The village elder challenges you to create a kinusaiga piece that captures a scene or image using fabric scraps, a wooden board, and a craft knife.",
+    "description": "In the textile villages of Yukonyama, kinusaiga artists transform discarded kimono fabric into stunning pictures. The village elder challenges you to create a kinusaiga piece that captures a scene or image using fabric scraps, a wooden board, and a craft knife.",
     "requirements": [
       "Create a kinusaiga textile painting",
       "Design must be transferred to a foam or wooden board",
@@ -4968,7 +5391,7 @@
       ]
     },
     "links": [
-      {"type": "Kinusaiga tutorial", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4E"},
+      {"type": "Kinusaiga tutorial", "url": "https://www.youtube.com/watch?v=C32As78Vwsw"},
       {"type": "Kinusaiga design ideas", "url": "https://www.google.com/search?q=kinusaiga+design+ideas&udm=2"}
     ],
     "reward": "",
@@ -5022,7 +5445,7 @@
     },
     "links": [
       {"type": "Mosaic basics", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4F"},
-      {"type": "Glass mosaic tutorial", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4G"}
+      {"type": "Glass mosaic examples", "url": "https://www.google.com.hk/search?newwindow=1&sca_esv=5840f6a463163eea&sxsrf=APpeQntAywM40E0ZFbGPG8f1-v_nMVXZOQ:1791729505283&udm=2&fbs=ABfTbFVyMZGZf1hfvX9uKjN_-G8c4u0nXx4bEIpwm1lnNH832cY0rzciwbWdjW1sV3VNzLzR4RIindJxFrmQWQ1WCYgKdh4SxzhRaOVvt3n87StoAMoDgDvBnjZ4Njf4yAaLs3QhOmFAyDpw9_i3qcRrE3hq_HfYRuhUIW2IGakVmpMJ6tRNQeh__uTkxGdva2OaNUe00HhT&q=glass+mosaic+examples&sa=X&ved=2ahUKEwjRo8jFmLKXAxVlhysGHZKwH_QQtKgLegQIGhAB&biw=1366&bih=745&dpr=1.88"}
     ],
     "reward": "mvp",
     "character": "charimage/char88.gif",
