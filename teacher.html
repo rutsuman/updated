@@ -66,6 +66,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2 style="margin: 0;">All Quests</h2>
                     <button id="create-custom-quest-btn" class="create-custom-quest-btn">➕ Create Quest</button>
+                    <button id="mystery-quests-btn" class="create-custom-quest-btn" style="background: #6a2f8a; margin-left: 10px;"> 🎁 Mystery Quests</button>
                     <button id="create-contest-btn" class="create-custom-quest-btn" style="background: #5a3829c3; margin-left: 10px;"> ⚔️Create Art Battle</button>
                 </div>
 
@@ -766,6 +767,127 @@
             </div>
         </div>
     </div>
+    <!-- Mystery Quests Overlay -->
+<div id="mystery-quests-overlay" class="mystery-overlay" style="display: none;">
+    <div class="mystery-panel">
+        <div class="mystery-header">
+            <h2>🎁 Mystery Quests</h2>
+            <button id="close-mystery-overlay" class="mystery-close-btn" title="Close">✖</button>
+        </div>
+
+        <div class="mystery-tabs">
+            <button class="mystery-tab-btn active" data-mystery-tab="active">Active Mystery Quests</button>
+            <button class="mystery-tab-btn" data-mystery-tab="log">Mystery Quest Log</button>
+        </div>
+
+        <!-- Tab 1: Active -->
+        <div id="mystery-tab-active" class="mystery-tab-content active">
+            <p class="mystery-description">
+                Feature one or more quests as weekly mysteries. When a student completes a featured
+                quest and meets the grade threshold, they unlock a mystery gift. Gifts are
+                handed out in person by you.
+            </p>
+
+            <div id="mystery-active-list" class="mystery-active-list">
+                <!-- Active cards will be rendered here -->
+            </div>
+
+            <div class="mystery-add-section">
+                <button id="mystery-add-btn" class="mystery-add-btn">➕ Add New Mystery Quest</button>
+
+                <div id="mystery-add-flow" class="mystery-add-flow" style="display: none;">
+                    <div class="mystery-add-flow-header">
+                        <span>Add New Mystery Quest</span>
+                        <button id="mystery-add-cancel" class="mystery-add-cancel" title="Cancel">✖</button>
+                    </div>
+
+                    <!-- Step 1: pick quest -->
+                    <div class="mystery-step" data-step="1">
+                        <div class="mystery-step-title">Step 1 — Choose a quest</div>
+                        <select id="mystery-quest-select" class="mystery-input">
+                            <option value="">-- Select a quest --</option>
+                        </select>
+                        <div id="mystery-quest-already-featured" class="mystery-info" style="display: none;">
+                            ℹ️ This quest is already featured this week. You can still feature it for other classes, or update the gift below.
+                        </div>
+                    </div>
+
+                    <!-- Preview card (mirrors active cards) -->
+                    <div id="mystery-preview-wrap" class="mystery-preview-wrap" style="display: none;">
+                        <div class="mystery-step-title">Preview</div>
+                        <div id="mystery-preview-card" class="mystery-card"></div>
+                    </div>
+
+                    <!-- Step 2: gift -->
+                    <div class="mystery-step" data-step="2">
+                        <div class="mystery-step-title">Step 2 — Choose the gift</div>
+                        <input type="text" id="mystery-gift-name" class="mystery-input" placeholder="Gift name (e.g. Dracoin, small slime)" maxlength="60">
+                        <div class="mystery-image-row">
+                            <button id="mystery-image-pick-btn" class="mystery-secondary-btn">📷 Load image</button>
+                            <input type="file" id="mystery-image-input" accept="image/*" style="display: none;">
+                            <span id="mystery-image-status" class="mystery-image-status">No image chosen</span>
+                        </div>
+                        <div id="mystery-image-preview-wrap" class="mystery-image-preview-wrap" style="display: none;">
+                            <img id="mystery-image-preview" alt="Gift preview">
+                        </div>
+                    </div>
+
+                    <!-- Step 3: classes -->
+                    <div class="mystery-step" data-step="3">
+                        <div class="mystery-step-title">Step 3 — Which classes?</div>
+                        <div class="mystery-classes-actions">
+                            <label class="mystery-check-all-label">
+                                <input type="checkbox" id="mystery-check-all">
+                                <span>Check all classes</span>
+                            </label>
+                        </div>
+                        <div id="mystery-class-list" class="mystery-class-list">
+                            <!-- Class checkboxes will render here -->
+                        </div>
+                    </div>
+
+                    <div id="mystery-save-message" class="mystery-save-message"></div>
+
+                    <div class="mystery-add-actions">
+                        <button id="mystery-save-btn" class="mystery-primary-btn">Save Mystery Quest</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Log -->
+        <div id="mystery-tab-log" class="mystery-tab-content">
+            <div class="mystery-log-filters">
+                <input type="text" id="mystery-log-search" class="mystery-input" placeholder="🔍 Search by quest, gift, or student…">
+                <label class="mystery-log-date-label">
+                    From:
+                    <input type="date" id="mystery-log-from" class="mystery-input">
+                </label>
+                <label class="mystery-log-date-label">
+                    To:
+                    <input type="date" id="mystery-log-to" class="mystery-input">
+                </label>
+                <button id="mystery-log-clear" class="mystery-secondary-btn">Clear filters</button>
+            </div>
+            <div class="mystery-log-table-wrap">
+                <table class="mystery-log-table">
+                    <thead>
+                        <tr>
+                            <th>From date</th>
+                            <th>To date</th>
+                            <th>Quest</th>
+                            <th>Gift</th>
+                            <th>Student</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mystery-log-tbody">
+                        <tr><td colspan="5" class="mystery-log-empty">Log will appear here.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
     <!-- Contest Management Overlay -->
     <div id="contest-management-overlay" class="teacher-overlay" style="display: none;">
         <div id="contest-management-panel" class="teacher-profile-panel">
