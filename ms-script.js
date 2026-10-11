@@ -67,7 +67,6 @@ let quests = {};
 let questTimers = {};
 let questStartTimes = loadQuestStartTimes();
 let questAccepted = loadQuestAccepted();
-let questRewards = loadQuestRewards() || {};
 let studentWorks = loadStudentWorks();
 let hotspotPositions = {};
 let activeQuestId = null;
@@ -125,7 +124,9 @@ const EXP_RULES = {
     EXTRA_UPLOAD_SAME_WEEK: 5,
     ALL_STANDARDS_HIGH:     5,   // every self-assessed standard ≥ 3.5
     BEFORE_TIME_FORMATIVE:  5,
-    BEFORE_TIME_SUMMATIVE: 20
+    BEFORE_TIME_SUMMATIVE: 20,
+    GIFT_FORMATIVE:        20,
+    GIFT_SUMMATIVE:        50
 };
 window.raceJitterInterval = null;
 
@@ -149,6 +150,77 @@ function invalidateAllCaches() {
     console.log("All caches invalidated");
 }
 
+// ==============================================
+// SECTION 1b: SUPABASE AUTH GUARD
+// ==============================================
+// Wraps any Supabase write so that an expired JWT is refreshed
+// transparently, then the write is retried exactly once.
+//
+// Usage:
+//   const { error } = await guardAuth(() =>
+//       window.supabase.from('student_progress').update({...}).eq('user_id', id)
+//   );
+//
+// The callback must return a Supabase thenable (the result of .update(),
+// .upsert(), .insert(), .delete(), or .select()).
+
+async function guardAuth(callback) {
+    let result = await callback();
+
+    const isAuthError =
+        result?.error &&
+        (
+            result.error.code === 'PGRST303' ||
+            result.error.code === 'PGRST301' ||
+            /jwt/i.test(result.error.message || '') ||
+            result.status === 401
+        );
+
+    if (!isAuthError) return result;
+
+    console.warn('[auth] JWT expired — refreshing session and retrying once...');
+
+    const { error: refreshError } = await window.supabase.auth.refreshSession();
+    if (refreshError) {
+        console.error('[auth] refresh failed:', refreshError.message);
+        return result; // give up, return the original error
+    }
+
+    // Retry exactly once with the refreshed token
+    result = await callback();
+
+    if (result?.error) {
+        console.error('[auth] retry still failed:', result.error.message);
+    } else {
+        console.log('[auth] retry succeeded after refresh');
+    }
+    return result;
+}
+
+// Proactive refresh: if the session is close to expiring (within 60s),
+// refresh it before we even attempt a write.
+async function ensureFreshSession() {
+    try {
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (!session) return false;
+
+        const expiresAt = session.expires_at * 1000; // → ms
+        const msUntilExpiry = expiresAt - Date.now();
+
+        if (msUntilExpiry > 60_000) return true; // still fresh
+
+        console.log('[auth] session near expiry — refreshing...');
+        const { error } = await window.supabase.auth.refreshSession();
+        if (error) {
+            console.warn('[auth] proactive refresh failed:', error.message);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.warn('[auth] ensureFreshSession error:', e);
+        return false;
+    }
+}
 // ==============================================
 // SECTION 2: QUEST RELATIONSHIP BUILDER
 // ==============================================
@@ -1187,21 +1259,44 @@ function recomputeExpTotal() {
  * Award EXP. Dedupes by sourceKey when provided — calling twice with the
  * same key silently does nothing. Use stable keys (see naming table below).
  */
-function addExp(amount, sourceKey = null, reason = "") {
+// Session-level guard: keys we've already celebrated this page-load.
+// Prevents the modal/banner from re-firing when reconcile re-adds the same key.
+const _celebratedKeys = new Set();
+
+/**
+ * Award EXP.
+ * @param {number} amount
+ * @param {string|null} sourceKey
+ * @param {string} reason
+ * @param {object} [opts]
+ * @param {boolean} [opts.silent=false]  — if true, do NOT show level-up modal
+ *                                         or pulse/badge notifications.
+ *                                         Used by reconcileExp().
+ */
+function addExp(amount, sourceKey = null, reason = "", opts = {}) {
     if (!amount || amount <= 0) return 0;
     if (sourceKey && expLog[sourceKey] !== undefined) return 0;
 
+    const silent = opts.silent === true;
+
     const beforeLevel = getLevelInfo(expTotal).level;
     if (sourceKey) expLog[sourceKey] = amount;
-    recomputeExpTotal();
+    recomputeExpTotal();  // this already calls scheduleExpSaveToCloud + renderExpBar
 
-    // Explicit pulse + "+N" on the bar
-    renderExpBar({ delta: amount });
+    // Only pulse the bar if this is a "real" award AND we haven't
+    // already celebrated this key this session.
+    const isNewCelebration = !silent && sourceKey && !_celebratedKeys.has(sourceKey);
+    if (isNewCelebration) _celebratedKeys.add(sourceKey);
+
+    if (isNewCelebration) {
+        renderExpBar({ delta: amount });
+    }
 
     const afterLevel = getLevelInfo(expTotal).level;
 
     console.log(`[EXP] +${amount} (${reason || sourceKey || "bonus"}) → total ${expTotal}`);
-    if (afterLevel > beforeLevel) {
+
+    if (afterLevel > beforeLevel && isNewCelebration) {
         console.log(`[EXP] Level up! ${beforeLevel} → ${afterLevel}`);
         showLevelUpNotification(beforeLevel, afterLevel);
     }
@@ -1240,16 +1335,19 @@ function scheduleExpSaveToCloud() {
 
 async function saveExpToCloud() {
     if (isLoadingFromCloud) return;
+    await ensureFreshSession();
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) return;
-    const { error } = await window.supabase
-        .from("student_progress")
-        .update({
-            exp_total: expTotal,
-            exp_log: expLog,
-            updated_at: new Date().toISOString()
-        })
-        .eq("user_id", session.user.id);
+    const { error } = await guardAuth(() =>
+        window.supabase
+            .from("student_progress")
+            .update({
+                exp_total: expTotal,
+                exp_log: expLog,
+                updated_at: new Date().toISOString()
+            })
+            .eq("user_id", session.user.id)
+    );
     if (error) console.error("[EXP] cloud save failed:", error);
 }
 
@@ -1278,8 +1376,13 @@ function checkAchievementExp() {
         if (!complete) continue;
         const amount = ach.exp || 0;
         if (amount <= 0) continue;
-        addExp(amount, key, `Achievement: ${ach.title}`);
-        if (typeof showBadgeNotification === "function") {
+
+        const firstTimeThisSession = !_celebratedKeys.has(key);
+        _celebratedKeys.add(key);
+
+        addExp(amount, key, `Achievement: ${ach.title}`, { silent: !firstTimeThisSession });
+
+        if (firstTimeThisSession && typeof showBadgeNotification === "function") {
             showBadgeNotification(`🏆 ${ach.title} (+${amount} EXP)`);
         }
     }
@@ -1297,36 +1400,34 @@ function checkBadgeExp() {
         const info = earnedBadges[badge.id];
         if (!info || !info.earned) continue;
 
+        let key, amount;
         if (badge.progression && info.level) {
-            // info.level is 1-based ("I", "II", "III" mapped to numbers in JSON).
-            // Assume info.level is numeric; if it's a string roman numeral, we
-            // fall back to parsing.
             const tier = typeof info.level === "number"
                 ? info.level
                 : ({"I": 1, "II": 2, "III": 3}[String(info.level).toUpperCase()] || 1);
-
             const tierAmounts = {
-                1: EXP_RULES.BADGE_UNLOCKED,   // 100
-                2: EXP_RULES.BADGE_TIER_2,     // 150
-                3: EXP_RULES.BADGE_TIER_3      // 200
+                1: EXP_RULES.BADGE_UNLOCKED,
+                2: EXP_RULES.BADGE_TIER_2,
+                3: EXP_RULES.BADGE_TIER_3
             };
-            const amount = tierAmounts[tier] || EXP_RULES.BADGE_UNLOCKED;
-            const key = `badge:${badge.id}:t${tier}`;
-            if (expLog[key] === undefined) {
-                addExp(amount, key, `Badge: ${badge.name} (tier ${tier})`);
-                if (typeof showBadgeNotification === "function") {
-                    showBadgeNotification(`🎖️ ${badge.name} (+${amount} EXP)`);
-                }
-            }
+            amount = tierAmounts[tier] || EXP_RULES.BADGE_UNLOCKED;
+            key = `badge:${badge.id}:t${tier}`;
         } else {
-            // Non-progression badge → one-time 100.
-            const key = `badge:${badge.id}`;
-            if (expLog[key] === undefined) {
-                addExp(EXP_RULES.BADGE_UNLOCKED, key, `Badge: ${badge.name}`);
-                if (typeof showBadgeNotification === "function") {
-                    showBadgeNotification(`🎖️ ${badge.name} (+${EXP_RULES.BADGE_UNLOCKED} EXP)`);
-                }
-            }
+            amount = EXP_RULES.BADGE_UNLOCKED;
+            key = `badge:${badge.id}`;
+        }
+
+        if (expLog[key] !== undefined) continue;   // already awarded
+
+        // Mark the key BEFORE addExp so the notification only fires once
+        // even if reconcile runs several times in one session.
+        const firstTimeThisSession = !_celebratedKeys.has(key);
+        _celebratedKeys.add(key);
+
+        addExp(amount, key, `Badge: ${badge.name}`, { silent: !firstTimeThisSession });
+
+        if (firstTimeThisSession && typeof showBadgeNotification === "function") {
+            showBadgeNotification(`🎖️ ${badge.name} (+${amount} EXP)`);
         }
     }
 }
@@ -1357,22 +1458,144 @@ function reconcileWeeklyUploadBonuses() {
  * Full EXP reconciler. Idempotent — safe to call after any state change.
  * Order matters: revoke derived EXP first, then re-derive.
  */
-function reconcileExp() {
-    // Badges & achievements are derived from completedQuests → recompute.
-    for (const key of Object.keys(expLog)) {
-        if (key.startsWith("badge:") || key.startsWith("achievement:")) {
-            delete expLog[key];
-        }
-    }
-    reconcileWeeklyUploadBonuses();
+async function reconcileExp() {
+    // ---- 1. REVOKE anything whose source no longer exists ----
+    reconcileQuestExp();          // quests deleted / ungraded / uncompleted
+    reconcileAllGiftExp();        // gift threshold no longer met
+    reconcileWeeklyUploadBonuses(); // first-upload bonus with no upload
+    reconcileBadgeAndAchievementExp();
+
+    // ---- 2. RE-AWARD what's still valid ----
     if (typeof checkAllBadges === "function") checkAllBadges(false);
     checkBadgeExp();
     checkAchievementExp();
 
-    // Deferred EXP from graded work (upload bonuses, before-time, high standards)
-    try { syncExpFromGradedWork(); } catch (e) { console.warn("[EXP] sync failed:", e); }
+    try { await syncExpFromGradedWork(); } catch (e) { console.warn("[EXP] sync failed:", e); }
 
+    // ---- 3. Recompute total (this updates level + saves + bar) ----
     recomputeExpTotal();
+}
+
+/**
+ * Revokes badge and achievement EXP for badges/achievements that are
+ * no longer earned (e.g. the student's completed quests were reduced).
+ */
+function reconcileBadgeAndAchievementExp() {
+    // 1. Rebuild earnedBadges from the current state. This makes
+    //    `stillEarned` below reflect reality.
+    recomputeEarnedBadges();
+
+    // 2. Achievements: revoke EXP if any needed quest is no longer complete.
+    if (Array.isArray(achievementsData)) {
+        for (const ach of achievementsData) {
+            const key = `achievement:${ach.title}`;
+            if (expLog[key] === undefined) continue;
+            const stillComplete = ach.questsNeeded.every(qid => completedQuests[qid]);
+            if (!stillComplete) {
+                delete expLog[key];
+                console.log(`[EXP] revoked achievement: ${ach.title}`);
+            }
+        }
+    }
+
+    // 3. Badges: revoke EXP if the badge is no longer earned.
+    if (Array.isArray(badgesData)) {
+        for (const badge of badgesData) {
+            const prefix = `badge:${badge.id}`;
+            const info = earnedBadges?.[badge.id];
+            const stillEarned = info && info.earned;
+            if (stillEarned) continue;
+
+            for (const key of Object.keys(expLog)) {
+                if (key === prefix || key.startsWith(prefix + ":")) {
+                    delete expLog[key];
+                    console.log(`[EXP] revoked badge key: ${key}`);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Rebuilds `earnedBadges` from scratch based on the CURRENT state of
+ * completedQuests. Teacher-awarded badges are preserved (they're not
+ * derived from quest completion, so they never auto-expire).
+ *
+ * After this runs:
+ *   - any badge whose requirements are no longer met is gone
+ *   - any badge whose requirements ARE still met is kept (with its
+ *     original earnedAt, so the "earned on" date doesn't reset)
+ *   - progression badges are re-evaluated at their current tier
+ *     (so a student who loses a summative can drop from tier III to II)
+ */
+function recomputeEarnedBadges() {
+    if (!Array.isArray(badgesData)) return;
+
+    // Snapshot the old data so we can preserve earnedAt timestamps
+    const oldBadges = { ...earnedBadges };
+    const newBadges = {};
+
+    for (const badge of badgesData) {
+        // Teacher-awarded badges are never revoked automatically
+        if (badge.teacherAwarded) {
+            if (oldBadges[badge.id]?.earned) {
+                newBadges[badge.id] = oldBadges[badge.id];
+            }
+            continue;
+        }
+
+        // Preserve earnedAt if the student had earned this before
+        const previousEarnedAt = oldBadges[badge.id]?.earnedAt;
+
+        if (badge.progression) {
+            // Progression badges: re-evaluate the tier from scratch
+            const fakeEarned = {};
+            const prev = earnedBadges;
+            earnedBadges = fakeEarned;   // temporarily swap so checkProgressionBadge writes here
+            const earned = checkProgressionBadge(badge);
+            earnedBadges = prev;
+
+            if (earned && fakeEarned[badge.id]) {
+                newBadges[badge.id] = {
+                    ...fakeEarned[badge.id],
+                    earnedAt: previousEarnedAt || fakeEarned[badge.id].earnedAt
+                };
+            }
+        } else if (badge.checkFunction) {
+            let earned = false;
+            if (badge.checkFunction === "checkPathMastery") {
+                earned = checkPathMastery(badge.params);
+            } else if (badge.checkFunction === "checkColorExpert") {
+                earned = checkColorExpert(badge.params);
+            } else if (badge.checkFunction === "checkPerspectivePro") {
+                earned = checkPerspectivePro(badge.params);
+            }
+            if (earned) {
+                newBadges[badge.id] = {
+                    earned: true,
+                    earnedAt: previousEarnedAt || new Date().toISOString()
+                };
+            }
+        }
+    }
+
+    earnedBadges = newBadges;
+    saveEarnedBadges();
+
+    // Push to cloud so the change survives the next login
+    if (typeof saveBadgesToCloud === "function" && !isLoadingFromCloud) {
+        saveBadgesToCloud().catch(e => console.warn("[badges] cloud save failed:", e));
+    }
+
+    console.log("[badges] recomputed:", Object.keys(earnedBadges).length, "earned");
+
+    // Refresh the profile badge grid if it's currently open
+    if (typeof renderBadges === "function") {
+        const profileOverlay = document.getElementById("profile-overlay");
+        if (profileOverlay && profileOverlay.style.display === "flex") {
+            renderBadges();
+        }
+    }
 }
 
 // ==============================================
@@ -1422,10 +1645,10 @@ function hasAnyEarnedGradeForQuest(questId) {
  *   - refreshStudentData()          (after cloud load)
  *   - reconcileExp()                (at the end, after badge/achievement reset)
  */
-function syncExpFromGradedWork() {
+async function syncExpFromGradedWork() {
     if (!completedQuests) return;
 
-        for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+    for (const [questId, isCompleted] of Object.entries(completedQuests)) {
         if (isCompleted !== true) continue;
 
         // Gate: only award if the teacher actually graded something
@@ -1472,7 +1695,6 @@ function syncExpFromGradedWork() {
         // --- 3. Before-deadline bonus (once per quest) ---
         const beforeKey = `before_time:${questId}`;
         if (facts.beforeDeadline === true && expLog[beforeKey] === undefined) {
-            const quest = quests[questId];
             const isMVP = quest?.style === "mvp";
             addExp(
                 isMVP ? EXP_RULES.BEFORE_TIME_SUMMATIVE : EXP_RULES.BEFORE_TIME_FORMATIVE,
@@ -1490,7 +1712,6 @@ function syncExpFromGradedWork() {
                     ([k]) => k !== "teacher_comment" && k !== "completed_at"
                 );
                 if (entries.length > 0) {
-                    // All values must be numeric AND ≥ 3.5
                     let allNumericHigh = true;
                     for (const [, v] of entries) {
                         const num = parseFloat(v);
@@ -1507,9 +1728,71 @@ function syncExpFromGradedWork() {
                 }
             }
         }
+
+        // --- 5. Gift EXP for featured quests (threshold met) ---
+        // Only awarded if the quest was featured by the teacher in the week
+        // the student submitted, and the grade currently meets the threshold.
+        // Revocation is handled separately by reconcileAllGiftExp().
+        const giftKey = `gift:${week}:${questId}`;
+        if (expLog[giftKey] === undefined) {
+            const wasFeatured = await _wasQuestFeaturedInWeek(questId, week);
+            if (wasFeatured && meetsGiftThreshold(questId)) {
+                const amount = quest?.style === "mvp"
+                    ? EXP_RULES.GIFT_SUMMATIVE
+                    : EXP_RULES.GIFT_FORMATIVE;
+                addExp(
+                    amount,
+                    giftKey,
+                    `Gift bonus (${quest?.style === "mvp" ? "summative" : "formative"}): ${questId}`
+                );
+            }
+        }
     }
 }
 
+/**
+ * Returns true if the given quest was featured by the student's teacher
+ * during the given week key.
+ * Cached per (questId, weekKey) to avoid hammering the DB during a sync loop.
+ */
+const _featuredWeekCache = new Map();
+
+async function _wasQuestFeaturedInWeek(questId, weekKey) {
+    const cacheKey = `${questId}::${weekKey}`;
+    if (_featuredWeekCache.has(cacheKey)) return _featuredWeekCache.get(cacheKey);
+
+    if (!TeacherCache.teacherId) {
+        TeacherCache.framework = null;
+        TeacherCache.loaded = false;
+        await detectTeacherFramework();
+    }
+    if (!TeacherCache.teacherId) {
+        _featuredWeekCache.set(cacheKey, false);
+        return false;
+    }
+
+    const { data, error } = await window.supabase
+        .from('teacher_featured_quests')
+        .select('id')
+        .eq('teacher_id', TeacherCache.teacherId)
+        .eq('quest_id', questId)
+        .eq('week_key', weekKey)
+        .maybeSingle();
+
+    if (error) {
+        console.warn("[gift] featured check failed:", error.message);
+        _featuredWeekCache.set(cacheKey, false);
+        return false;
+    }
+
+    const wasFeatured = !!data;
+    _featuredWeekCache.set(cacheKey, wasFeatured);
+    return wasFeatured;
+}
+
+function invalidateFeaturedWeekCache() {
+    _featuredWeekCache.clear();
+}
 /**
  * Award EXP for approved art battle submissions.
  * Called when the student opens the Art Battle overlay (no realtime —
@@ -1544,6 +1827,151 @@ async function syncArtBattleSubmissionExp() {
     }
 }
 
+/**
+ * Revokes gift EXP for a quest if:
+ *   - the quest was previously awarded a gift bonus for some week, AND
+ *   - the current grade no longer meets the threshold.
+ * Called from reconcileExp and syncExpFromGradedWork (idempotent).
+ */
+function reconcileGiftExpForQuest(questId) {
+    // Find any gift key for this quest
+    const prefix = `gift:`;   // we scan all keys and match the suffix
+    for (const key of Object.keys(expLog)) {
+        if (!key.startsWith(prefix)) continue;
+        if (!key.endsWith(`:${questId}`)) continue;
+
+        // We have a gift award for this quest; check if it still qualifies.
+        if (!meetsGiftThreshold(questId)) {
+            delete expLog[key];
+            console.log(`[EXP] revoked gift bonus for ${questId} (threshold no longer met)`);
+        }
+    }
+}
+
+/**
+ * Runs the revocation check for every quest that has a gift bonus in expLog.
+ * Called from reconcileExp.
+ */
+function reconcileAllGiftExp() {
+    for (const key of Object.keys(expLog)) {
+        if (!key.startsWith("gift:")) continue;
+        const questId = key.split(":").slice(2).join(":");  // e.g. "gift:2026-W41:quest55" → "quest55"
+        if (!questId) continue;
+        if (!meetsGiftThreshold(questId)) {
+            delete expLog[key];
+            console.log(`[EXP] revoked gift bonus for ${questId} (threshold no longer met)`);
+        }
+    }
+}
+/**
+ * Revokes EXP for quests whose grade is no longer valid.
+ * A quest's grade is "no longer valid" if:
+ *   - the quest no longer exists in `quests` (deleted by teacher), OR
+ *   - the student is no longer marked as completed on it, OR
+ *   - the teacher has cleared all grades for it (no earned grade remains).
+ *
+ * Cleans up every per-quest key:
+ *   quest:<questId>
+ *   upload:<questId>:<week>
+ *   before_time:<questId>
+ *   high_standards:<questId>
+ *   gift:<week>:<questId>
+ */
+function reconcileQuestExp() {
+    // Build the set of questIds that currently have a valid, graded completion.
+    const validQuestIds = new Set();
+    for (const [questId, isCompleted] of Object.entries(completedQuests || {})) {
+        if (isCompleted !== true) continue;
+        if (!quests[questId]) continue;                  // quest deleted
+        if (!hasAnyEarnedGradeForQuest(questId)) continue; // grades cleared
+        validQuestIds.add(questId);
+    }
+
+    let revoked = 0;
+
+    for (const key of Object.keys(expLog)) {
+        // --- quest:<questId> ---
+        if (key.startsWith("quest:")) {
+            const questId = key.slice("quest:".length);
+            if (!validQuestIds.has(questId)) {
+                revoked += expLog[key] || 0;
+                delete expLog[key];
+            }
+            continue;
+        }
+
+        // --- before_time:<questId> ---
+        if (key.startsWith("before_time:")) {
+            const questId = key.slice("before_time:".length);
+            if (!validQuestIds.has(questId)) {
+                revoked += expLog[key] || 0;
+                delete expLog[key];
+            }
+            continue;
+        }
+
+        // --- high_standards:<questId> ---
+        if (key.startsWith("high_standards:")) {
+            const questId = key.slice("high_standards:".length);
+            if (!validQuestIds.has(questId)) {
+                revoked += expLog[key] || 0;
+                delete expLog[key];
+            }
+            continue;
+        }
+
+        // --- upload:<questId>:<week> ---
+        if (key.startsWith("upload:")) {
+            const parts = key.split(":");        // ["upload", questId, week]
+            const questId = parts[1];
+            if (!validQuestIds.has(questId)) {
+                revoked += expLog[key] || 0;
+                delete expLog[key];
+            }
+            continue;
+        }
+
+        // --- gift:<week>:<questId> ---  (also handled by reconcileAllGiftExp,
+        //                                but we revoke here too for consistency)
+        if (key.startsWith("gift:")) {
+            const parts = key.split(":");        // ["gift", week, questId]
+            const questId = parts.slice(2).join(":");
+            if (!validQuestIds.has(questId)) {
+                revoked += expLog[key] || 0;
+                delete expLog[key];
+            }
+            continue;
+        }
+    }
+
+    if (revoked > 0) {
+        console.log(`[EXP] revoked ${revoked} EXP from invalid quests`);
+    }
+    return revoked;
+}
+
+/**
+ * Removes EXP keys that should never exist in production:
+ *   - anything starting with "test:"
+ *   - anything starting with "debug:"
+ *   - anything starting with "tmp:"
+ *
+ * Safe to call on every reconcile — it only deletes matches, never awards.
+ */
+function purgeDebugExpKeys() {
+    const badPrefixes = ["test:", "debug:", "tmp:"];
+    let removed = 0;
+    for (const key of Object.keys(expLog)) {
+        if (badPrefixes.some(p => key.startsWith(p))) {
+            removed += expLog[key] || 0;
+            delete expLog[key];
+        }
+    }
+    if (removed > 0) {
+        console.log(`[EXP] purged ${removed} EXP from debug/test keys`);
+    }
+    return removed;
+}
 // ==============================================
 // SECTION 8d: EXP BAR RENDERING & LEVEL-UP
 // ==============================================
@@ -1564,7 +1992,14 @@ function renderExpBar(opts = {}) {
     const wrap = document.getElementById("exp-bar-wrap");
     const fill = document.getElementById("exp-bar-fill");
     const levelText = document.getElementById("exp-level-text");
-    if (!wrap || !fill || !levelText) return; // not on this page
+    if (!wrap || !fill || !levelText) {
+        // Even if the nav bar isn't on this page, still refresh the profile overlay's bar
+        if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
+        return;
+    }
+
+    // Mirror to the profile overlay's bar (if present)
+    if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
 
     const info = getLevelInfo(expTotal);
     const pct = info.needed > 0
@@ -1642,6 +2077,31 @@ function renderExpBar(opts = {}) {
 }
 
 /**
+ * Render the EXP bar inside the profile overlay.
+ * Reads expTotal via getLevelInfo() and populates the DOM elements
+ * created in Step D1. Safe to call even if the profile overlay
+ * isn't visible (the elements just get updated off-screen).
+ */
+function renderProfileExpBar() {
+    const levelEl   = document.getElementById("profile-exp-level");
+    const fillEl    = document.getElementById("profile-exp-bar-fill");
+    const numbersEl = document.getElementById("profile-exp-numbers");
+    const totalEl   = document.getElementById("profile-exp-total");
+
+    if (!levelEl || !fillEl || !numbersEl || !totalEl) return;
+
+    const info = getLevelInfo(expTotal);
+    const pct = info.needed > 0
+        ? Math.max(0, Math.min(100, (info.current / info.needed) * 100))
+        : 0;
+
+    levelEl.textContent   = `Lv ${info.level}`;
+    numbersEl.textContent = `${info.current} / ${info.needed}`;
+    totalEl.textContent   = `${expTotal} EXP total`;
+    fillEl.style.width    = pct.toFixed(2) + "%";
+}
+
+/**
  * Level-up celebration.
  * Fires whenever addExp crosses a level threshold.
  */
@@ -1690,6 +2150,787 @@ function showLevelUpNotification(fromLevel, toLevel) {
     }, 6000);
 }
 
+// ==============================================
+// SECTION 8e: FEATURED QUESTS (student side)
+// ==============================================
+
+/** Cached list of featured quests for the current week. */
+let _featuredQuestsCache = null;
+let _featuredQuestsCacheTime = 0;
+const FEATURED_QUESTS_CACHE_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fetch the current week's featured quests for this student's teacher.
+ * Returns an array of { id, questId, giftName, giftImageUrl, weekKey }.
+ * Cached for FEATURED_QUESTS_CACHE_MS to avoid hammering the DB.
+ */
+async function loadFeaturedQuestsForStudent(forceRefresh = false) {
+    if (!forceRefresh && _featuredQuestsCache !== null
+        && (Date.now() - _featuredQuestsCacheTime) < FEATURED_QUESTS_CACHE_MS) {
+        return _featuredQuestsCache;
+    }
+
+    const profile = loadStudentProfile();
+    if (!profile || !profile.teacher_code) {
+        _featuredQuestsCache = [];
+        _featuredQuestsCacheTime = Date.now();
+        return [];
+    }
+
+    if (!TeacherCache.teacherId) {
+        TeacherCache.framework = null;
+        TeacherCache.loaded = false;
+        await detectTeacherFramework();
+    }
+    if (!TeacherCache.teacherId) {
+        _featuredQuestsCache = [];
+        _featuredQuestsCacheTime = Date.now();
+        return [];
+    }
+
+    const weekKey = getISOWeekKey();
+
+    let query = window.supabase
+        .from('teacher_featured_quests')
+        .select('quest_id, gift_name, gift_image_url, week_key, class_id')
+        .eq('teacher_id', TeacherCache.teacherId)
+        .eq('week_key', weekKey);
+
+    // Filter by the student's class if they have one
+    if (profile.class_id) {
+        query = query.eq('class_id', profile.class_id);
+    } else {
+        // No class → nothing applies (matches required-quests behavior)
+        _featuredQuestsCache = [];
+        _featuredQuestsCacheTime = Date.now();
+        return [];
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.warn("[featured] load failed:", error.message);
+        _featuredQuestsCache = [];
+        _featuredQuestsCacheTime = Date.now();
+        return [];
+    }
+
+    // Deduplicate by quest_id (defensive — unique constraint should prevent this,
+    // but we protect against stale data or future schema changes)
+    const byQuest = new Map();
+    for (const row of (data || [])) {
+        if (!byQuest.has(row.quest_id)) {
+            byQuest.set(row.quest_id, {
+                questId: row.quest_id,
+                giftName: row.gift_name,
+                giftImageUrl: row.gift_image_url,
+                weekKey: row.week_key
+            });
+        }
+    }
+
+    _featuredQuestsCache = Array.from(byQuest.values());
+    _featuredQuestsCacheTime = Date.now();
+    return _featuredQuestsCache;
+}
+
+function invalidateFeaturedQuestsCache() {
+    _featuredQuestsCache = null;
+    _featuredQuestsCacheTime = 0;
+}
+
+/**
+ * Render the lower-left panel with silhouettes for each featured quest.
+ * Called on load, on demand, and after any state that might change things
+ * (e.g. after grading updates the student's completed quests).
+ */
+async function renderFeaturedQuestsPanel() {
+    const panel = document.getElementById("featured-quests-panel");
+    if (!panel) return;
+
+    const featured = await loadFeaturedQuestsForStudent();
+    if (!featured || featured.length === 0) {
+        panel.classList.remove("visible");
+        panel.innerHTML = "";
+        panel.setAttribute("aria-hidden", "true");
+        return;
+    }
+
+    const weekKey = getISOWeekKey();
+    const claimMap = await loadGiftClaimsForWeek(weekKey);
+
+    panel.innerHTML = "";
+    let renderedCount = 0;
+
+    for (const item of featured) {
+        const state = await getGiftStateForQuest(item.questId, claimMap);
+        if (state === null) continue;             // quest gone
+        if (state === "gone") continue;           // already revealed
+
+        const quest = quests[item.questId];
+        if (!quest) continue;
+
+        const el = document.createElement("div");
+        el.className = "featured-quest-item";
+        el.dataset.questId = item.questId;
+        el.dataset.state = state;
+
+        const img = document.createElement("img");
+        img.draggable = false;
+        img.alt = quest.title || item.questId;
+
+        if (state === "gift-box") {
+            img.src = "charimage/gift-box.png";
+            img.classList.add("gift-box-img");
+            el.title = "You earned a gift! Click to open it.";
+            el.classList.add("gift-box");
+        } else {
+            img.src = quest.character || "profile.png";
+            img.classList.add("silhouette-img");
+            if (state === "retry") {
+                el.title = "You didn't reach the threshold yet. Click for details.";
+                el.classList.add("retry");
+            } else {
+                el.title = "Featured quest this week";
+            }
+        }
+
+        el.appendChild(img);
+
+        el.addEventListener("click", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (state === "gift-box") {
+                const claim = claimMap.get(item.questId);
+                if (!claim) {
+                    openGiftRevealModal(
+                        item.questId,
+                        item.giftName,
+                        item.giftImageUrl,
+                        null
+                    );
+                } else {
+                    openGiftRevealModal(
+                        item.questId,
+                        claim.gift_name || item.giftName,
+                        claim.gift_image_url || item.giftImageUrl,
+                        claim.id
+                    );
+                }
+            } else if (state === "retry") {
+                showGiftRetryPopup(item.questId);
+            } else {
+                openQuest(item.questId);
+            }
+        });
+
+        panel.appendChild(el);
+        renderedCount++;
+    }
+
+    if (renderedCount === 0) {
+        panel.classList.remove("visible");
+        panel.setAttribute("aria-hidden", "true");
+    } else {
+        panel.classList.add("visible");
+        panel.setAttribute("aria-hidden", "false");
+    }
+}
+
+// ==============================================
+// SECTION 8f: GIFT REVEAL + THRESHOLD LOGIC
+// ==============================================
+
+/** Threshold wording per framework. */
+const GIFT_THRESHOLD_TEXT = {
+    ncas:   "You need a grade of 3 or higher on every standard.",
+    "ib-myp": "You need a band of 5-6 or higher on every criterion.",
+    igcse:  "You need a grade of B or higher on every assessment objective."
+};
+
+/**
+ * Returns true if every *graded* standard for this quest meets the gift
+ * threshold for the current framework.
+ * - Ignores ungraded standards (partial grades still pass).
+ * - Requires at least one graded standard (empty = fail).
+ * - Rejects 0s for NCAS (a 0 doesn't count as earning).
+ */
+function meetsGiftThreshold(questId) {
+    const quest = quests[questId];
+    if (!quest) return false;
+
+    const column = quest.style === "mvp" ? "mvpGrade" : "grade";
+    const grades = questGrades[questId]?.[column];
+    if (!grades || typeof grades !== "object") return false;
+
+    const framework = TeacherCache.framework || "ncas";
+
+    let anyGraded = false;
+    for (const [key, value] of Object.entries(grades)) {
+        if (key === "teacher_comment" || key === "completed_at") continue;
+        if (value === null || value === undefined || value === "") continue;
+
+        anyGraded = true;
+
+        if (framework === "ncas") {
+            const num = parseFloat(value);
+            if (isNaN(num)) return false;
+            if (num < 3) return false;
+        } else if (framework === "ib-myp") {
+            const s = String(value).trim();
+            if (s === "7-8" || s === "5-6") continue;
+            const num = parseFloat(s);
+            if (!isNaN(num) && num >= 5) continue;
+            return false;
+        } else if (framework === "igcse") {
+            const s = String(value).trim().toUpperCase();
+            if (s === "A*" || s === "A" || s === "B") continue;
+            return false;
+        }
+    }
+
+    return anyGraded;
+}
+
+/**
+ * Returns the state of a featured quest tile for the current student:
+ *   "silhouette" — not yet completed (or completed but not graded)
+ *   "retry"      — completed + graded + below threshold
+ *   "gift-box"   — completed + graded + meets threshold + claim not revealed
+ *   "gone"       — gift already revealed
+ *   null         — quest doesn't exist (skip entirely)
+ */
+async function getGiftStateForQuest(questId, claimMap) {
+    const quest = quests[questId];
+    if (!quest) return null;
+
+    const isCompleted = completedQuests[questId] === true;
+
+    // Look up existing claim for this student/quest/week
+    const claim = claimMap?.get(questId) || null;
+    if (claim) {
+        if (claim.revealed_at) return "gone";
+        return "gift-box";
+    }
+
+    // No claim yet
+    if (!isCompleted) return "silhouette";
+
+    // Completed: is it graded?
+    const hasGrades = hasAnyEarnedGradeForQuest(questId);
+    if (!hasGrades) return "silhouette";   // still awaiting grade
+
+    // Graded: does it meet the threshold?
+    if (meetsGiftThreshold(questId)) return "gift-box";  // gift earned (server may not have a claim yet)
+    return "retry";
+}
+
+/**
+ * Fetch this student's gift claims for the given week, keyed by questId.
+ * Returns an empty Map if not logged in or on error.
+ */
+async function loadGiftClaimsForWeek(weekKey) {
+    const map = new Map();
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (!session) return map;
+
+    const { data, error } = await window.supabase
+        .from('gift_claims')
+        .select('id, quest_id, gift_name, gift_image_url, revealed_at')
+        .eq('student_id', session.user.id)
+        .eq('week_key', weekKey);
+
+    if (error) {
+        console.warn("[gift] load claims failed:", error.message);
+        return map;
+    }
+
+    for (const row of (data || [])) {
+        map.set(row.quest_id, row);
+    }
+    return map;
+}
+
+/**
+ * The retry popup. Reuses the structure/conventions of the
+ * restriction popups you already have.
+ */
+function showGiftRetryPopup(questId) {
+    const quest = quests[questId];
+    const title = quest?.title || questId;
+    const framework = TeacherCache.framework || "ncas";
+    const thresholdText = GIFT_THRESHOLD_TEXT[framework] || GIFT_THRESHOLD_TEXT.ncas;
+
+    // Remove any prior popup
+    document.querySelectorAll(".gift-retry-popup").forEach(el => el.remove());
+
+    const popup = document.createElement("div");
+    popup.className = "gift-retry-popup";
+    popup.innerHTML = `
+        <div class="gift-retry-popup-inner">
+            <div class="gift-retry-popup-title">⚠️ Not quite there yet</div>
+            <div class="gift-retry-popup-body">
+                <p><strong>${escapeHtml(title)}</strong></p>
+                <p>Sorry, you did not reach the minimum grade for a reward.</p>
+                <p class="gift-retry-threshold">${escapeHtml(thresholdText)}</p>
+                <p>You can redo the work and submit again!</p>
+            </div>
+            <div class="gift-retry-popup-actions">
+                <button class="gift-retry-open-btn">Open quest</button>
+                <button class="gift-retry-close-btn">Close</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(popup);
+
+    // Wire buttons
+    popup.querySelector(".gift-retry-open-btn").addEventListener("click", () => {
+        popup.remove();
+        openQuest(questId);
+    });
+    popup.querySelector(".gift-retry-close-btn").addEventListener("click", () => {
+        popup.remove();
+    });
+    popup.addEventListener("click", (e) => {
+        if (e.target === popup) popup.remove();
+    });
+}
+
+/**
+ * The gift reveal modal controller.
+ * Opens the modal with the given gift data, wires all interactions,
+ * persists revealed_at on close.
+ */
+let _giftRevealState = null;
+
+function openGiftRevealModal(questId, giftName, giftImageUrl, claimId) {
+    const overlay = document.getElementById("gift-reveal-overlay");
+    const boxWrap = document.getElementById("gift-reveal-box-wrap");
+    const resultEl = document.getElementById("gift-reveal-result");
+    const hintEl = document.getElementById("gift-reveal-hint");
+    const flashEl = document.getElementById("gift-reveal-flash");
+    const giftImgEl = document.getElementById("gift-reveal-gift-img");
+    const messageEl = document.getElementById("gift-reveal-message");
+    const confettiEl = document.getElementById("gift-reveal-confetti");
+
+    if (!overlay || !boxWrap || !resultEl) return;
+
+    // Reset
+    boxWrap.classList.remove("hidden", "winding");
+    resultEl.style.display = "none";
+    hintEl.classList.remove("hidden");
+    flashEl.classList.remove("fire");
+    confettiEl.innerHTML = "";
+
+    giftImgEl.src = giftImageUrl;
+    messageEl.innerHTML =
+        `You earned <strong>${giftName}</strong>.<br>` +
+        `See your teacher to claim your reward!`;
+
+    // Store state for the reveal step
+    _giftRevealState = {
+        questId,
+        giftName,
+        giftImageUrl,
+        claimId,
+        woundUp: false,
+        revealing: false
+    };
+
+    overlay.classList.add("show");
+    overlay.setAttribute("aria-hidden", "false");
+
+    // Play the sound when the box appears (user already clicked to open modal)
+    playGiftRevealSound();
+
+    // Click the box → wind up
+    const onBoxClick = () => {
+        if (!_giftRevealState || _giftRevealState.woundUp) return;
+        _giftRevealState.woundUp = true;
+
+        boxWrap.classList.add("winding");
+
+        // After the wind-up, flash + reveal
+        setTimeout(() => {
+            if (!_giftRevealState) return;
+            _giftRevealState.revealing = true;
+            flashEl.classList.add("fire");
+
+            setTimeout(() => {
+                boxWrap.classList.add("hidden");
+                hintEl.classList.add("hidden");
+                resultEl.style.display = "block";
+                startConfetti(confettiEl);
+            }, 240);   // hide box near peak of flash
+        }, 1500);       // wind-up duration
+    };
+
+    boxWrap.addEventListener("click", onBoxClick);
+
+    // Close
+    const close = async () => {
+    // Blur any focused element inside the overlay before hiding it,
+    // otherwise the browser blocks aria-hidden and logs a warning.
+    if (document.activeElement && overlay.contains(document.activeElement)) {
+        document.activeElement.blur();
+    }
+
+    overlay.classList.remove("show");
+    overlay.setAttribute("aria-hidden", "true");
+    boxWrap.removeEventListener("click", onBoxClick);
+    confettiEl.innerHTML = "";
+
+        // Persist revealed_at if the reveal actually happened
+        if (_giftRevealState && _giftRevealState.claimId) {
+            try {
+                await window.supabase
+                    .from("gift_claims")
+                    .update({ revealed_at: new Date().toISOString() })
+                    .eq("id", _giftRevealState.claimId);
+            } catch (e) {
+                console.warn("[gift] could not persist revealed_at:", e);
+            }
+        }
+
+        _giftRevealState = null;
+
+        // Refresh the panel so the tile disappears
+        invalidateFeaturedQuestsCache();
+        renderFeaturedQuestsPanel();
+    };
+
+    document.getElementById("gift-reveal-close-btn").onclick = close;
+    overlay.onclick = (e) => {
+        if (e.target === overlay) close();
+    };
+}
+
+/**
+ * Confetti — a lightweight DOM-based particle system.
+ * No canvas, no external library. Good enough for a short burst.
+ */
+function startConfetti(container) {
+    if (!container) return;
+    const colors = ["#ffd700", "#ff6b6b", "#4ecdc4", "#95e1d3", "#f38181", "#aa96da", "#ffffff"];
+    const count = 90;
+    for (let i = 0; i < count; i++) {
+        const piece = document.createElement("div");
+        piece.className = "confetti-piece";
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = 6 + Math.random() * 8;
+        const left = Math.random() * 100;
+        const duration = 1.8 + Math.random() * 1.6;
+        const delay = Math.random() * 0.6;
+        piece.style.background = color;
+        piece.style.left = `${left}%`;
+        piece.style.width = `${size}px`;
+        piece.style.height = `${size * 1.4}px`;
+        piece.style.animationDuration = `${duration}s`;
+        piece.style.animationDelay = `${delay}s`;
+        piece.style.borderRadius = Math.random() > 0.5 ? "50%" : "2px";
+        container.appendChild(piece);
+    }
+    // Clean up after the longest animation finishes
+    setTimeout(() => {
+        if (container) container.innerHTML = "";
+    }, 4500);
+}
+
+/**
+ * Sound — plays sounds/gift-reveal.mp3 if it exists.
+ * Silent no-op if missing. Logs a warning once per session.
+ */
+let _giftSoundWarned = false;
+function playGiftRevealSound() {
+    try {
+        const audio = new Audio("sounds/gift-reveal.mp3");
+        audio.volume = 0.6;
+        const p = audio.play();
+        if (p && p.catch) {
+            p.catch(() => {
+                if (!_giftSoundWarned) {
+                    console.log("[gift] Sound file not found or blocked. Add sounds/gift-reveal.mp3 to enable it.");
+                    _giftSoundWarned = true;
+                }
+            });
+        }
+    } catch (e) {
+        if (!_giftSoundWarned) {
+            console.log("[gift] Sound unavailable:", e.message);
+            _giftSoundWarned = true;
+        }
+    }
+}
+
+// ==============================================
+// SECTION 8g: MYSTERY GIFT TAB (all-time list)
+// ==============================================
+
+let _mysteryGiftCache = null;
+let _mysteryGiftCacheTime = 0;
+const MYSTERY_GIFT_CACHE_MS = 5 * 60 * 1000;
+
+/**
+ * Load every mystery gift the teacher created for this student's class,
+ * LEFT-merged with this student's claim state on each.
+ *
+ * Visibility on the UI is driven ONLY by `revealedAt` — never by
+ * `completedQuests` — so a student who completes the quest late still
+ * sees the silhouette if they never opened the box.
+ *
+ * Returns an array of:
+ *   { questId, weekKey, giftName, giftImageUrl, revealedAt, earnedAt }
+ * sorted oldest → newest by week_key.
+ */
+async function loadAllMysteryGiftsForStudent(forceRefresh = false) {
+    if (!forceRefresh && _mysteryGiftCache !== null
+        && (Date.now() - _mysteryGiftCacheTime) < MYSTERY_GIFT_CACHE_MS) {
+        return _mysteryGiftCache;
+    }
+
+    const profile = loadStudentProfile();
+    if (!profile || !profile.teacher_code || !profile.class_id) {
+        _mysteryGiftCache = [];
+        _mysteryGiftCacheTime = Date.now();
+        return [];
+    }
+
+    // Make sure we know the teacher id
+    if (!TeacherCache.teacherId) {
+        TeacherCache.framework = null;
+        TeacherCache.loaded = false;
+        await detectTeacherFramework();
+    }
+    if (!TeacherCache.teacherId) {
+        _mysteryGiftCache = [];
+        _mysteryGiftCacheTime = Date.now();
+        return [];
+    }
+
+    // --- 1. All gifts created for this class ---
+    const { data: featured, error: featuredErr } = await window.supabase
+        .from('teacher_featured_quests')
+        .select('quest_id, week_key, gift_name, gift_image_url')
+        .eq('teacher_id', TeacherCache.teacherId)
+        .eq('class_id', profile.class_id)
+        .order('week_key', { ascending: true });   // older first
+
+    if (featuredErr) {
+        console.warn('[mysterygift] featured load failed:', featuredErr.message);
+        _mysteryGiftCache = [];
+        _mysteryGiftCacheTime = Date.now();
+        return [];
+    }
+
+    if (!featured || featured.length === 0) {
+        _mysteryGiftCache = [];
+        _mysteryGiftCacheTime = Date.now();
+        return [];
+    }
+
+    // --- 2. This student's claims on those quests ---
+    const { data: { session } } = await window.supabase.auth.getSession();
+    if (!session) {
+        _mysteryGiftCache = [];
+        _mysteryGiftCacheTime = Date.now();
+        return [];
+    }
+
+    const { data: claims, error: claimsErr } = await window.supabase
+        .from('gift_claims')
+        .select('quest_id, week_key, revealed_at, earned_at')
+        .eq('student_id', session.user.id)
+        .eq('teacher_id', TeacherCache.teacherId);
+
+    if (claimsErr) {
+        console.warn('[mysterygift] claims load failed:', claimsErr.message);
+    }
+
+    const claimMap = new Map();
+    for (const c of (claims || [])) {
+        claimMap.set(`${c.quest_id}::${c.week_key}`, c);
+    }
+
+    // --- 3. Merge ---
+    const rows = featured.map(f => {
+        const claim = claimMap.get(`${f.quest_id}::${f.week_key}`) || null;
+        return {
+            questId:      f.quest_id,
+            weekKey:      f.week_key,
+            giftName:     f.gift_name,
+            giftImageUrl: f.gift_image_url,
+            revealedAt:   claim?.revealed_at || null,
+            earnedAt:     claim?.earned_at   || null
+        };
+    });
+
+    _mysteryGiftCache = rows;
+    _mysteryGiftCacheTime = Date.now();
+    return rows;
+}
+
+function invalidateMysteryGiftCache() {
+    _mysteryGiftCache = null;
+    _mysteryGiftCacheTime = 0;
+}
+
+/**
+ * Format "2026-W41" → "Week of Oct 6, 2026" (ISO week Monday).
+ * Falls back to the raw key on any parse issue.
+ */
+function formatWeekKey(weekKey) {
+    try {
+        const m = /^(\d{4})-W(\d{2})$/.exec(weekKey);
+        if (!m) return weekKey;
+        const year = parseInt(m[1], 10);
+        const week = parseInt(m[2], 10);
+        // ISO week 1 contains Jan 4
+        const jan4 = new Date(Date.UTC(year, 0, 4));
+        const dayOfWeek = jan4.getUTCDay() || 7;
+        const week1Monday = new Date(jan4);
+        week1Monday.setUTCDate(jan4.getUTCDate() - (dayOfWeek - 1));
+        const target = new Date(week1Monday);
+        target.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
+        return target.toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric', year: 'numeric'
+        });
+    } catch {
+        return weekKey;
+    }
+}
+
+/**
+ * Render the mystery gift list into #mystery-gift-list.
+ */
+async function renderMysteryGiftList() {
+    const container = document.getElementById('mystery-gift-list');
+    if (!container) return;
+
+    container.innerHTML = `<div class="mystery-gift-empty">Loading…</div>`;
+
+    const rows = await loadAllMysteryGiftsForStudent();
+
+    if (!rows || rows.length === 0) {
+        container.innerHTML = `<div class="mystery-gift-empty">
+            No mystery gifts have been set for your class yet.
+        </div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+
+    // Ensure a shared tooltip element exists
+    let tooltip = document.getElementById('mystery-gift-tooltip');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'mystery-gift-tooltip';
+        tooltip.className = 'mystery-gift-tooltip';
+        document.body.appendChild(tooltip);
+    }
+
+    for (const row of rows) {
+        const quest = quests[row.questId];
+        if (!quest) continue;   // skip gifts for quests that no longer exist
+
+        const isRevealed = row.revealedAt !== null && row.revealedAt !== undefined;
+
+        const item = document.createElement('div');
+        item.className = 'mystery-gift-item';
+        item.dataset.revealed = isRevealed ? '1' : '0';
+        item.dataset.questId = row.questId;
+
+        // --- Character ---
+        const charWrap = document.createElement('div');
+        charWrap.className = 'mystery-gift-char';
+
+        const img = document.createElement('img');
+        img.draggable = false;
+        img.src = quest.character || 'profile.png';
+        img.alt = isRevealed ? (quest.title || row.questId) : 'Mystery gift';
+        charWrap.appendChild(img);
+
+        // --- Completed badge (only when revealed) ---
+        if (isRevealed) {
+            const badge = document.createElement('div');
+            badge.className = 'mystery-gift-badge';
+            const badgeImg = document.createElement('img');
+            badgeImg.src = 'completed.png';
+            badgeImg.alt = 'Revealed';
+            badge.appendChild(badgeImg);
+            charWrap.appendChild(badge);
+        }
+
+        item.appendChild(charWrap);
+
+        // --- Caption ---
+        const caption = document.createElement('div');
+        caption.className = 'mystery-gift-caption';
+
+        const titleEl = document.createElement('span');
+        titleEl.className = 'title';
+        titleEl.textContent = isRevealed ? (quest.title || row.questId) : '???';
+
+        const weekEl = document.createElement('span');
+        weekEl.className = 'week';
+        weekEl.textContent = formatWeekKey(row.weekKey);
+
+        caption.appendChild(titleEl);
+        caption.appendChild(weekEl);
+        item.appendChild(caption);
+
+        // --- Tooltip (only when revealed) ---
+        if (isRevealed) {
+            const claimedDate = new Date(row.revealedAt);
+            const claimedText = `Reward claimed on ${claimedDate.toLocaleDateString(undefined, {
+                month: 'short', day: 'numeric', year: 'numeric'
+            })}`;
+
+            item.addEventListener('mouseenter', () => {
+                tooltip.textContent = claimedText;
+                tooltip.classList.add('show');
+            });
+            item.addEventListener('mousemove', (e) => {
+                const tr = tooltip.getBoundingClientRect();
+                let left = e.clientX + 14;
+                let top  = e.clientY + 14;
+                if (left + tr.width + 8 > window.innerWidth) left = e.clientX - tr.width - 14;
+                if (top + tr.height + 8 > window.innerHeight) top = e.clientY - tr.height - 14;
+                tooltip.style.left = left + 'px';
+                tooltip.style.top  = top + 'px';
+            });
+            item.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('show');
+            });
+        }
+
+        // --- Click → open quest, hide overlay, remember to reopen ---
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Hide the achievements overlay
+            const achOverlay = document.getElementById('achievements-overlay');
+            if (achOverlay) achOverlay.style.display = 'none';
+
+            // Flag so closeQuest() reopens this overlay
+            window._reopenAchievementsAfterQuest = true;
+            window._reopenAchievementsTab = 'mysterygift';
+
+            // Hide any lingering tooltip
+            if (tooltip) tooltip.classList.remove('show');
+
+            if (typeof openQuest === 'function') openQuest(row.questId);
+        });
+
+        container.appendChild(item);
+    }
+
+    if (container.children.length === 0) {
+        container.innerHTML = `<div class="mystery-gift-empty">
+            No mystery gifts to show.
+        </div>`;
+    }
+}
 // ==============================================
 // SECTION 9: INTEREST TOGGLE (MVP quests only)
 // ==============================================
@@ -1769,6 +3010,13 @@ async function openQuestTree() {
     if (!overlay) return;
 
     overlay.style.display = "block";
+        // Always open on the Quest Progress Tree tab
+    if (typeof initializeTreeTabs === 'function') {
+        initializeTreeTabs();
+    }
+    if (typeof invalidateTreeCompletedCache === 'function') {
+        invalidateTreeCompletedCache();    // ← NEW
+    }
     const avatarEl = document.getElementById("tree-student-avatar");
     const profile = loadStudentProfile();
     if (avatarEl && profile && profile.character) {
@@ -1797,6 +3045,53 @@ function closeQuestTree() {
     if (overlay) overlay.style.display = "none";
 }
 
+function initializeTreeTabs() {
+    const tabBtns = document.querySelectorAll('#quest-tree-overlay .tree-tab-btn');
+    const tabPanels = document.querySelectorAll('#quest-tree-overlay .tree-tab-content');
+
+    if (!tabBtns.length || !tabPanels.length) return;
+
+    function activateTab(tabKey) {
+        // Toggle buttons
+        tabBtns.forEach(btn => {
+            const isActive = btn.dataset.treeTab === tabKey;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+
+        // Toggle panels
+        tabPanels.forEach(panel => {
+            const panelKey = panel.id.replace(/^tree-tab-/, '');
+            panel.style.display = (panelKey === tabKey) ? 'block' : 'none';
+        });
+
+        // Redraw tree connectors if we just switched back to the tree tab
+        if (tabKey === 'quest-tree' && typeof redrawAllTreeConnectors === 'function') {
+            requestAnimationFrame(() => redrawAllTreeConnectors());
+        }
+
+                // Remember the current tab so openQuestTree can default to it if needed
+        window._lastTreeTab = tabKey;
+
+        // Load the Completed Quests panel content on demand
+        if (tabKey === 'completed' && typeof renderTreeCompletedPanel === 'function') {
+            renderTreeCompletedPanel();
+        }
+    }
+
+    // Wire each button (clone-strip to avoid duplicate listeners on re-init)
+    tabBtns.forEach(btn => {
+        const fresh = btn.cloneNode(true);
+        btn.parentNode.replaceChild(fresh, btn);
+        fresh.addEventListener('click', () => {
+            activateTab(fresh.dataset.treeTab);
+        });
+    });
+
+    // Always open on the Quest Progress Tree tab
+    activateTab('quest-tree');
+}
+
 function initializeQuestTree() {
     const closeBtn = document.getElementById("close-quest-tree");
     if (closeBtn) {
@@ -1811,6 +3106,7 @@ function initializeQuestTree() {
             if (e.target === overlay) closeQuestTree();
         });
     }
+    initializeTreeTabs();
 }
 
 function renderQuestTree() {
@@ -2194,6 +3490,412 @@ function invalidateRequiredQuestsCache() {
 }
 
 // ==============================================
+// SECTION 9d: COMPLETED QUESTS TAB (tree overlay)
+// ==============================================
+
+// Cache the last computed panel so tab switches don't recompute.
+let _treeCompletedCache = null;
+let _treeCompletedCacheTime = 0;
+const TREE_COMPLETED_CACHE_MS = 3 * 1000; // 3 seconds — short, so updates feel snappy
+
+/**
+ * Build the data model for the Completed Quests panel.
+ * Returns: { categories: [ { key, label, weight, quests: [ ... ] } ] }
+ *
+ * Each quest entry:
+ *   {
+ *     questId, title, style,
+ *     completedAt,               // Date or null
+ *     perCategoryAvg,            // number (avg of this quest's standards in THIS category)
+ *     perCategoryPercent,        // number 0-100
+ *     shareOfCategory,           // number 0-100 (equal share: 100 / nQuests in category)
+ *     standards: [ { code, name, grade } ]
+ *   }
+ */
+function buildTreeCompletedModel() {
+    const model = { categories: [] };
+
+    const categoryOrder = [
+        { key: 'resolvedArtworks',    label: 'Resolved Artworks',              weight: 45 },
+        { key: 'artStudy',            label: 'Art Study',                      weight: 20 },
+        { key: 'independentResearch', label: 'Independent Art Research',       weight: 15 },
+        { key: 'collaboration',       label: 'Art Community Collaboration',    weight: 10 },
+        { key: 'materialCare',        label: 'Art Material and Resources Care',weight: 10 }
+    ];
+
+    // Map DB category string → bucket key
+    const categoryToBucket = {
+        'Resolved Artworks':                'resolvedArtworks',
+        'Art Study':                        'artStudy',
+        'Art Community Collaboration':      'collaboration',
+        'Art Material and Resources Care':  'materialCare'
+    };
+
+    // Initialize category buckets
+    const buckets = {};
+    for (const c of categoryOrder) {
+        buckets[c.key] = { ...c, quests: [] };
+    }
+
+    // ---- Pass 1: collect quests into buckets ----
+    for (const [questId, isCompleted] of Object.entries(completedQuests || {})) {
+        if (isCompleted !== true) continue;
+
+        const quest = quests[questId];
+        if (!quest) continue;
+
+        const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
+        const grades = questGrades?.[questId]?.[column];
+        if (!grades || typeof grades !== 'object') continue;
+
+        const baseCategory = resolveQuestBaseCategory(quest);
+        const baseBucket = categoryToBucket[baseCategory] || 'artStudy';
+
+        // Group this quest's standards by target bucket
+        // (a quest can touch multiple buckets if it has CN)
+        const standardsByBucket = {};
+
+        // Preserve rubric order using the quest's rubric definition
+        const rubricItems = getRubricItemsForQuest(quest);
+        const rubricOrderIndex = new Map();
+        rubricItems.forEach((item, idx) => rubricOrderIndex.set(item.code, idx));
+
+        // Iterate grades but sort by rubric order so the display matches the quest
+        const gradedEntries = Object.entries(grades)
+            .filter(([code]) => code !== 'teacher_comment' && code !== 'completed_at')
+            .map(([code, raw]) => ({ code, raw, num: parseFloat(raw) }))
+            .filter(e => !isNaN(e.num))
+            .sort((a, b) => {
+                const ia = rubricOrderIndex.has(a.code) ? rubricOrderIndex.get(a.code) : 999;
+                const ib = rubricOrderIndex.has(b.code) ? rubricOrderIndex.get(b.code) : 999;
+                return ia - ib;
+            });
+
+        for (const entry of gradedEntries) {
+            // ============================================================
+            // HEADS UP (MS): this line contains the CN standard code.
+            // For the middle school site, change 'Art.FA.CN.10.1.IA'
+            // to the MS CN standard code.
+            // ============================================================
+            const bucketKey = (entry.code === INDEPENDENT_RESEARCH_STANDARD)
+                ? 'independentResearch'
+                : baseBucket;
+
+            if (!standardsByBucket[bucketKey]) standardsByBucket[bucketKey] = [];
+            standardsByBucket[bucketKey].push({
+                code: entry.code,
+                name: getStandardShortName(entry.code, quest),
+                grade: entry.num
+            });
+        }
+
+        // One entry per bucket this quest touched
+        for (const [bucketKey, stds] of Object.entries(standardsByBucket)) {
+            if (!stds.length) continue;
+
+            const avg = stds.reduce((s, x) => s + x.grade, 0) / stds.length;
+
+            // Completion date — from questGrades if available, else null
+            const completedAt = _getQuestCompletionDate(questId);
+
+            buckets[bucketKey].quests.push({
+                questId,
+                title: quest.title || questId,
+                style: quest.style || '',
+                completedAt,
+                perCategoryAvg: avg,
+                perCategoryPercent: (avg / 4) * 100,
+                standards: stds
+            });
+        }
+    }
+
+    // ---- Pass 2: sort, compute shares ----
+    for (const cat of Object.values(buckets)) {
+        // Sort: most recent first; quests without a date fall to the bottom,
+        // then tie-broken by quest number descending.
+        cat.quests.sort((a, b) => {
+            const ta = a.completedAt ? a.completedAt.getTime() : 0;
+            const tb = b.completedAt ? b.completedAt.getTime() : 0;
+            if (tb !== ta) return tb - ta;
+
+            const na = parseInt(a.questId.replace(/\D/g, ''), 10) || 0;
+            const nb = parseInt(b.questId.replace(/\D/g, ''), 10) || 0;
+            return nb - na;
+        });
+
+        const n = cat.quests.length;
+        const share = n > 0 ? (100 / n) : 0;
+        for (const q of cat.quests) {
+            q.shareOfCategory = share;
+        }
+    }
+
+    model.categories = categoryOrder.map(c => buckets[c.key]);
+    return model;
+}
+
+/**
+ * Resolve the completion date for a quest, preferring graded-at, falling
+ * back to updated_at, then to questStartTimes.
+ */
+function _getQuestCompletionDate(questId) {
+    const g = questGrades?.[questId];
+    if (g) {
+        if (g.updated_at) return new Date(g.updated_at);
+        if (g.graded_at)  return new Date(g.graded_at);
+    }
+    if (questStartTimes?.[questId]) return new Date(questStartTimes[questId]);
+    return null;
+}
+
+/**
+ * Returns the rubric items array (standards / criteria / AOs) for a quest,
+ * or [] if none exist. Used to preserve rubric order.
+ */
+function getRubricItemsForQuest(quest) {
+    if (!quest || !quest.rubric) return [];
+    if (Array.isArray(quest.rubric.standards))              return quest.rubric.standards;
+    if (Array.isArray(quest.rubric.criteria))               return quest.rubric.criteria;
+    if (Array.isArray(quest.rubric.assessment_objectives))  return quest.rubric.assessment_objectives;
+    return [];
+}
+
+/**
+ * Short descriptor for a standard code (e.g. "Generate", "Reflect").
+ * Prefers STANDARD_SHORT_NAMES if the code is known, else falls back
+ * to whatever the rubric item provides, else empty string.
+ */
+function getStandardShortName(code, quest) {
+    if (typeof STANDARD_SHORT_NAMES === 'object' && STANDARD_SHORT_NAMES[code]) {
+        return STANDARD_SHORT_NAMES[code];
+    }
+    // Search the quest's own rubric
+    const items = getRubricItemsForQuest(quest);
+    const match = items.find(i => i.code === code);
+    if (match) {
+        if (match.name) return match.name;
+        // Some rubric shapes use `shortName` or the standard code as a fallback
+        if (match.shortName) return match.shortName;
+    }
+    // Fallback: last segment of the code, or the code itself
+    return code;
+}
+
+/**
+ * Render the Completed Quests panel into #tree-completed-panel.
+ */
+function renderTreeCompletedPanel() {
+    const panel = document.getElementById('tree-completed-panel');
+    if (!panel) return;
+
+    // Cheap cache — avoid rebuilding within a few seconds
+    const now = Date.now();
+    if (_treeCompletedCache && (now - _treeCompletedCacheTime) < TREE_COMPLETED_CACHE_MS) {
+        return; // panel already showing fresh content
+    }
+
+    const model = buildTreeCompletedModel();
+    _treeCompletedCache = model;
+    _treeCompletedCacheTime = now;
+
+    panel.innerHTML = '';
+
+    // Heading
+    const heading = document.createElement('div');
+    heading.className = 'tree-completed-heading';
+    heading.textContent = 'Completed Quests';
+    panel.appendChild(heading);
+
+    // Accordions
+    for (const cat of model.categories) {
+        const acc = buildCategoryAccordion(cat);
+        panel.appendChild(acc);
+    }
+
+    if (model.categories.every(c => c.quests.length === 0)) {
+        const empty = document.createElement('div');
+        empty.className = 'tree-completed-empty';
+        empty.textContent = 'No completed quests yet.';
+        panel.appendChild(empty);
+    }
+}
+
+/**
+ * Build one category accordion.
+ */
+function buildCategoryAccordion(cat) {
+    const wrap = document.createElement('div');
+    wrap.className = 'tree-completed-category';
+
+    // --- Header (clickable) ---
+    const header = document.createElement('div');
+    header.className = 'tree-completed-category-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+
+    const arrow = document.createElement('span');
+    arrow.className = 'tree-completed-cat-arrow';
+    arrow.textContent = '▶';
+
+    const label = document.createElement('span');
+    label.className = 'tree-completed-cat-label';
+    label.textContent = cat.label;
+
+    const count = document.createElement('span');
+    count.className = 'tree-completed-cat-count';
+    count.textContent = `(${cat.quests.length} ${cat.quests.length === 1 ? 'quest' : 'quests'})`;
+
+    const weight = document.createElement('span');
+    weight.className = 'tree-completed-cat-weight';
+    weight.textContent = `${cat.weight}%`;
+
+    header.appendChild(arrow);
+    header.appendChild(label);
+    header.appendChild(count);
+    header.appendChild(weight);
+    wrap.appendChild(header);
+
+    // --- Body ---
+    const body = document.createElement('div');
+    body.className = 'tree-completed-category-body';
+
+    if (cat.quests.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'tree-completed-cat-empty';
+        empty.textContent = 'No completed quests in this category.';
+        body.appendChild(empty);
+    } else {
+        for (const q of cat.quests) {
+            body.appendChild(buildQuestRow(q));
+        }
+    }
+
+    wrap.appendChild(body);
+
+    // Toggle (starts closed)
+    header.addEventListener('click', () => toggleCategory(wrap));
+    header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleCategory(wrap);
+        }
+    });
+
+    return wrap;
+}
+
+function toggleCategory(wrapEl) {
+    const isOpen = wrapEl.classList.toggle('expanded');
+    const arrow = wrapEl.querySelector('.tree-completed-cat-arrow');
+    if (arrow) arrow.textContent = isOpen ? '▼' : '▶';
+}
+
+/**
+ * Build the 4-row grid for a single quest.
+ *
+ * Row 1: Quest title  —  Share of category: X% of graded standards
+ * Row 2: Quest average (left)  |  Standard1  |  Standard2  | ...
+ * Row 3: (values)              |  grade1     |  grade2     | ...
+ */
+function buildQuestRow(q) {
+    const row = document.createElement('div');
+    row.className = 'tree-completed-quest';
+
+    // --- Character image (overlaps the left border) ---
+    const quest = quests[q.questId];
+    if (quest?.character) {
+        const charWrap = document.createElement('div');
+        charWrap.className = 'tree-completed-quest-char';
+
+        const img = document.createElement('img');
+        img.src = quest.character;
+        img.alt = quest.title || q.questId;
+        img.draggable = false;
+
+        charWrap.appendChild(img);
+        row.appendChild(charWrap);
+    }
+
+    // --- Row 1: title + share ---
+    const titleLine = document.createElement('div');
+    titleLine.className = 'tree-completed-quest-title-line';
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'tree-completed-quest-title';
+    titleEl.textContent = q.title;
+
+    const shareEl = document.createElement('span');
+    shareEl.className = 'tree-completed-quest-share';
+    shareEl.textContent = `Share of category: ${q.shareOfCategory.toFixed(1)}% of graded standards`;
+
+    titleLine.appendChild(titleEl);
+    titleLine.appendChild(shareEl);
+    row.appendChild(titleLine);
+
+    // --- Grid: N columns = 1 (quest avg) + N standards ---
+    const grid = document.createElement('div');
+    grid.className = 'tree-completed-quest-grid';
+    grid.style.gridTemplateColumns = `minmax(140px, 1.4fr) repeat(${q.standards.length}, minmax(90px, 1fr))`;
+
+    // Header cells
+    const avgHeader = document.createElement('div');
+    avgHeader.className = 'tree-completed-cell tree-completed-cell-header';
+    avgHeader.textContent = 'Quest average';
+    grid.appendChild(avgHeader);
+
+    for (const std of q.standards) {
+        const cell = document.createElement('div');
+        cell.className = 'tree-completed-cell tree-completed-cell-header';
+
+        const codeEl = document.createElement('div');
+        codeEl.className = 'tree-completed-std-code';
+        codeEl.textContent = std.code;
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'tree-completed-std-name';
+        nameEl.textContent = std.name;
+
+        cell.appendChild(codeEl);
+        cell.appendChild(nameEl);
+        grid.appendChild(cell);
+    }
+
+    // Value cells
+    const avgValue = document.createElement('div');
+    avgValue.className = 'tree-completed-cell tree-completed-cell-value tree-completed-cell-avg';
+    avgValue.textContent = `${q.perCategoryAvg.toFixed(2)} / 4 → ${q.perCategoryPercent.toFixed(2)}%`;
+    grid.appendChild(avgValue);
+
+    for (const std of q.standards) {
+        const cell = document.createElement('div');
+        cell.className = 'tree-completed-cell tree-completed-cell-value';
+        cell.textContent = formatGradeDisplay(std.grade);
+        grid.appendChild(cell);
+    }
+
+    row.appendChild(grid);
+    return row;
+}
+
+function formatGradeDisplay(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'number') {
+        // Show integer without decimals, else one decimal place
+        return Number.isInteger(v) ? String(v) : v.toFixed(1);
+    }
+    return String(v);
+}
+
+/**
+ * Invalidate the panel cache. Called after data refreshes.
+ */
+function invalidateTreeCompletedCache() {
+    _treeCompletedCache = null;
+    _treeCompletedCacheTime = 0;
+}
+
+// ==============================================
 // SECTION 10: STUDENT PROFILE
 // ==============================================
 
@@ -2211,7 +3913,7 @@ function updateProfileUI() {
     if (!profile) return;
     const avatar = document.getElementById("student-avatar");
     const name = document.getElementById("student-name");
-    const profileBtn = document.querySelector(".profile-btn");
+    const profileBtn = document.querySelector(".profile-btn"); 
     const profileBtnImg = profileBtn ? profileBtn.querySelector("img") : null;
     if (avatar) avatar.src = profile.character;
     if (name) name.innerText = profile.name;
@@ -2219,6 +3921,7 @@ function updateProfileUI() {
         profileBtnImg.src = profile.character;
     }
         renderExpBar();
+        if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
 }
 
 function debugStudentProfile() {
@@ -2283,10 +3986,9 @@ async function handleLoginSubmit() {
         });
     }
     messageEl.textContent = "Loading your data...";
-    await loadStudentDataFromCloud(true);
+    await loadStudentDataFromCloud(true, true);
     TeacherCache.selectedStandards = {};
     invalidateRequiredQuestsCache();
-    await loadScheduleForStudent();
     updateProfileUI();
     startActiveQuestTimerUpdates();
 
@@ -2345,7 +4047,6 @@ async function logout() {
         completedQuests = {};
         questGrades = {};
         studentWorks = {};
-        questRewards = {};
         rubricLocked = {};
         questAccepted = {};
         questStartTimes = {};
@@ -2354,9 +4055,14 @@ async function logout() {
         expLog = {};
         localStorage.removeItem("expTotal");
         localStorage.removeItem("expLog");
+        _celebratedKeys.clear();
+        _lastRenderedLevel = null;
         _lastRenderedLevel = null;
         window.selfAssessments = {};
         window.interestState = {};
+        invalidateFeaturedQuestsCache();
+        invalidateMysteryGiftCache();
+        invalidateFeaturedWeekCache();
         invalidateAllCaches();
         console.log("Logged out successfully - all data cleared");
         setTimeout(() => {
@@ -2744,10 +4450,8 @@ async function openQuest(cityId) {
     document.getElementById("quest-character").src = quest.character || "";
     document.getElementById("quest-rubric").textContent = "Rubric";
 
-    const rewardCoins = calculateQuestRewardCoins(cityId);
-    questRewards[cityId] = rewardCoins;
-    document.getElementById("quest-reward").innerHTML = rewardCoins ? `<strong>${rewardCoins} 💰</strong>` : "—";
-    updateProfileRewards();
+        // EXP reward display is handled in a later step.
+        renderQuestRewardField(cityId);
 
     const pathContainer = document.getElementById("quest-paths");
     if (pathContainer) {
@@ -2946,15 +4650,6 @@ function loadQuestGrades() {
     return data ? JSON.parse(data) : {};
 }
 
-function saveQuestRewards() {
-    localStorage.setItem("questRewards", JSON.stringify(questRewards));
-}
-
-function loadQuestRewards() {
-    const data = localStorage.getItem("questRewards");
-    return data ? JSON.parse(data) : {};
-}
-
 function saveQuestAccepted() {
     localStorage.setItem("questAccepted", JSON.stringify(questAccepted));
     autoSaveToCloud();
@@ -2977,6 +4672,210 @@ function loadQuestStartTimes() {
 
 function saveRubricLocks() {
     localStorage.setItem("rubricLocked", JSON.stringify(rubricLocked));
+}
+
+function renderQuestRewardField(questId) {
+    const el = document.getElementById("quest-reward");
+    if (!el) return;
+
+    const quest = quests[questId];
+    if (!quest) {
+        el.innerHTML = "—";
+        return;
+    }
+
+    // ============================================================
+    // COMPLETED → show actual earned EXP + tooltip breakdown
+    // ============================================================
+    if (completedQuests[questId] === true) {
+        const breakdown = getQuestExpBreakdown(questId);
+
+        if (breakdown.total === 0) {
+            el.innerHTML = `
+                <div class="reward-exp-field">
+                    <span class="reward-exp-base">+0 EXP</span>
+                    <span class="reward-exp-max">(not yet awarded)</span>
+                </div>
+            `;
+            return;
+        }
+
+        el.innerHTML = `
+            <div class="reward-exp-field reward-exp-field-earned">
+                <span class="reward-exp-base">+${breakdown.total} EXP</span>
+                <span class="reward-exp-max">(${breakdown.entries.length} source${breakdown.entries.length === 1 ? '' : 's'})</span>
+            </div>
+        `;
+
+        const innerField = el.querySelector('.reward-exp-field');
+        bindQuestExpTooltip(innerField, breakdown);
+        return;
+    }
+
+    // ============================================================
+    // NOT COMPLETED → show potential (Step B logic, unchanged)
+    // ============================================================
+    const isMVP = quest.style === "mvp";
+    const base = isMVP ? EXP_RULES.SUMMATIVE_COMPLETE : EXP_RULES.FORMATIVE_COMPLETE;
+
+    let max = base;
+    max += isMVP ? EXP_RULES.BEFORE_TIME_SUMMATIVE : EXP_RULES.BEFORE_TIME_FORMATIVE;
+    max += EXP_RULES.EXTRA_UPLOAD_SAME_WEEK;
+    max += EXP_RULES.ALL_STANDARDS_HIGH;
+
+    const weekKey = getISOWeekKey();
+    if (!expLog[`first_upload:${weekKey}`]) {
+        max += EXP_RULES.FIRST_UPLOAD_OF_WEEK;
+    }
+
+    if (_isQuestFeaturedThisWeek(questId)) {
+        max += isMVP ? EXP_RULES.GIFT_SUMMATIVE : EXP_RULES.GIFT_FORMATIVE;
+    }
+
+    el.innerHTML = `
+        <div class="reward-exp-field">
+            <span class="reward-exp-base">+${base} EXP</span>
+            <span class="reward-exp-max">(up to +${max})</span>
+        </div>
+    `;
+}
+
+/**
+ * Returns all EXP entries tied to a single quest ID.
+ *
+ * Matches these key patterns:
+ *   quest:<questId>
+ *   before_time:<questId>
+ *   upload:<questId>:<week>
+ *   high_standards:<questId>
+ *   gift:<week>:<questId>
+ *
+ * Non-quest-specific EXP (first_upload:<week>, badge:*, achievement:*,
+ * vote:*, submit_battle:*) is intentionally excluded.
+ */
+function getQuestExpBreakdown(questId) {
+    const entries = [];
+    const quest = quests[questId];
+
+    for (const [key, amount] of Object.entries(expLog)) {
+        if (!amount) continue;
+
+        // quest:<id>
+        if (key === `quest:${questId}`) {
+            const label = quest?.style === "mvp" ? "Summative complete" : "Formative complete";
+            entries.push({ label, amount });
+            continue;
+        }
+
+        // before_time:<id>
+        if (key === `before_time:${questId}`) {
+            entries.push({ label: "Before-deadline bonus", amount });
+            continue;
+        }
+
+        // upload:<id>:<week>
+        if (key.startsWith(`upload:${questId}:`)) {
+            const week = key.slice(`upload:${questId}:`.length);
+            entries.push({ label: `Upload bonus (${week})`, amount });
+            continue;
+        }
+
+        // high_standards:<id>
+        if (key === `high_standards:${questId}`) {
+            entries.push({ label: "All standards ≥ 3.5", amount });
+            continue;
+        }
+
+        // gift:<week>:<id>
+        if (key.startsWith("gift:") && key.endsWith(`:${questId}`)) {
+            const week = key.slice(5, key.length - questId.length - 1);
+            entries.push({ label: `Gift bonus (${week})`, amount });
+            continue;
+        }
+    }
+
+    // Stable display order: completion, before-deadline, upload, high, gift
+    const order = [
+        /^Summative complete$/,
+        /^Formative complete$/,
+        /^Before-deadline bonus$/,
+        /^Upload bonus/,
+        /^All standards/,
+        /^Gift bonus/
+    ];
+    entries.sort((a, b) => {
+        const ai = order.findIndex(r => r.test(a.label));
+        const bi = order.findIndex(r => r.test(b.label));
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+
+    const total = entries.reduce((s, e) => s + e.amount, 0);
+    return { entries, total };
+}
+/**
+ * Wire the hover tooltip onto the quest reward field.
+ * Uses a single shared tooltip element for all quests.
+ */
+function bindQuestExpTooltip(anchorEl, breakdown) {
+    // Ensure the shared tooltip exists
+    let tip = document.getElementById("quest-exp-tooltip");
+    if (!tip) {
+        tip = document.createElement("div");
+        tip.id = "quest-exp-tooltip";
+        tip.className = "quest-exp-tooltip";
+        document.body.appendChild(tip);
+    }
+
+    // Build HTML once
+    const rowsHtml = breakdown.entries.map(e =>
+        `<div class="quest-exp-tooltip-row">
+            <span class="quest-exp-tooltip-label">${escapeHtml(e.label)}</span>
+            <span class="quest-exp-tooltip-amount">+${e.amount}</span>
+        </div>`
+    ).join("");
+
+    const html = `
+        <div class="quest-exp-tooltip-title">Quest EXP breakdown</div>
+        <div class="quest-exp-tooltip-rows">${rowsHtml}</div>
+        <div class="quest-exp-tooltip-total">
+            <span>Total</span>
+            <span>+${breakdown.total}</span>
+        </div>
+    `;
+
+    // Remove any previous listeners by cloning — safe because anchorEl
+    // is freshly created by renderQuestRewardField each time openQuest runs
+    const fresh = anchorEl.cloneNode(true);
+    anchorEl.parentNode.replaceChild(fresh, anchorEl);
+
+    const onEnter = () => {
+        tip.innerHTML = html;
+        tip.classList.add("show");
+    };
+    const onMove = (e) => {
+        const tr = tip.getBoundingClientRect();
+        let left = e.clientX + 14;
+        let top  = e.clientY + 14;
+        if (left + tr.width + 8 > window.innerWidth)  left = e.clientX - tr.width - 14;
+        if (top  + tr.height + 8 > window.innerHeight) top  = e.clientY - tr.height - 14;
+        tip.style.left = left + "px";
+        tip.style.top  = top + "px";
+    };
+    const onLeave = () => tip.classList.remove("show");
+
+    fresh.addEventListener("mouseenter", onEnter);
+    fresh.addEventListener("mousemove", onMove);
+    fresh.addEventListener("mouseleave", onLeave);
+}
+
+/**
+ * Synchronous check: is this quest currently featured for the student's class?
+ * Uses the already-loaded `_featuredQuestsCache` if available.
+ * Falls back to false if the cache hasn't been populated yet.
+ */
+function _isQuestFeaturedThisWeek(questId) {
+    if (!Array.isArray(_featuredQuestsCache)) return false;
+    return _featuredQuestsCache.some(item => item.questId === questId);
 }
 
 // ==============================================
@@ -3081,6 +4980,37 @@ function closeQuest() {
     if (mvpSel) {
         mvpSel.style.display = "none";
         mvpSel.innerHTML = '<option value="">Select MVP Quest</option>';
+    }
+
+    // --- Reopen the achievements overlay if we came from the Mystery Gift tab ---
+    if (window._reopenAchievementsAfterQuest) {
+        window._reopenAchievementsAfterQuest = false;
+        const tabToOpen = window._reopenAchievementsTab || 'completed';
+        window._reopenAchievementsTab = null;
+
+        const achOverlay = document.getElementById("achievements-overlay");
+        if (achOverlay) {
+            achOverlay.style.display = "flex";
+
+            // Restore the tab
+            document.querySelectorAll("#achievements-overlay .tab-content")
+                .forEach(tc => tc.style.display = "none");
+            document.querySelectorAll("#achievements-overlay .tab-button")
+                .forEach(b => b.classList.remove("active"));
+
+            const tabEl = document.getElementById("tab-" + tabToOpen);
+            const tabBtn = document.querySelector(
+                `#achievements-overlay .tab-button[data-tab="${tabToOpen}"]`
+            );
+            if (tabEl) tabEl.style.display = "block";
+            if (tabBtn) tabBtn.classList.add("active");
+
+            // Refresh the mystery gift list (in case a gift got claimed while open)
+            if (tabToOpen === "mysterygift" && typeof renderMysteryGiftList === 'function') {
+                invalidateMysteryGiftCache();
+                renderMysteryGiftList();
+            }
+        }
     }
 }
 
@@ -3335,6 +5265,7 @@ async function saveStudentDataToCloud() {
         console.log("Skipping save - currently loading from cloud");
         return false;
     }
+    await ensureFreshSession();
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
         console.log("Not logged in, skipping cloud save");
@@ -3347,14 +5278,16 @@ async function saveStudentDataToCloud() {
         quest_start_times: questStartTimes,
         exp_total: expTotal,
         exp_log: expLog,
-    updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString()
     };
     console.log("Student saving ONLY timer data to cloud:", {
         acceptedCount: Object.keys(questAccepted).length
     });
-    const { error } = await window.supabase
-        .from('student_progress')
-        .upsert(studentData, { onConflict: 'user_id' });
+    const { error } = await guardAuth(() =>
+        window.supabase
+            .from('student_progress')
+            .upsert(studentData, { onConflict: 'user_id' })
+    );
     if (error) {
         console.error("Error saving to cloud:", error);
         return false;
@@ -3363,7 +5296,7 @@ async function saveStudentDataToCloud() {
     return true;
 }
 
-async function loadStudentDataFromCloud(forceRefresh = false) {
+async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = false) {
     if (!forceRefresh && AppState.studentData.loaded && AppState.studentData.lastLoadTime) {
         const cacheAge = Date.now() - AppState.studentData.lastLoadTime;
         if (cacheAge < 5000) {
@@ -3374,8 +5307,8 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
             questStartTimes = AppState.studentData.questStartTimes || {};
             earnedBadges = AppState.studentData.earnedBadges || {};
             if (AppState.studentData.selfAssessments) {
-            window.selfAssessments = AppState.studentData.selfAssessments;
-}
+                window.selfAssessments = AppState.studentData.selfAssessments;
+            }
             if (AppState.studentData.interestState) {
                 window.interestState = AppState.studentData.interestState;
             }
@@ -3405,7 +5338,6 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 console.log("No existing progress data found for this student - clearing local data");
                 completedQuests = {};
                 questGrades = {};
-                questRewards = {};
                 earnedBadges = {};
                 questAccepted = {};
                 questStartTimes = {};
@@ -3417,7 +5349,6 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 }
                 saveQuestData();
                 saveQuestGrades();
-                saveQuestRewards();
                 saveEarnedBadges();
                 saveQuestAccepted();
                 saveQuestStartTimes();
@@ -3426,7 +5357,9 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 expLog = {};
                 localStorage.removeItem("expTotal");
                 localStorage.removeItem("expLog");
-                try { reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
+                if (runReconcile) {
+                try { await reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
+}
             } else {
                 console.error("Error loading from cloud:", error);
             }
@@ -3434,49 +5367,58 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
             const isEmpty = (!data.completed_quests || Object.keys(data.completed_quests).length === 0) &&
                             (!data.quest_grades || Object.keys(data.quest_grades).length === 0) &&
                             (!data.quest_accepted || Object.keys(data.quest_accepted).length === 0) &&
-                            (!data.quest_start_times || Object.keys(data.quest_start_times).length === 0);
+                            (!data.quest_start_times || Object.keys(data.quest_start_times).length === 0) &&
+                            (!data.is_interested || Object.keys(data.is_interested).length === 0);
 
             if (isEmpty) {
-                console.log("Progress data is effectively empty - clearing local data");
-                completedQuests = {};
-                questGrades = {};
-                questRewards = {};
-                earnedBadges = {};
-                questAccepted = {};
-                questStartTimes = {};
-                window.selfAssessments = {};
-                window.interestState = {};
-                for (const questId in questTimers) {
-                    clearInterval(questTimers[questId]);
-                    delete questTimers[questId];
-                }
-                saveQuestData();
-                saveQuestGrades();
-                saveQuestRewards();
-                saveEarnedBadges();
-                saveQuestAccepted();
-                saveQuestStartTimes();
-                localStorage.removeItem('selfAssessments');
-                expTotal = 0;
-                expLog = {};
-                localStorage.removeItem("expTotal");
-                localStorage.removeItem("expLog");
-                try { reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
-                checkAllQuestWarnings();
-                if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
-                if (typeof renderRadarChart === 'function') renderRadarChart();
-                if (typeof updateProfileRewards === 'function') updateProfileRewards();
-                console.log("Local data cleared due to empty cloud data");
-            } else {
+                            console.log("Progress data is effectively empty - clearing local data");
+                            completedQuests = {};
+                            questGrades = {};
+                            earnedBadges = {};
+                            questAccepted = {};
+                            questStartTimes = {};
+                            window.selfAssessments = {};
+
+                            // PRESERVE local interest state — it may be newer than what's in the cloud
+                            const localInterest = (window.interestState && Object.keys(window.interestState).length > 0)
+                                ? window.interestState
+                                : {};
+                            window.interestState = localInterest;
+
+                            for (const questId in questTimers) {
+                                clearInterval(questTimers[questId]);
+                                delete questTimers[questId];
+                            }
+                            saveQuestData();
+                            saveQuestGrades();
+                            saveEarnedBadges();
+                            saveQuestAccepted();
+                            saveQuestStartTimes();
+                            localStorage.removeItem('selfAssessments');
+                            expTotal = 0;
+                            expLog = {};
+                            localStorage.removeItem("expTotal");
+                            localStorage.removeItem("expLog");
+                            try { await reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
+                            checkAllQuestWarnings();
+                            if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
+                            if (typeof renderRadarChart === 'function') renderRadarChart();
+
+                            // If we still have local interest, push it back up so it persists
+                            if (Object.keys(localInterest).length > 0) {
+                                try { await saveInterestToCloud(); } catch (e) { console.warn("Re-save interest failed:", e); }
+                            }
+
+                            console.log("Local data cleared due to empty cloud data");
+                        }
+            else {
                 console.log("Progress data loaded successfully!");
                 console.log("  - completed_quests:", data.completed_quests);
                 console.log("  - quest_grades:", data.quest_grades);
-                console.log("  - quest_rewards:", data.quest_rewards);
                 console.log("  - earned_badges:", data.earned_badges);
 
                 if (data.completed_quests) completedQuests = data.completed_quests;
                 if (data.quest_grades) questGrades = data.quest_grades;
-                if (data.quest_rewards) questRewards = data.quest_rewards;
                 // --- EXP fields ---
                 if (typeof data.exp_total === "number") {
                     expTotal = data.exp_total;
@@ -3527,7 +5469,6 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                 saveQuestStartTimes();
                 saveQuestData();
                 if (typeof saveQuestGrades === 'function') saveQuestGrades();
-                if (typeof saveQuestRewards === 'function') saveQuestRewards();
                 if (typeof saveQuestAccepted === 'function') saveQuestAccepted();
                 saveEarnedBadges();
 
@@ -3553,8 +5494,6 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
 
                 if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
                 if (typeof renderRadarChart === 'function') renderRadarChart();
-                if (typeof updateProfileRewards === 'function') updateProfileRewards();
-                if (typeof recalculateAllQuestRewards === 'function') recalculateAllQuestRewards();
 
                 if (currentQuestId && document.getElementById("rubric-overlay").style.display === "flex") {
                     console.log("Refreshing open rubric for quest:", currentQuestId);
@@ -3565,8 +5504,11 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
                     if (typeof renderBadges === 'function') renderBadges();
                 }
 
-                console.log("All displays updated with cloud data");
-                try { reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
+                                console.log("All displays updated with cloud data");
+                // NOTE: reconcileExp() is intentionally NOT called here.
+                // It runs after `isLoadingFromCloud` flips to false, so its
+                // cloud writes (saveBadgesToCloud / saveExpToCloud) actually fire.
+            
             }
         }
 
@@ -3606,6 +5548,14 @@ async function loadStudentDataFromCloud(forceRefresh = false) {
         isLoadingFromCloud = false;
         console.log("Finished loading from cloud");
     }
+        // Run the reconciler AFTER isLoadingFromCloud is false,
+    // otherwise every cloud save it triggers is silently skipped.
+    try {
+        await reconcileExp();
+    } catch (e) {
+        console.warn("[EXP] reconcile failed:", e);
+    }
+
     return true;
 }
 
@@ -3976,45 +5926,38 @@ function openAchievementsOverlay() {
     if (questOverlay && questOverlay.style.display === "block") {
         closeQuest();
     }
-    document.getElementById("achievements-overlay").style.display = "flex";
-    renderCompletedQuests();
+
+    const overlay = document.getElementById("achievements-overlay");
+    overlay.style.display = "flex";
+
+    // Wire close handlers the first time the overlay is opened.
+    // Uses a flag on the overlay element itself, so this is idempotent.
+    if (!overlay.dataset.closeWired) {
+        overlay.dataset.closeWired = "1";
+
+        // Backdrop: click on the overlay element itself (not a child)
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) {
+                closeAchievementsOverlay();
+            }
+        });
+
+        // ✕: document-level delegation so it survives any inner rebuild
+        document.addEventListener("click", (e) => {
+            const ov = document.getElementById("achievements-overlay");
+            if (!ov || ov.style.display !== "flex") return;
+            if (e.target.closest("#close-achievements")) {
+                e.preventDefault();
+                closeAchievementsOverlay();
+            }
+        }, true);
+    }
+
     renderAchievementsList();
 }
 
 function closeAchievementsOverlay() {
     document.getElementById("achievements-overlay").style.display = "none";
-}
-
-function renderCompletedQuests() {
-    const grid = document.getElementById("completed-quests-grid");
-    if (!grid) return;
-    grid.innerHTML = "";
-    const paths = {};
-    for (const [id, quest] of Object.entries(quests)) {
-        if (!quest || !completedQuests[id]) continue;
-        const questPaths = Array.isArray(quest.path) ? quest.path : [quest.path];
-        questPaths.forEach(p => {
-            if (!paths[p]) paths[p] = [];
-            paths[p].push({ id, title: quest.title });
-        });
-    }
-    for (const [path, list] of Object.entries(paths)) {
-        if (list.length === 0) continue;
-        const col = document.createElement("div");
-        col.innerHTML = `<h3>${path}</h3>`;
-        list.forEach(q => {
-            const link = document.createElement("a");
-            link.href = "#";
-            link.innerText = q.title;
-            link.addEventListener("click", () => {
-                closeAchievementsOverlay();
-                openQuest(q.id);
-            });
-            col.appendChild(link);
-            col.appendChild(document.createElement("br"));
-        });
-        grid.appendChild(col);
-    }
 }
 
 function renderAchievementsList() {
@@ -4317,12 +6260,6 @@ function initializeAchievementsSystem() {
         const newBtn = achievementsBtn.cloneNode(true);
         achievementsBtn.parentNode.replaceChild(newBtn, achievementsBtn);
         newBtn.addEventListener("click", openAchievementsOverlay);
-    }
-    const closeBtn = document.getElementById("close-achievements");
-    if (closeBtn) {
-        const newCloseBtn = closeBtn.cloneNode(true);
-        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-        newCloseBtn.addEventListener("click", closeAchievementsOverlay);
     }
 }
 
@@ -4879,88 +6816,328 @@ function initiateSelfAssessment(questId) {
 }
 
 // ==============================================
-// SECTION 34: REWARDS OVERLAY FUNCTIONS
+// SECTION 34: REWARD OVERLAY
 // ==============================================
-
-function openRewardsOverlay() {
-    const overlay = document.getElementById("rewards-overlay");
-    if (!overlay) return;
-    const { totals } = calculateRewardsPerStandard();
-    const totalAll = Object.values(totals).reduce((sum, val) => sum + val, 0);
-    const totalSummary = document.getElementById("rewards-total-summary");
-    if (totalSummary) {
-        totalSummary.innerHTML = `Total Rewards: <strong>${totalAll} 💰</strong>`;
-    }
-    renderRewardsTableSimple(totals);
-    overlay.style.display = "flex";
-}
 
 function closeRewardsOverlay() {
     const overlay = document.getElementById("rewards-overlay");
     if (overlay) overlay.style.display = "none";
+
+    // Hide any lingering tooltips
+    document.querySelectorAll(".exp-breakdown-tooltip").forEach(el => el.remove());
+
+    // Reopen the profile overlay if we came from there
+    if (window._reopenProfileAfterRewards) {
+        window._reopenProfileAfterRewards = false;
+        const profileOverlay = document.getElementById("profile-overlay");
+        if (profileOverlay) profileOverlay.style.display = "flex";
+    }
 }
 
-function renderRewardsTableSimple(totals) {
-    const tableBody = document.getElementById("rewards-table-body");
-    if (!tableBody) return;
-    tableBody.innerHTML = "";
-    const sortedStandards = Object.keys(STANDARD_NAMES).sort();
-    sortedStandards.forEach(standardCode => {
-        const row = document.createElement("tr");
-        const codeCell = document.createElement("td");
-        codeCell.className = "standard-code";
-        codeCell.textContent = standardCode;
-        const nameCell = document.createElement("td");
-        nameCell.className = "standard-name";
-        nameCell.textContent = STANDARD_SHORT_NAMES[standardCode] || standardCode;
-        const earnedCell = document.createElement("td");
-        earnedCell.className = "reward-amount";
-        const earned = totals[standardCode] || 0;
-        earnedCell.innerHTML = `${earned} 💰`;
-        row.appendChild(codeCell);
-        row.appendChild(nameCell);
-        row.appendChild(earnedCell);
-        tableBody.appendChild(row);
+/**
+ * Render the full EXP breakdown into the given container.
+ */
+function renderExpBreakdown(container) {
+    const groups = buildExpBreakdownGroups();
+    const total = expTotal;
+    const info = getLevelInfo(total);
+
+    // Header
+    const header = `
+        <div class="exp-breakdown-header">
+            <div class="exp-breakdown-total">
+                <span class="exp-breakdown-total-label">Total</span>
+                <span class="exp-breakdown-total-value">${total} EXP</span>
+            </div>
+            <div class="exp-breakdown-level">
+                Level ${info.level} · ${info.current} / ${info.needed} to next
+            </div>
+        </div>
+    `;
+
+    // Nothing earned yet?
+    const hasAny = groups.some(g => g.entries.length > 0);
+    if (!hasAny) {
+        container.innerHTML = header + `
+            <div class="exp-breakdown-empty">
+                You haven't earned any EXP yet.<br>
+                Complete quests and earn badges to get started!
+            </div>
+        `;
+        return;
+    }
+
+    // Groups
+    let groupsHtml = "";
+    for (const g of groups) {
+        if (g.entries.length === 0) continue;   // hide empty groups here
+
+        const groupTotal = g.entries.reduce((s, e) => s + e.amount, 0);
+        const rows = g.entries.map(e => `
+            <div class="exp-breakdown-row">
+                <span class="exp-breakdown-row-label" title="${escapeHtml(e.rawKey)}">${escapeHtml(e.label)}</span>
+                <span class="exp-breakdown-row-amount">+${e.amount}</span>
+            </div>
+        `).join("");
+
+        groupsHtml += `
+            <div class="exp-breakdown-group" data-group="${escapeHtml(g.key)}">
+                <div class="exp-breakdown-group-header" role="button" tabindex="0">
+                    <span class="exp-breakdown-group-arrow">▶</span>
+                    <span class="exp-breakdown-group-label">${escapeHtml(g.label)}</span>
+                    <span class="exp-breakdown-group-count">(${g.entries.length})</span>
+                    <span class="exp-breakdown-group-total">+${groupTotal}</span>
+                </div>
+                <div class="exp-breakdown-group-body">
+                    ${rows}
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = header + `<div class="exp-breakdown-groups">${groupsHtml}</div>`;
+
+    // Wire accordion toggles
+    container.querySelectorAll(".exp-breakdown-group-header").forEach(h => {
+        h.addEventListener("click", () => {
+            const group = h.closest(".exp-breakdown-group");
+            if (group) toggleExpGroup(group);
+        });
+        h.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                const group = h.closest(".exp-breakdown-group");
+                if (group) toggleExpGroup(group);
+            }
+        });
     });
-    const totalRow = document.createElement("tr");
-    totalRow.style.backgroundColor = "rgba(0,30,180,0.5)";
-    totalRow.style.fontWeight = "bold";
-    const totalLabelCell = document.createElement("td");
-    totalLabelCell.colSpan = 2;
-    totalLabelCell.textContent = "TOTAL";
-    totalLabelCell.style.textAlign = "right";
-    const totalEarned = document.createElement("td");
-    totalEarned.className = "reward-amount";
-    totalEarned.innerHTML = `${Object.values(totals).reduce((s, v) => s + v, 0)} 💰`;
-    totalRow.appendChild(totalLabelCell);
-    totalRow.appendChild(totalEarned);
-    tableBody.appendChild(totalRow);
+}
+
+function toggleExpGroup(groupEl) {
+    const isOpen = groupEl.classList.toggle("expanded");
+    const arrow = groupEl.querySelector(".exp-breakdown-group-arrow");
+    if (arrow) arrow.textContent = isOpen ? "▼" : "▶";
+}
+
+/**
+ * Group expLog into display groups with human-readable labels.
+ * Every entry:
+ *   { rawKey, label, amount }
+ */
+function buildExpBreakdownGroups() {
+    const groups = [
+        { key: "quest",       label: "Quest completion",         entries: [] },
+        { key: "timing",      label: "Upload & timing bonuses",  entries: [] },
+        { key: "achievement", label: "Achievement bonuses",      entries: [] },
+        { key: "badge",       label: "Badge bonuses",            entries: [] },
+        { key: "gift",        label: "Gift bonuses",             entries: [] },
+        { key: "battle",      label: "Art battle & community",   entries: [] },
+        { key: "other",       label: "Other",                    entries: [] }
+    ];
+
+    const byKey = {};
+    for (const g of groups) byKey[g.key] = g;
+
+    for (const [key, amount] of Object.entries(expLog)) {
+        if (!amount) continue;
+
+        const entry = { rawKey: key, label: _labelForExpKey(key), amount };
+        const group = _groupForExpKey(key);
+        byKey[group].entries.push(entry);
+    }
+
+    // Sort entries within each group for stable display
+    for (const g of groups) {
+        g.entries.sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label));
+    }
+
+    return groups;
+}
+
+function _groupForExpKey(key) {
+    if (key.startsWith("quest:"))        return "quest";
+    if (key.startsWith("before_time:"))  return "timing";
+    if (key.startsWith("upload:"))       return "timing";
+    if (key.startsWith("first_upload:")) return "timing";
+    if (key.startsWith("high_standards:")) return "timing";
+    if (key.startsWith("achievement:"))  return "achievement";
+    if (key.startsWith("badge:"))        return "badge";
+    if (key.startsWith("gift:"))         return "gift";
+    if (key.startsWith("vote:"))         return "battle";
+    if (key.startsWith("submit_battle:")) return "battle";
+    return "other";
+}
+
+function _labelForExpKey(key) {
+    // ---- Quest completion ----
+    if (key.startsWith("quest:")) {
+        const qid = key.slice(6);
+        const q = quests[qid];
+        return q ? `${qid} · ${q.title}` : `${qid} (deleted quest)`;
+    }
+
+    // ---- Timing / upload ----
+    if (key.startsWith("before_time:")) {
+        const qid = key.slice("before_time:".length);
+        const q = quests[qid];
+        const title = q ? q.title : "(deleted quest)";
+        return `Before-deadline · ${qid} · ${title}`;
+    }
+    if (key.startsWith("upload:")) {
+        const rest = key.slice("upload:".length);      // "quest11:2026-W41"
+        const idx = rest.lastIndexOf(":");
+        const qid = idx >= 0 ? rest.slice(0, idx) : rest;
+        const week = idx >= 0 ? rest.slice(idx + 1) : "";
+        return `Upload bonus · ${qid} · week ${week}`;
+    }
+    if (key.startsWith("first_upload:")) {
+        const week = key.slice("first_upload:".length);
+        return `First upload · week ${week}`;
+    }
+    if (key.startsWith("high_standards:")) {
+        const qid = key.slice("high_standards:".length);
+        const q = quests[qid];
+        const title = q ? q.title : "(deleted quest)";
+        return `All standards ≥ 3.5 · ${qid} · ${title}`;
+    }
+
+    // ---- Achievements ----
+    if (key.startsWith("achievement:")) {
+        return key.slice("achievement:".length);      // already human-readable
+    }
+
+    // ---- Badges ----
+    if (key.startsWith("badge:")) {
+        const rest = key.slice("badge:".length);
+        // Format: badgeId[:tN]
+        const tIndex = rest.lastIndexOf(":t");
+        const badgeId = tIndex >= 0 ? rest.slice(0, tIndex) : rest;
+        const tierSuffix = tIndex >= 0 ? rest.slice(tIndex) : "";
+        if (Array.isArray(badgesData)) {
+            const badge = badgesData.find(b => b.id === badgeId);
+            if (badge) {
+                const tierLabel = tierSuffix
+                    ? ` (${tierSuffix.replace(":", "tier ")})`
+                    : "";
+                return `${badge.name}${tierLabel}`;
+            }
+        }
+        return key;
+    }
+
+    // ---- Gifts ----
+    if (key.startsWith("gift:")) {
+        // gift:<week>:<questId>
+        const rest = key.slice(5);
+        const idx = rest.indexOf(":");
+        if (idx < 0) return key;
+        const week = rest.slice(0, idx);
+        const qid = rest.slice(idx + 1);
+        const q = quests[qid];
+        const title = q ? q.title : "(deleted quest)";
+        return `Gift · week ${week} · ${qid} · ${title}`;
+    }
+
+    // ---- Art battle ----
+    if (key.startsWith("vote:")) {
+        return `Art battle vote · ${key.slice(5)}`;
+    }
+    if (key.startsWith("submit_battle:")) {
+        return `Art battle submission · ${key.slice("submit_battle:".length)}`;
+    }
+
+    // ---- Fallback ----
+    return key;
+}
+
+async function openRewardsOverlay() {
+    const overlay = document.getElementById("rewards-overlay");
+    if (!overlay) {
+        console.warn("[rewards] #rewards-overlay not in DOM");
+        return;
+    }
+
+    // Hide the profile overlay while the breakdown is open
+    const profileOverlay = document.getElementById("profile-overlay");
+    if (profileOverlay && profileOverlay.style.display === "flex") {
+        profileOverlay.style.display = "none";
+        window._reopenProfileAfterRewards = true;
+    } else {
+        window._reopenProfileAfterRewards = false;
+    }
+
+    // Ensure the overlay's inner markup exists.
+    // This is a safety net in case the served HTML is stale.
+    if (!document.getElementById("rewards-content")) {
+        overlay.innerHTML = `
+            <div class="exp-breakdown-box">
+                <span id="close-rewards" class="close-btn">✖</span>
+                <h2 class="exp-breakdown-title">EXP Breakdown</h2>
+                <div id="rewards-content" class="exp-breakdown-content"></div>
+            </div>
+        `;
+    }
+
+    const contentEl = document.getElementById("rewards-content");
+    if (!contentEl) {
+        console.warn("[rewards] Could not create #rewards-content");
+        return;
+    }
+
+    // Show the overlay, render content
+    overlay.style.display = "flex";
+    contentEl.innerHTML = `<div class="exp-breakdown-loading">Loading…</div>`;
+
+    renderExpBreakdown(contentEl);
 }
 
 function initializeRewardsOverlay() {
-    const rewardLink = document.getElementById("profile-reward-link");
-    const closeBtn = document.getElementById("close-rewards");
     const overlay = document.getElementById("rewards-overlay");
-    if (rewardLink) {
-        const newRewardLink = rewardLink.cloneNode(true);
-        rewardLink.parentNode.replaceChild(newRewardLink, rewardLink);
-        newRewardLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            updateProfileRewards();
-            openRewardsOverlay();
-        });
-    }
-    if (closeBtn) {
-        const newCloseBtn = closeBtn.cloneNode(true);
-        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-        newCloseBtn.addEventListener("click", closeRewardsOverlay);
-    }
+
     if (overlay) {
+        // Delegate: any click inside the overlay is inspected.
+        // - Click lands on the backdrop (overlay itself) → close.
+        // - Click lands on #close-rewards (or any child with that id
+        //   or a .close-btn class) → close.
+        // This survives the button being re-created by openRewardsOverlay.
         overlay.addEventListener("click", (e) => {
-            if (e.target === overlay) closeRewardsOverlay();
+            if (e.target === overlay) {
+                closeRewardsOverlay();
+                return;
+            }
+            if (e.target.closest("#close-rewards")) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeRewardsOverlay();
+                return;
+            }
         });
     }
+
+    // Wire the profile EXP block as the opener
+    wireProfileExpOpener();
+}
+
+/**
+ * Wire clicks on the profile overlay's EXP block to open the rewards overlay.
+ * Called once at startup; also safe to call again after DOM rebuilds.
+ */
+function wireProfileExpOpener() {
+    const block = document.getElementById("profile-exp-block");
+    if (!block) return;
+
+    // Avoid double-binding by marking the element
+    if (block.dataset.expOpenerWired === "1") return;
+    block.dataset.expOpenerWired = "1";
+
+    block.style.cursor = "pointer";
+    block.title = "Click to see your full EXP breakdown";
+
+    block.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openRewardsOverlay();
+    });
 }
 
 // ==============================================
@@ -5048,91 +7225,9 @@ async function loadTeacherNameForProfile() {
 }
 
 // ==============================================
-// SECTION 36: REWARD MATH FUNCTIONS
+// SECTION 36: 
 // ==============================================
 
-function calculateQuestRewardCoins(questId) {
-    if (!completedQuests[questId]) {
-        return 0;
-    }
-    const quest = quests[questId];
-    if (!quest || !quest.rubric) {
-        return 0;
-    }
-    const column = quest.style === "mvp" ? "mvpGrade" : "grade";
-    const grades = questGrades[questId]?.[column];
-    if (!grades || Object.keys(grades).length === 0) {
-        return 0;
-    }
-    let totalCoins = 0;
-    Object.values(grades).forEach(val => {
-        if (typeof val === "number" && !isNaN(val)) {
-            totalCoins += Math.round(val * 10);
-        }
-    });
-    return totalCoins;
-}
-
-function recalculateAllQuestRewards() {
-    questRewards = {};
-    Object.keys(completedQuests).forEach(qid => {
-        if (completedQuests[qid]) {
-            const coins = calculateQuestRewardCoins(qid);
-            questRewards[qid] = coins;
-        }
-    });
-    saveQuestRewards();
-    updateProfileRewards();
-}
-
-function updateProfileRewards() {
-    let totalRewards = 0;
-    Object.entries(completedQuests).forEach(([questId, isCompleted]) => {
-        if (isCompleted) {
-            totalRewards += calculateQuestRewardCoins(questId);
-        }
-    });
-    const el = document.getElementById("profile-total-coins");
-    if (el) {
-        el.innerText = `${totalRewards} 💰`;
-    }
-    const rewardsOverlay = document.getElementById("rewards-overlay");
-    if (rewardsOverlay && rewardsOverlay.style.display === "flex") {
-        const { totals } = calculateRewardsPerStandard();
-        renderRewardsTableSimple(totals);
-        const totalSummary = document.getElementById("rewards-total-summary");
-        if (totalSummary) {
-            totalSummary.innerHTML = `Total Rewards: <strong>${totalRewards} 💰</strong>`;
-        }
-    }
-}
-
-function calculateRewardsPerStandard() {
-    const standardTotals = {};
-    Object.keys(STANDARD_NAMES).forEach(standard => {
-        standardTotals[standard] = 0;
-    });
-    Object.entries(completedQuests).forEach(([questId, isCompleted]) => {
-        if (!isCompleted) return;
-        const quest = quests[questId];
-        if (!quest || !quest.rubric) return;
-        const column = quest.style === "mvp" ? "mvpGrade" : "grade";
-        const grades = questGrades[questId]?.[column];
-        if (!grades) return;
-        const standards = quest.rubric.standards || quest.rubric.criteria || quest.rubric.assessment_objectives || [];
-        standards.forEach(std => {
-            const standardCode = std.code;
-            const grade = grades[standardCode];
-            if (typeof grade === "number" && !isNaN(grade)) {
-                const coins = Math.round(grade * 10);
-                if (standardTotals.hasOwnProperty(standardCode)) {
-                    standardTotals[standardCode] += coins;
-                }
-            }
-        });
-    });
-    return { totals: standardTotals, sources: {} };
-}
 
 // ==============================================
 // SECTION 37: PROFILE BUTTON HANDLER
@@ -5145,7 +7240,7 @@ function initializeProfileSystem() {
     if (!profileBtn || !profileOverlay || !profileClose) return;
     const newProfileBtn = profileBtn.cloneNode(true);
     profileBtn.parentNode.replaceChild(newProfileBtn, profileBtn);
-    newProfileBtn.addEventListener("click", async () => {
+        newProfileBtn.addEventListener("click", async () => {
         await loadStudentDataFromCloud();
         await loadTeacherNameForProfile();
         profileOverlay.style.display = "flex";
@@ -5153,8 +7248,9 @@ function initializeProfileSystem() {
         renderRadarChart();
         updateProfileUI();
         if (typeof showAvatarChangeUI === 'function') showAvatarChangeUI();
-        updateProfileRewards();
         if (typeof renderBadges === 'function') renderBadges();
+        if (typeof renderWeightedCategories === 'function') renderWeightedCategories();
+        if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
     });
     const newProfileClose = profileClose.cloneNode(true);
     profileClose.parentNode.replaceChild(newProfileClose, profileClose);
@@ -5941,6 +8037,15 @@ function calculateRemainingMinutes(questId) {
     if (!questStartTimes[questId]) return 0;
     const quest = quests[questId];
     if (!quest) return 0;
+
+    // Lazy-load the schedule if a timer actually needs it and we
+    // don't have it yet. This is fire-and-forget; the next tick
+    // (1s later) will use the real values. Until then, isClassDay()
+    // falls back to its current default (weekends off).
+    if (!_scheduleLoaded && cachedScheduleData.noClassDays.length === 0) {
+        ensureScheduleLoaded();
+    }
+
     const classDuration = getClassDurationSync();
     let totalMinutes;
     const customTimer = getCustomTimerForQuestSync(questId);
@@ -6254,7 +8359,34 @@ function checkAllQuestWarnings() {
 // ==============================================
 // SECTION 46: SCHEDULE DATA FOR TIMER
 // ==============================================
+// ==============================================
+// Lazy schedule loader — fire-and-forget, in-flight guarded.
+// Called from calculateRemainingMinutes() when a timer actually
+// needs class-day data and it hasn't been loaded yet.
+// ==============================================
+let _scheduleLoadPromise = null;
+let _scheduleLoaded = false;
 
+function ensureScheduleLoaded() {
+    if (_scheduleLoaded) return _scheduleLoadPromise;
+    if (_scheduleLoadPromise) return _scheduleLoadPromise;
+
+    _scheduleLoadPromise = loadScheduleForStudent()
+        .then(() => {
+            _scheduleLoaded = true;
+            // Re-evaluate any active quest warnings now that we know the real schedule
+            if (typeof checkAllQuestWarnings === "function") {
+                checkAllQuestWarnings();
+            }
+        })
+        .catch(err => {
+            console.warn("ensureScheduleLoaded failed:", err);
+            // Allow a retry on the next call
+            _scheduleLoadPromise = null;
+        });
+
+    return _scheduleLoadPromise;
+}
 async function loadScheduleForStudent() {
     const profile = loadStudentProfile();
     if (!profile || !profile.teacher_code) {
@@ -6380,6 +8512,7 @@ async function loadScheduleForStudent() {
     if (cachedScheduleData.noClassDays.length > 0) {
         console.log("No-class dates:", cachedScheduleData.noClassDays);
     }
+      _scheduleLoaded = true;
 }
 
 function isClassDay(date) {
@@ -6946,7 +9079,6 @@ function collectStudentData() {
     questAccepted: questAccepted,
     questStartTimes: questStartTimes,
     works: studentWorks,
-    questRewards: questRewards,
     earnedBadges: earnedBadges,
     selfAssessments: window.selfAssessments || {},
     standards: {},
@@ -7021,7 +9153,6 @@ function loadStudentData(data) {
         completedQuests = {};
         questGrades = {};
         studentWorks = {};
-        questRewards = {};
         rubricLocked = {};
         questAccepted = {};
         questStartTimes = {};
@@ -7030,7 +9161,6 @@ function loadStudentData(data) {
         saveQuestData();
         saveQuestGrades();
         saveStudentWorks();
-        saveQuestRewards();
         saveRubricLocks();
         saveQuestAccepted();
         saveQuestStartTimes();
@@ -7096,13 +9226,7 @@ function loadStudentData(data) {
         Object.assign(studentWorks, data.works);
         saveStudentWorks();
     }
-    if (data.questRewards) {
-        if (isSameStudent) {
-            for (const key in questRewards) delete questRewards[key];
-        }
-        Object.assign(questRewards, data.questRewards);
-        saveQuestRewards();
-    }
+
     if (data.selfAssessments) {
     window.selfAssessments = data.selfAssessments;
     localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
@@ -7156,13 +9280,10 @@ function loadStudentData(data) {
     }
     saveEarnedBadges();
     invalidateAllCaches();
-    recalculateAllQuestRewards();
     updateProfileUI();
     updateProfileStandardsTable();
     renderRadarChart();
-    renderCompletedQuests();
     renderAchievementsList();
-    updateProfileRewards();
     initializeQuestTimers();
     if (document.getElementById("profile-overlay").style.display === "flex") {
         if (typeof renderBadges === 'function') renderBadges();
@@ -7434,7 +9555,6 @@ async function getAllQuestsForStudent(forceRefresh = false) {
             requirements: custom.requirements,
             rubric: custom.rubric,
             links: custom.links,
-            reward: "",
             character: characterImage,
             style: "custom",
             prerequisites: [],
@@ -8276,16 +10396,19 @@ function checkProgressionBadge(badge) {
 
 async function saveBadgesToCloud() {
     if (isLoadingFromCloud) return;
+    await ensureFreshSession();
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) return;
     const userId = session.user.id;
-    const { error } = await window.supabase
-        .from('student_progress')
-        .update({
-            earned_badges: earnedBadges,
-            updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId);
+    const { error } = await guardAuth(() =>
+        window.supabase
+            .from('student_progress')
+            .update({
+                earned_badges: earnedBadges,
+                updated_at: new Date().toISOString()
+            })
+            .eq('user_id', userId)
+    );
     if (error) {
         console.error("Error saving badges to cloud:", error);
     } else {
@@ -8419,7 +10542,7 @@ function updateBadgesAfterQuest() {
 }
 
 // ==============================================
-// SECTION 66: REAL-TIME BADGE UPDATES
+// SECTION 65b: REAL-TIME BADGE UPDATES
 // ==============================================
 
 function setupRealtimeRefresh() {
@@ -8486,14 +10609,380 @@ function showBadgeNotification(badgeName) {
 async function manualRefreshBadges() {
     console.log("Manually refreshing badges...");
     await loadStudentDataFromCloud();
-    const profileOverlay = document.getElementById("profile-overlay");
+        const profileOverlay = document.getElementById("profile-overlay");
     if (profileOverlay && profileOverlay.style.display === "flex") {
         renderBadges();
+        if (typeof renderWeightedCategories === 'function') renderWeightedCategories();
+        if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
     }
     const localBadges = loadEarnedBadges();
     console.log("Badges in localStorage:", localBadges);
     console.log("Badges in memory:", earnedBadges);
     alert("Badges refreshed! Check console for details.");
+}
+
+// ==============================================
+// SECTION 66: WEIGHTED CATEGORIES (NCAS only — MS)
+// ==============================================
+//
+// Splits all graded standards into 5 weighted categories:
+//   Resolved Artworks            45%
+//   Art Study                    20%
+//   Independent Art Research     15%
+//   Art Community Collaboration  10%
+//   Art Material and Resources Care  10%
+//
+// Routing rules:
+//   1. VA:Cn11.1.8a  → always "Independent Art Research"
+//      (severed from the quest's other standards, regardless of category)
+//   2. All other standards → the quest's `category` field
+//   3. Missing category   → fallback: mvp → "Resolved Artworks",
+//                                     else → "Art Study"
+//
+// Math per category:
+//   rawAvg     = sum(grades) / count          (0–4 scale)
+//   percent    = (rawAvg / 4) * 100
+//   weighted   = percent * (weight / 100)
+//
+// Overall = sum of all weighted contributions. Empty category → 0.
+//
+// ==============================================
+
+const WEIGHTED_CATEGORY_CONFIG = {
+    resolvedArtworks: {
+        key: 'resolvedArtworks',
+        label: 'Resol. Art.',
+        fullLabel: 'Resolved Artworks',
+        weight: 45,
+        dbCategory: 'Resolved Artworks'
+    },
+    artStudy: {
+        key: 'artStudy',
+        label: 'Art Std.',
+        fullLabel: 'Art Study',
+        weight: 20,
+        dbCategory: 'Art Study'
+    },
+    independentResearch: {
+        key: 'independentResearch',
+        label: 'Ind. Art Res.',
+        fullLabel: 'Independent Art Research',
+        weight: 15,
+        dbCategory: null   // derived from VA:Cn11.1.8a, not from `category`
+    },
+    collaboration: {
+        key: 'collaboration',
+        label: 'Art Com. Colab.',
+        fullLabel: 'Art Community Collaboration',
+        weight: 10,
+        dbCategory: 'Art Community Collaboration'
+    },
+    materialCare: {
+        key: 'materialCare',
+        label: 'Mat. & Reso.',
+        fullLabel: 'Art Material and Resources Care',
+        weight: 10,
+        dbCategory: 'Art Material and Resources Care'
+    }
+};
+
+// MS: the severed standard is Cultural Context
+const INDEPENDENT_RESEARCH_STANDARD = 'VA:Cn11.1.8a';
+
+// ----------------------------------------------------------------
+// Resolve which category a quest's *non-research* standards belong to.
+// Handles the compound form  "Art Study + Independent Art Research"
+// by taking the first segment. Falls back to MVP / formative defaults.
+// ----------------------------------------------------------------
+function resolveQuestBaseCategory(quest) {
+    if (!quest) return 'Art Study';
+
+    let raw = quest.category;
+
+    // Support accidental array form for safety
+    if (Array.isArray(raw)) raw = raw[0];
+
+    if (typeof raw === 'string' && raw.trim()) {
+        // "Art Study + Independent Art Research" → "Art Study"
+        const base = raw.split('+')[0].trim();
+        const known = [
+            'Resolved Artworks',
+            'Art Study',
+            'Art Community Collaboration',
+            'Art Material and Resources Care'
+        ];
+        if (known.includes(base)) return base;
+    }
+
+    // Fallback: MVP → Resolved Artworks, else Art Study
+    return quest.style === 'mvp' ? 'Resolved Artworks' : 'Art Study';
+}
+
+// ----------------------------------------------------------------
+// Iterate every completed quest, every graded standard, and bucket
+// each grade into the correct category.
+//
+// Only considers quests where completedQuests[id] === true.
+// Skips null/undefined/"" grades (a 0 is a valid grade and is kept).
+//
+// Returns:
+//   {
+//     resolvedArtworks:     { rawAvg, percent, weighted, count, sum },
+//     artStudy:             { ... },
+//     independentResearch:  { ... },
+//     collaboration:        { ... },
+//     materialCare:         { ... },
+//     overallPercent:       number
+//   }
+// ----------------------------------------------------------------
+function calculateWeightedCategories() {
+    // Buckets now accumulate QUEST AVERAGES, not raw standard grades.
+    //   sum   = sum of the per-quest averages that touched this bucket
+    //   count = number of DISTINCT quests that touched this bucket
+    // This is the "quest-level averaging" model: each quest counts
+    // exactly once per category it contributes to, regardless of how
+    // many standards it assessed in that category.
+    const buckets = {
+        resolvedArtworks:    { sum: 0, count: 0 },
+        artStudy:            { sum: 0, count: 0 },
+        independentResearch: { sum: 0, count: 0 },
+        collaboration:       { sum: 0, count: 0 },
+        materialCare:        { sum: 0, count: 0 }
+    };
+
+    // Map DB category string → bucket key
+    const categoryToBucket = {
+        'Resolved Artworks':                'resolvedArtworks',
+        'Art Study':                        'artStudy',
+        'Art Community Collaboration':      'collaboration',
+        'Art Material and Resources Care':  'materialCare'
+    };
+
+    for (const [questId, isCompleted] of Object.entries(completedQuests || {})) {
+        if (isCompleted !== true) continue;
+
+        const quest = quests[questId];
+        if (!quest) continue;
+
+        const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
+        const grades = questGrades?.[questId]?.[column];
+        if (!grades || typeof grades !== 'object') continue;
+
+        const baseCategory = resolveQuestBaseCategory(quest);
+        const baseBucket = categoryToBucket[baseCategory] || 'artStudy';
+
+        // --- First pass: group this quest's grades by target bucket ---
+        // A quest may touch multiple buckets if it contains CN.10.1.IA
+        // alongside its base-category standards.
+        const gradesByBucket = {};
+
+        for (const [standardCode, rawGrade] of Object.entries(grades)) {
+            if (standardCode === 'teacher_comment') continue;
+            if (standardCode === 'completed_at') continue;
+
+            // Parse numeric grade (framework NCAS only uses numbers)
+            const grade = parseFloat(rawGrade);
+            if (isNaN(grade)) continue;
+
+            // Route: research standard is always severed
+            const bucketKey = (standardCode === INDEPENDENT_RESEARCH_STANDARD)
+                ? 'independentResearch'
+                : baseBucket;
+
+            if (!gradesByBucket[bucketKey]) gradesByBucket[bucketKey] = [];
+            gradesByBucket[bucketKey].push(grade);
+        }
+
+        // --- Second pass: each touched bucket gets ONE contribution —
+        // the average of this quest's standards that landed in it. ---
+        for (const [bucketKey, arr] of Object.entries(gradesByBucket)) {
+            if (arr.length === 0) continue;
+            const questAvg = arr.reduce((s, v) => s + v, 0) / arr.length;
+            buckets[bucketKey].sum   += questAvg;
+            buckets[bucketKey].count += 1;   // count = number of quests, NOT standards
+        }
+    }
+
+    // Build the result object with derived metrics
+    const result = {};
+    let overallPercent = 0;
+
+    for (const [key, cfg] of Object.entries(WEIGHTED_CATEGORY_CONFIG)) {
+        const { sum, count } = buckets[key];
+        const rawAvg = count > 0 ? (sum / count) : 0;
+        const percent = count > 0 ? (rawAvg / 4) * 100 : 0;
+        const weighted = percent * (cfg.weight / 100);
+
+        result[key] = {
+            rawAvg:    rawAvg,
+            percent:   percent,
+            weighted:  weighted,
+            count:     count,   // number of quests in this category
+            sum:       sum      // sum of per-quest averages
+        };
+
+        overallPercent += weighted;
+    }
+
+    result.overallPercent = overallPercent;
+    return result;
+}
+
+// ----------------------------------------------------------------
+// Tooltip helper for the category headers (weight explanation).
+// ----------------------------------------------------------------
+function _ensureWeightedCatTooltip() {
+    let tip = document.getElementById('weighted-cat-tooltip');
+    if (tip) return tip;
+
+    tip = document.createElement('div');
+    tip.id = 'weighted-cat-tooltip';
+    tip.className = 'weighted-cat-tooltip';
+    document.body.appendChild(tip);
+    return tip;
+}
+
+function _bindWeightedCatTooltips(rootEl) {
+    const tip = _ensureWeightedCatTooltip();
+    const headers = rootEl.querySelectorAll('[data-weight-tip]');
+
+    headers.forEach(h => {
+        h.addEventListener('mouseenter', () => {
+            tip.innerHTML = h.dataset.weightTip;
+            tip.classList.add('show');
+        });
+        h.addEventListener('mousemove', (e) => {
+            const rect = tip.getBoundingClientRect();
+            let left = e.clientX + 14;
+            let top  = e.clientY + 14;
+
+            if (left + rect.width + 8 > window.innerWidth) {
+                left = e.clientX - rect.width - 14;
+            }
+            if (top + rect.height + 8 > window.innerHeight) {
+                top = e.clientY - rect.height - 14;
+            }
+            tip.style.left = left + 'px';
+            tip.style.top  = top + 'px';
+        });
+        h.addEventListener('mouseleave', () => {
+            tip.classList.remove('show');
+        });
+    });
+}
+
+// ----------------------------------------------------------------
+// Render the Weighted Categories row into the profile grid.
+// Collapsible: header bar always visible, table behind a toggle.
+// Called from the profile-open handler and after data refreshes.
+// ----------------------------------------------------------------
+function renderWeightedCategories() {
+    const grid = document.querySelector('#profile-overlay .profile-grid');
+    if (!grid) return;
+
+    // --- Framework guard: NCAS only ---
+    const framework = TeacherCache.framework || 'ncas';
+    const existing = document.getElementById('weighted-categories-row');
+
+    if (framework !== 'ncas') {
+        if (existing) existing.remove();
+        return;
+    }
+
+    const data = calculateWeightedCategories();
+
+    const orderedKeys = [
+        'resolvedArtworks',
+        'artStudy',
+        'independentResearch',
+        'collaboration',
+        'materialCare'
+    ];
+
+    // --- Header bar (always visible) ---
+    const headerBar = `
+        <div class="weighted-categories-header" id="weighted-categories-header">
+            <div class="weighted-categories-header-left">
+                <span class="weighted-categories-title">Weighted Grades</span>
+                <span class="weighted-categories-summary">
+                    <span class="summary-label">Overall</span>${data.overallPercent.toFixed(2)}%
+                </span>
+            </div>
+            <span class="weighted-categories-toggle">▼</span>
+        </div>
+    `;
+
+    // --- Body (collapsible) ---
+    let headerCells = `<th class="overall-col" data-weight-tip="<strong>Overall Weighted Grade</strong><br>Sum of all weighted category contributions.">Overall W. Grade</th>`;
+    let percentCells = `<td class="percent overall">${data.overallPercent.toFixed(2)}%</td>`;
+    let rawCells = `<td class="raw-avg overall">—</td>`;
+
+    for (const key of orderedKeys) {
+        const cfg = WEIGHTED_CATEGORY_CONFIG[key];
+        const cat = data[key];
+        const tip = `<strong>${cfg.fullLabel}</strong><br>Weight: <strong>${cfg.weight}%</strong> of the total grade.`;
+
+        headerCells += `<th data-weight-tip="${tip}">${cfg.label}</th>`;
+
+        if (cat.count === 0) {
+            percentCells += `<td class="percent empty">0.00%</td>`;
+            rawCells     += `<td class="raw-avg empty">—</td>`;
+        } else {
+            percentCells += `<td class="percent">${cat.percent.toFixed(2)}%</td>`;
+            rawCells     += `<td class="raw-avg">${cat.rawAvg.toFixed(2)}</td>`;
+        }
+    }
+
+    const bodyHtml = `
+        <div class="weighted-categories-body">
+            <table class="weighted-categories-table">
+                <thead>
+                    <tr>${headerCells}</tr>
+                </thead>
+                <tbody>
+                    <tr>${percentCells}</tr>
+                    <tr>${rawCells}</tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    const fullHtml = headerBar + bodyHtml;
+
+    if (existing) {
+        // Preserve expanded state across re-renders
+        const wasExpanded = existing.classList.contains('expanded');
+        existing.innerHTML = fullHtml;
+        if (wasExpanded) existing.classList.add('expanded');
+    } else {
+        const row = document.createElement('div');
+        row.id = 'weighted-categories-row';
+        row.className = 'weighted-categories-row';
+        row.innerHTML = fullHtml;
+
+        const badgeRow = grid.querySelector('.badge-row');
+        if (badgeRow) {
+            grid.insertBefore(row, badgeRow);
+        } else {
+            grid.appendChild(row);
+        }
+    }
+
+    const rowEl = document.getElementById('weighted-categories-row');
+    if (!rowEl) return;
+
+    // --- Wire the toggle (clone header to strip stale listeners) ---
+    const headerEl = rowEl.querySelector('#weighted-categories-header');
+    if (headerEl && !headerEl.dataset.wired) {
+        headerEl.dataset.wired = '1';
+        headerEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            rowEl.classList.toggle('expanded');
+        });
+    }
+
+    // --- Wire tooltips on the header cells ---
+    _bindWeightedCatTooltips(rowEl);
 }
 
 // ==============================================
@@ -8520,13 +11009,16 @@ function initializeDeductionSystem() {
 async function refreshStudentData() {
     console.log("Refreshing student data from cloud...");
     invalidateStudentDataCache();
-    await loadStudentDataFromCloud(true);
+    await loadStudentDataFromCloud(true, true);
     await loadScheduleForStudent();
-    try { syncExpFromGradedWork(); } catch (e) { console.warn("[EXP] sync failed:", e); }
+    try { await syncExpFromGradedWork(); } catch (e) { console.warn("[EXP] sync failed:", e); }
     updateProfileUI();
+    invalidateTreeCompletedCache();
+     // --- Featured quests: refresh panel with fresh completion state ---
+    invalidateFeaturedQuestsCache();
+    try { await renderFeaturedQuestsPanel(); } catch (e) { console.warn("[featured] render failed:", e); }
     updateProfileStandardsTable();
     renderRadarChart();
-    updateProfileRewards();
     checkAllQuestWarnings();
     if (currentQuestId && document.getElementById("rubric-overlay").style.display === "flex") {
         openRubricPopup(currentQuestId);
@@ -9542,6 +12034,21 @@ document.addEventListener("DOMContentLoaded", () => {
         initializeWorkOverlay();
         initializeGallery();
         updateProfileUI();
+        renderFeaturedQuestsPanel();
+                // --- Silent cloud refresh so the panel and completion state are fresh ---
+        // Skips if not logged in. Debounced internally by the 5s cache window.
+        window.supabase.auth.getSession().then(({ data: { session } }) => {
+            if (!session) return;
+            loadStudentDataFromCloud(true)
+                .then(() => {
+                    // Once fresh data is in, re-render things that depend on it
+                    invalidateFeaturedQuestsCache();
+                    renderFeaturedQuestsPanel();
+                    updateProfileUI();
+                    if (typeof updateHotspotVisibility === "function") updateHotspotVisibility();
+                })
+                .catch(err => console.warn("[featured] background load failed:", err));
+        });
         initializeRewardsOverlay();
         initializeActiveQuest();
         startBackgroundTimerCheck();
@@ -9690,6 +12197,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const teacherWorkModal = document.getElementById('teacher-work-modal');
             const calendarModal = document.getElementById('calendar-modal');
             const questTreeOverlay = document.getElementById("quest-tree-overlay");
+            const rewardsOverlay = document.getElementById("rewards-overlay");
 
             if (questTreeOverlay && questTreeOverlay.style.display === "block") {
                 closeQuestTree();
@@ -9726,8 +12234,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 return;
             }
-            if (isVisible(questOverlay)) {
+                if (isVisible(questOverlay)) {
                 closeQuest();
+                return;
+            }
+            if (rewardsOverlay && rewardsOverlay.style.display === "flex") {
+                closeRewardsOverlay();
                 return;
             }
             if (profileOverlay && profileOverlay.style.display === "flex") {
@@ -9791,6 +12303,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else if (tab === "pathfinder") {
                     if (!pathfinderQuestions && typeof initializePathfinder === 'function') {
                         initializePathfinder();
+                    }
+                } else if (tab === "mysterygift") {
+                    if (typeof renderMysteryGiftList === 'function') {
+                        renderMysteryGiftList();
                     }
                 }
             });
