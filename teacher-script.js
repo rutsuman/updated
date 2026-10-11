@@ -25,6 +25,7 @@
 //  20. MODALS & ESCAPE HANDLING
 //  21. TABS SETUP
 //  22. DOMContentLoaded BOOTSTRAP
+//  22. Mystery Quest
 // ==========================================================
 
 
@@ -97,6 +98,13 @@ let actualClassCode = '';
 let _loadingStudentId = null;
 // Debounce for tab switches
 let _tabSwitchTimeout = null;
+
+// --- Quest accordion render guard + per-render cache ---
+let _questAccordionRendering = false;
+let _questAccordionPending = false;
+// Cache the two DB-backed helpers so a single render only fetches them once
+let _perRenderRequiredMap = null;   // Map or null
+let _perRenderMysteryMap = null;    // Map or null
 
 
 // ==========================================================
@@ -363,6 +371,36 @@ function mapMSStandardToDomain(standardCode) {
         'VA:Cn11.1.8a': 'connecting'
     };
     return mapping[standardCode];
+}
+
+async function compressImage(file, maxWidth = 400, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) { resolve(file); return; }
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+                if (!blob) { reject(new Error('Image compression failed')); return; }
+                const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
+                    type: 'image/jpeg',
+                    lastModified: Date.now()
+                });
+                resolve(compressedFile);
+            }, 'image/jpeg', quality);
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = URL.createObjectURL(file);
+    });
 }
 
 
@@ -908,9 +946,41 @@ async function notifyQuestsChanged() {
 // ==========================================================
 
 async function renderAllQuestAccordions() {
-    await renderQuestsAccordion();
-    await renderActiveQuestsAccordion();
-    await renderCompletedQuestsAccordion();
+    // If a render is already running, queue a single follow-up and bail out.
+    if (_questAccordionRendering) {
+        _questAccordionPending = true;
+        return;
+    }
+    _questAccordionRendering = true;
+
+    try {
+        // Prime the per-render caches so the three sub-renders share
+        // ONE required-map fetch and ONE mystery-map fetch.
+        _perRenderRequiredMap = null;
+        _perRenderMysteryMap = null;
+
+        await Promise.all([
+            loadRequiredQuestsByGrade(),
+            loadMysteryQuestsByGrade()
+        ]).then(([reqMap, mystMap]) => {
+            _perRenderRequiredMap = reqMap;
+            _perRenderMysteryMap = mystMap;
+        });
+
+        await renderQuestsAccordion();
+        await renderActiveQuestsAccordion();
+        await renderCompletedQuestsAccordion();
+    } finally {
+        _questAccordionRendering = false;
+        _perRenderRequiredMap = null;
+        _perRenderMysteryMap = null;
+
+        if (_questAccordionPending) {
+            _questAccordionPending = false;
+            // Schedule the follow-up on the next tick to avoid recursion
+            setTimeout(() => { renderAllQuestAccordions(); }, 0);
+        }
+    }
 }
 
 async function renderQuestsAccordion() {
@@ -920,7 +990,8 @@ async function renderQuestsAccordion() {
     if (!auth) return;
 
     const allQuests = await getAllQuestsForTeacher();
-    const requiredMap = await loadRequiredQuestsByGrade();
+    const requiredMap = _perRenderRequiredMap || await loadRequiredQuestsByGrade();
+    const mysteryMap  = _perRenderMysteryMap  || await loadMysteryQuestsByGrade();
 
 
     const validPaths = ['Painter Path', 'Sketcher Path', 'Watercolor Path', '3D Path'];
@@ -999,6 +1070,12 @@ async function renderQuestsAccordion() {
                     const titleSpan = questLink.querySelector(".quest-link-title");
                     titleSpan.insertAdjacentElement("afterend", requiredBadge);
               }
+                              // Insert the 🎁 mystery badge
+                const mysteryBadge = buildMysteryBadge(quest.id, mysteryMap);
+                if (mysteryBadge) {
+                    const titleSpan = questLink.querySelector(".quest-link-title");
+                    titleSpan.insertAdjacentElement("afterend", mysteryBadge);
+                }
 
             questLink.addEventListener('click', async (e) => {
                 if (e.target.classList.contains('delete-custom-quest-btn')) return;
@@ -1141,7 +1218,8 @@ async function renderCompletedQuestsAccordion() {
 
 // Shared helper for active/completed accordions
 async function renderQuestAccordionByPath(container, questsByPath, mode) {
-    const requiredMap = await loadRequiredQuestsByGrade();
+    const requiredMap = _perRenderRequiredMap || await loadRequiredQuestsByGrade();
+    const mysteryMap  = _perRenderMysteryMap  || await loadMysteryQuestsByGrade();
     const pathOrder = ['Painter Path', 'Sketcher Path', 'Watercolor Path', '3D Path'];
     const allPathHeaders = [];
     const allPathContents = [];
@@ -1192,6 +1270,12 @@ async function renderQuestAccordionByPath(container, questsByPath, mode) {
             if (requiredBadge) {
                 const titleSpan = questLink.querySelector(".quest-link-title");
                 titleSpan.insertAdjacentElement("afterend", requiredBadge);
+            }
+                        // Insert the 🎁 mystery badge
+            const mysteryBadge = buildMysteryBadge(quest.id, mysteryMap);
+            if (mysteryBadge) {
+                const titleSpan = questLink.querySelector(".quest-link-title");
+                titleSpan.insertAdjacentElement("afterend", mysteryBadge);
             }
 
             questLink.addEventListener('click', async (e) => {
@@ -1753,10 +1837,11 @@ function buildRequiredBadge(questId, requiredMap) {
 }
 
 async function refreshRequiredBadges() {
-    // Re-render the currently visible accordion tab
+    // Only re-render the main quests accordion (the one whose checkboxes changed).
+    // The Active/Completed sub-tabs will pick up the new badges next time they render.
     const container = document.getElementById('quests-accordion-container');
     if (container && container.offsetParent !== null) {
-        await renderAllQuestAccordions();
+        await renderQuestsAccordion();
     }
 }
 // --- Active students tab --
@@ -1925,7 +2010,10 @@ async function saveTeacherQuestStandards(questId, selectedStandards, timerClasse
         return false;
     }
 
-    invalidateAllQuestsCache();
+    // Only invalidate what actually changed:
+    //  - the standards cache for this quest (descriptions/selection just changed)
+    //  - the per-quest standards lookup (used by openQuestDetailsPanel)
+    // Do NOT nuke the full all-quests cache — the quest metadata itself didn't change.
     invalidateStandardsCache(questId);
     return true;
 }
@@ -2315,11 +2403,10 @@ async function renderStandardsSelectionTab(questId) {
                     }
                 }
 
-                refreshQuestsCache();
-                await notifyQuestsChanged();
                 alert(`${selectedStandards.length} item(s) saved!`);
-                const allQuestsFresh = await getAllQuestsForTeacher(true);
-                openQuestDetailsPanel(questId, allQuestsFresh);
+                // Re-open the panel from cache; only the rubric descriptions changed.
+                const allQuestsCached = await getAllQuestsForTeacher();
+                openQuestDetailsPanel(questId, allQuestsCached);
             }
         });
     }
@@ -2621,10 +2708,12 @@ async function loadStudentDetails(userId, studentName) {
             console.warn("Student profile not found:", userId);
             return;
         }
+                // --- Mystery quests for this student's class ---
+        const mysteryQuestIds = await loadMysteryQuestIdsForStudentClass(profile.class_id);
 
         // Render all three tabs synchronously from pre-fetched data
         renderStudentProfileData(profile, progress, badgesData, allQuests);
-        renderStudentProgressData(userId, progress, works, allQuests);
+        renderStudentProgressData(userId, progress, works, allQuests, mysteryQuestIds);
         renderStudentWorksData(userId, works, allQuests);
     } finally {
         _loadingStudentId = null;
@@ -2906,7 +2995,7 @@ function renderStudentBadges(earnedBadges, badgesData, studentName) {
 }
 
 // --- Progress tab (sync) ---
-function renderStudentProgressData(userId, progress, works, allQuests) {
+function renderStudentProgressData(userId, progress, works, allQuests, mysteryQuestIds = new Set()) {
     const container = document.getElementById('student-quests-list');
     if (!container) return;
 
@@ -3003,8 +3092,18 @@ function renderStudentProgressData(userId, progress, works, allQuests) {
         const questDiv = clone.querySelector('.teacher-quest-item');
         questDiv.dataset.questId = questId;
 
-        const titleSpan = clone.querySelector('.teacher-quest-title');
+                const titleSpan = clone.querySelector('.teacher-quest-title');
         titleSpan.textContent = quest.title || questId;
+
+        // Add 🎁 if this quest is featured as a mystery for the student's class
+        if (mysteryQuestIds.has(questId)) {
+            const badge = document.createElement('span');
+            badge.className = 'mystery-badge';
+            badge.textContent = '🎁';
+            badge.title = 'Mystery quest this week';
+            titleSpan.insertAdjacentElement('afterend', badge);
+        }
+        
 
         const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
 
@@ -3417,13 +3516,22 @@ async function saveTeacherGrades(questId, quest, userId, detailsDiv) {
         return;
     }
 
-    await window.supabase
+        await window.supabase
         .from('student_works')
         .update({ grading_status: 'graded' })
         .eq('user_id', userId)
         .eq('quest_id', questId);
 
+    // --- Gift claim sync (before the alert, so it always runs) ---
+    try {
+        await syncGiftClaimAfterGrade(userId, questId, grades);
+        console.log("[gift UI] sync returned");
+    } catch (e) {
+        console.warn("[gift] sync after grade failed:", e);
+    }
+
     alert('Grades saved and quest marked as complete!');
+
 
     const statusSpan = detailsDiv.closest('.teacher-quest-item').querySelector('.teacher-quest-status');
     if (statusSpan) {
@@ -7259,7 +7367,1074 @@ function setupMainTabs() {
 
 
 // ==========================================================
-// 22. DOMContentLoaded BOOTSTRAP
+// 22. MYSTERY QUESTS (teacher)
+// ==========================================================
+
+let _mysteryOverlayState = {
+    activeTab: 'active',
+    selectedQuestId: null,
+    selectedClasses: new Set(),
+    giftName: '',
+    giftImageFile: null,
+    giftImageUrl: null
+    
+};
+let _mysteryLogCache = null;         // full list from the last fetch
+let _mysteryLogFilters = {           // current filter state
+    search: '',
+    from: '',
+    to: ''
+};
+
+function openMysteryQuestsOverlay() {
+    const overlay = document.getElementById('mystery-quests-overlay');
+    if (!overlay) return;
+    overlay.style.display = 'flex';
+    switchMysteryTab('active');
+    renderActiveMysteryQuests();
+    // Rendering of the tab content happens in T2/T3; for now, no-op.
+}
+
+function closeMysteryQuestsOverlay() {
+    const overlay = document.getElementById('mystery-quests-overlay');
+    if (!overlay) return;
+    overlay.style.display = 'none';
+    resetMysteryAddFlow();
+}
+
+function switchMysteryTab(tabId) {
+    _mysteryOverlayState.activeTab = tabId;
+    document.querySelectorAll('.mystery-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mysteryTab === tabId);
+    });
+    document.querySelectorAll('.mystery-tab-content').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = '';   // clear any inline display
+    });
+    const target = document.getElementById(`mystery-tab-${tabId}`);
+    if (target) {
+        target.classList.add('active');
+        target.style.display = '';   // ensure the class wins
+    }
+
+    if (tabId === 'active' && typeof renderActiveMysteryQuests === 'function') {
+        renderActiveMysteryQuests();
+    } else if (tabId === 'log' && typeof renderMysteryLog === 'function') {
+        renderMysteryLog();
+    }
+}
+
+function resetMysteryAddFlow() {
+    _mysteryOverlayState = {
+        activeTab: _mysteryOverlayState.activeTab,
+        selectedQuestId: null,
+        selectedClasses: new Set(),
+        giftName: '',
+        giftImageFile: null,
+        giftImageUrl: null
+    };
+    const flow = document.getElementById('mystery-add-flow');
+    if (flow) flow.style.display = 'none';
+    const btn = document.getElementById('mystery-add-btn');
+    if (btn) btn.style.display = '';
+    const sel = document.getElementById('mystery-quest-select');
+    if (sel) sel.value = '';
+    const gift = document.getElementById('mystery-gift-name');
+    if (gift) gift.value = '';
+    const imgInput = document.getElementById('mystery-image-input');
+    if (imgInput) imgInput.value = '';
+    const imgStatus = document.getElementById('mystery-image-status');
+    if (imgStatus) imgStatus.textContent = 'No image chosen';
+    const imgPreviewWrap = document.getElementById('mystery-image-preview-wrap');
+    if (imgPreviewWrap) imgPreviewWrap.style.display = 'none';
+    const previewWrap = document.getElementById('mystery-preview-wrap');
+    if (previewWrap) previewWrap.style.display = 'none';
+    const alreadyFeaturedMsg = document.getElementById('mystery-quest-already-featured');
+    if (alreadyFeaturedMsg) alreadyFeaturedMsg.style.display = 'none';
+    const checkAll = document.getElementById('mystery-check-all');
+    if (checkAll) checkAll.checked = false;
+    const msg = document.getElementById('mystery-save-message');
+    if (msg) msg.textContent = '';
+}
+
+function initializeMysteryQuests() {
+    document.getElementById('mystery-quests-btn')?.addEventListener('click', openMysteryQuestsOverlay);
+    document.getElementById('close-mystery-overlay')?.addEventListener('click', closeMysteryQuestsOverlay);
+
+    document.querySelectorAll('.mystery-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchMysteryTab(btn.dataset.mysteryTab));
+    });
+
+    // NEW: wire the Add button
+    document.getElementById('mystery-add-btn')?.addEventListener('click', openMysteryAddFlow);
+
+    // Close on backdrop click
+    const overlay = document.getElementById('mystery-quests-overlay');
+    if (overlay) {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeMysteryQuestsOverlay();
+        });
+    }
+    // ESC
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const overlay = document.getElementById('mystery-quests-overlay');
+        if (overlay && overlay.style.display === 'flex') {
+            closeMysteryQuestsOverlay();
+        }
+    });
+}
+
+// ==========================================================
+// 22b. MYSTERY QUESTS — data helpers
+// ==========================================================
+
+/**
+ * Returns the ISO week key for a date. Matches the student-side getISOWeekKey().
+ * e.g. "2026-W41"
+ */
+function _getTeacherISOWeekKey(date = new Date()) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+/**
+ * Loads the current week's featured quests for this teacher,
+ * merged per quest (one entry per (quest, week) with a set of class_ids).
+ * Returns an array of:
+ *   { questId, questTitle, questCharacter, requirements, giftName, giftImageUrl,
+ *     weekKey, classIds: [uuid], rowIds: [uuid] }
+ */
+async function loadActiveMysteryQuests() {
+    const auth = await checkTeacherAuth();
+    if (!auth) return [];
+
+    const weekKey = _getTeacherISOWeekKey();
+
+    const { data, error } = await window.supabase
+        .from('teacher_featured_quests')
+        .select('id, quest_id, class_id, week_key, gift_name, gift_image_url')
+        .eq('teacher_id', auth.teacher.id)
+        .eq('week_key', weekKey);
+
+    if (error) {
+        console.error("[mystery] load failed:", error);
+        return [];
+    }
+
+    // Group by quest_id (a single quest may appear as multiple rows for multiple classes)
+    const byQuest = new Map();
+    for (const row of (data || [])) {
+        if (!byQuest.has(row.quest_id)) {
+            byQuest.set(row.quest_id, {
+                questId: row.quest_id,
+                giftName: row.gift_name,
+                giftImageUrl: row.gift_image_url,
+                weekKey: row.week_key,
+                classIds: [],
+                rowIds: []
+            });
+        }
+        const entry = byQuest.get(row.quest_id);
+        if (row.class_id) entry.classIds.push(row.class_id);
+        entry.rowIds.push(row.id);
+    }
+
+    // Hydrate with quest metadata
+    const allQuests = await getAllQuestsForTeacher();
+    const result = [];
+    for (const [questId, entry] of byQuest) {
+        const quest = allQuests[questId];
+        result.push({
+            ...entry,
+            questTitle: quest?.title || questId,
+            questCharacter: quest?.character || 'profile.png',
+            requirements: quest?.requirements || []
+        });
+    }
+    return result;
+}
+
+/**
+ * Returns true if the given quest is featured this week (for any class).
+ */
+async function isQuestFeaturedThisWeek(questId) {
+    const auth = await checkTeacherAuth();
+    if (!auth) return false;
+    const weekKey = _getTeacherISOWeekKey();
+    const { data, error } = await window.supabase
+        .from('teacher_featured_quests')
+        .select('id')
+        .eq('teacher_id', auth.teacher.id)
+        .eq('quest_id', questId)
+        .eq('week_key', weekKey)
+        .limit(1);
+
+    if (error) return false;
+    return (data || []).length > 0;
+}
+
+/**
+ * Uploads a gift image to the gift-images bucket.
+ * Compresses to max 400px on the longest edge.
+ * Returns the public URL, or null on failure.
+ */
+async function uploadGiftImage(file) {
+    const auth = await checkTeacherAuth();
+    if (!auth) return null;
+
+    try {
+        // Compress with the existing helper (max 400px)
+        let compressed = file;
+        if (typeof compressImage === 'function') {
+            try { compressed = await compressImage(file, 400, 0.85); }
+            catch (e) { console.warn("[mystery] compress failed, using raw:", e); }
+        }
+
+        const ext = 'jpg';
+        const fileName = `${auth.teacher.id}/${Date.now()}.${ext}`;
+
+        const { error: uploadError } = await window.supabase.storage
+            .from('gift-images')
+            .upload(fileName, compressed, {
+                cacheControl: '31536000',
+                upsert: false,
+                contentType: compressed.type || 'image/jpeg'
+            });
+
+        if (uploadError) {
+            console.error("[mystery] upload failed:", uploadError);
+            alert("Failed to upload image: " + uploadError.message);
+            return null;
+        }
+
+        const { data: urlData } = window.supabase.storage
+            .from('gift-images')
+            .getPublicUrl(fileName);
+
+        return urlData.publicUrl;
+    } catch (e) {
+        console.error("[mystery] upload exception:", e);
+        alert("Error uploading image: " + e.message);
+        return null;
+    }
+}
+/**
+ * Returns true if the given grade set meets the mystery gift threshold
+ * for the current framework.
+ *
+ * NCAS:   every numeric grade >= 3
+ * IB MYP: every band is "5-6" or "7-8"
+ * IGCSE:  every letter is A*, A, or B
+ *
+ * Ignores "teacher_comment" and "completed_at" keys. Requires at least
+ * one graded standard. Rejects 0 (a 0 doesn't earn).
+ */
+function meetsGiftThresholdFromGrades(grades, framework) {
+    if (!grades || typeof grades !== 'object') return false;
+
+    const fw = framework || currentFramework || 'ncas';
+    let anyGraded = false;
+
+    for (const [key, value] of Object.entries(grades)) {
+        if (key === 'teacher_comment' || key === 'completed_at') continue;
+        if (value === null || value === undefined || value === '') continue;
+
+        anyGraded = true;
+
+        if (fw === 'ncas') {
+            const num = parseFloat(value);
+            if (isNaN(num) || num < 3) return false;
+        } else if (fw === 'ib-myp') {
+            const s = String(value).trim();
+            if (s === '7-8' || s === '5-6') continue;
+            const num = parseFloat(s);
+            if (!isNaN(num) && num >= 5) continue;
+            return false;
+        } else if (fw === 'igcse') {
+            const s = String(value).trim().toUpperCase();
+            if (s === 'A*' || s === 'A' || s === 'B') continue;
+            return false;
+        }
+    }
+
+    return anyGraded;
+}
+/**
+ * After grading, ensure the student's gift_claims row matches
+ * their current standing:
+ *
+ *   - If the quest is featured this week for the student's class
+ *     AND the grade meets the threshold → create the claim if missing.
+ *   - If the threshold is no longer met AND the claim was never revealed
+ *     → delete the claim.
+ *   - If the claim was already revealed → leave it (they got the gift).
+ */
+async function syncGiftClaimAfterGrade(studentId, questId, grades) {
+    const auth = await checkTeacherAuth();
+    if (!auth) return;
+
+    const { data: profile } = await window.supabase
+        .from('profiles')
+        .select('class_id, grade_level')
+        .eq('id', studentId)
+        .maybeSingle();
+
+    const classId = profile?.class_id;
+    if (!classId) return;
+
+    const framework = await loadTeacherFramework();
+    const weekKey = _getTeacherISOWeekKey();
+
+    const { data: featured, error: fErr } = await window.supabase
+        .from('teacher_featured_quests')
+        .select('id, gift_name, gift_image_url')
+        .eq('teacher_id', auth.teacher.id)
+        .eq('quest_id', questId)
+        .eq('week_key', weekKey)
+        .eq('class_id', classId)
+        .maybeSingle();
+
+    if (fErr) {
+        console.warn("[gift] featured lookup failed:", fErr.message);
+        return;
+    }
+
+    const { data: existingClaim } = await window.supabase
+        .from('gift_claims')
+        .select('id, revealed_at')
+        .eq('student_id', studentId)
+        .eq('quest_id', questId)
+        .eq('week_key', weekKey)
+        .maybeSingle();
+
+    const thresholdMet = meetsGiftThresholdFromGrades(grades, framework);
+
+    if (!featured) return;
+
+    if (thresholdMet) {
+        if (!existingClaim) {
+            const { error: insertErr } = await window.supabase
+                .from('gift_claims')
+                .insert({
+                    student_id: studentId,
+                    teacher_id: auth.teacher.id,
+                    quest_id: questId,
+                    week_key: weekKey,
+                    gift_name: featured.gift_name,
+                    gift_image_url: featured.gift_image_url
+                });
+            if (insertErr && insertErr.code !== '23505') {
+                console.warn("[gift] claim insert failed:", insertErr.message);
+            }
+        }
+        return;
+    }
+
+    if (existingClaim && !existingClaim.revealed_at) {
+        const { error: delErr } = await window.supabase
+            .from('gift_claims')
+            .delete()
+            .eq('id', existingClaim.id);
+        if (delErr) console.warn("[gift] claim delete failed:", delErr.message);
+    }
+}
+
+/**
+ * Returns a Map: questId → Set of class names that have this quest
+ * featured as mystery this week, filtered to the current grade level.
+ *
+ * Mirrors loadRequiredQuestsByGrade() so the badge rendering is familiar.
+ */
+async function loadMysteryQuestsByGrade() {
+    const auth = await checkTeacherAuth();
+    if (!auth) return new Map();
+
+    const visibleClassIds = new Set(
+        (teacherClasses || [])
+            .filter(cls => (cls.grade_level || 'hs') === currentGradeLevel)
+            .map(cls => cls.id)
+    );
+    if (visibleClassIds.size === 0) return new Map();
+
+    const weekKey = _getTeacherISOWeekKey();
+
+    const { data, error } = await window.supabase
+        .from('teacher_featured_quests')
+        .select('quest_id, class_id')
+        .eq('teacher_id', auth.teacher.id)
+        .eq('week_key', weekKey)
+        .in('class_id', Array.from(visibleClassIds));
+
+    if (error) {
+        console.error("[mystery badge] load failed:", error);
+        return new Map();
+    }
+
+    const classIdToName = new Map(teacherClasses.map(c => [c.id, c.name]));
+    const byQuest = new Map();
+    for (const row of (data || [])) {
+        if (!byQuest.has(row.quest_id)) byQuest.set(row.quest_id, new Set());
+        const name = classIdToName.get(row.class_id);
+        if (name) byQuest.get(row.quest_id).add(name);
+    }
+    return byQuest;
+}
+
+/**
+ * Builds the 🎁 badge element for a quest, or null if not featured.
+ * `mysteryMap` is the Map from loadMysteryQuestsByGrade().
+ */
+function buildMysteryBadge(questId, mysteryMap) {
+    const classNames = mysteryMap.get(questId);
+    if (!classNames || classNames.size === 0) return null;
+
+    const badge = document.createElement('span');
+    badge.className = 'mystery-badge';
+    badge.textContent = '🎁';
+    badge.title = `Mystery quest for: ${Array.from(classNames).sort().join(', ')}`;
+    return badge;
+}
+/**
+ * Returns a Set of quest IDs that are currently featured as mystery
+ * for the given class this week.
+ */
+async function loadMysteryQuestIdsForStudentClass(classId) {
+    if (!classId) return new Set();
+    const auth = await checkTeacherAuth();
+    if (!auth) return new Set();
+    const weekKey = _getTeacherISOWeekKey();
+
+    const { data, error } = await window.supabase
+        .from('teacher_featured_quests')
+        .select('quest_id')
+        .eq('teacher_id', auth.teacher.id)
+        .eq('week_key', weekKey)
+        .eq('class_id', classId);
+
+    if (error) {
+        console.warn("[mystery student profile] load failed:", error.message);
+        return new Set();
+    }
+    return new Set((data || []).map(r => r.quest_id));
+}
+
+// ==========================================================
+// 22c. MYSTERY QUESTS — rendering
+// ==========================================================
+
+async function renderActiveMysteryQuests() {
+    const container = document.getElementById('mystery-active-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="mystery-empty-state">Loading…</div>';
+
+    const entries = await loadActiveMysteryQuests();
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="mystery-empty-state">No mystery quests featured this week. Add one below.</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+
+    // Build a class-id → name map for the tooltips
+    const classMap = new Map(teacherClasses.map(c => [c.id, c.name]));
+
+    for (const entry of entries) {
+        const card = document.createElement('div');
+        card.className = 'mystery-card';
+
+        // Image
+        const img = document.createElement('img');
+        img.className = 'mystery-card-image';
+        img.src = entry.questCharacter;
+        img.alt = entry.questTitle;
+        card.appendChild(img);
+
+        // Title
+        const title = document.createElement('div');
+        title.className = 'mystery-card-title';
+        title.textContent = entry.questTitle;
+        card.appendChild(title);
+
+        // Requirements (short list, max 4)
+        const reqDiv = document.createElement('div');
+        reqDiv.className = 'mystery-card-requirements';
+        const reqs = (entry.requirements || []).slice(0, 4);
+        if (reqs.length > 0) {
+            const ul = document.createElement('ul');
+            reqs.forEach(r => {
+                const li = document.createElement('li');
+                li.textContent = r;
+                ul.appendChild(li);
+            });
+            reqDiv.appendChild(ul);
+        } else {
+            reqDiv.textContent = 'No requirements listed.';
+        }
+        card.appendChild(reqDiv);
+
+        // Classes
+        const classesDiv = document.createElement('div');
+        classesDiv.className = 'mystery-card-classes';
+        const names = entry.classIds.map(id => classMap.get(id) || 'Unknown').sort();
+        classesDiv.textContent = names.length > 0
+            ? `For: ${names.join(', ')}`
+            : 'For: (no class)';
+        card.appendChild(classesDiv);
+
+        // Delete button (top-right, absolute)
+        const del = document.createElement('button');
+        del.className = 'mystery-card-delete';
+        del.title = 'Remove from this week';
+        del.textContent = '🗑️';
+        del.style.cssText = 'position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.4);border:none;border-radius:5px;color:#ff8888;cursor:pointer;padding:3px 6px;';
+        del.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await removeMysteryQuest(entry);
+        });
+        card.style.position = 'relative';
+        card.appendChild(del);
+
+        // Click → open quest profile
+        card.addEventListener('click', async () => {
+            const allQuests = await getAllQuestsForTeacher();
+            openQuestDetailsPanel(entry.questId, allQuests);
+        });
+
+        container.appendChild(card);
+    }
+}
+
+async function removeMysteryQuest(entry) {
+    if (!confirm(`Remove "${entry.questTitle}" from this week's mystery quests?`)) return;
+
+    const auth = await checkTeacherAuth();
+    if (!auth) return;
+
+    const { error } = await window.supabase
+        .from('teacher_featured_quests')
+        .delete()
+        .in('id', entry.rowIds);
+
+    if (error) {
+        alert("Failed to remove: " + error.message);
+        return;
+    }
+
+    await renderActiveMysteryQuests();
+}
+
+async function renderMysteryLog() {
+    const tbody = document.getElementById('mystery-log-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="mystery-log-empty">Loading…</td></tr>';
+
+    _mysteryLogCache = await loadMysteryLogData();
+    applyMysteryLogFilters();
+
+    // Wire filter events once
+    wireMysteryLogFilterEvents();
+}
+
+function applyMysteryLogFilters() {
+    const tbody = document.getElementById('mystery-log-tbody');
+    if (!tbody) return;
+
+    const data = _mysteryLogCache || [];
+    const { search, from, to } = _mysteryLogFilters;
+
+    const term = search.trim().toLowerCase();
+
+    const filtered = data.filter(row => {
+        // Search across quest title, gift name, student name
+        if (term) {
+            const hay = `${row.questTitle} ${row.giftName} ${row.studentName}`.toLowerCase();
+            if (!hay.includes(term)) return false;
+        }
+        // Date range: filter by earned_at
+        if (from || to) {
+            const earnedDate = row.earnedAt ? new Date(row.earnedAt).toISOString().slice(0, 10) : '';
+            if (!earnedDate) return false;
+            if (from && earnedDate < from) return false;
+            if (to && earnedDate > to) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="mystery-log-empty">No gifts match the current filters.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = '';
+    for (const row of filtered) {
+        const tr = document.createElement('tr');
+
+        const fromCell = document.createElement('td');
+        fromCell.textContent = row.weekStart;
+        tr.appendChild(fromCell);
+
+        const toCell = document.createElement('td');
+        toCell.textContent = row.weekEnd;
+        tr.appendChild(toCell);
+
+        const questCell = document.createElement('td');
+        questCell.textContent = row.questTitle;
+        tr.appendChild(questCell);
+
+        const giftCell = document.createElement('td');
+        giftCell.textContent = row.giftName;
+        tr.appendChild(giftCell);
+
+        const studentCell = document.createElement('td');
+        studentCell.textContent = row.studentName;
+        tr.appendChild(studentCell);
+
+        tbody.appendChild(tr);
+    }
+}
+
+function wireMysteryLogFilterEvents() {
+    const searchEl = document.getElementById('mystery-log-search');
+    const fromEl = document.getElementById('mystery-log-from');
+    const toEl = document.getElementById('mystery-log-to');
+    const clearEl = document.getElementById('mystery-log-clear');
+
+    if (searchEl && !searchEl._mysteryLogWired) {
+        searchEl._mysteryLogWired = true;
+        searchEl.addEventListener('input', () => {
+            _mysteryLogFilters.search = searchEl.value;
+            applyMysteryLogFilters();
+        });
+    }
+    if (fromEl && !fromEl._mysteryLogWired) {
+        fromEl._mysteryLogWired = true;
+        fromEl.addEventListener('change', () => {
+            _mysteryLogFilters.from = fromEl.value;
+            applyMysteryLogFilters();
+        });
+    }
+    if (toEl && !toEl._mysteryLogWired) {
+        toEl._mysteryLogWired = true;
+        toEl.addEventListener('change', () => {
+            _mysteryLogFilters.to = toEl.value;
+            applyMysteryLogFilters();
+        });
+    }
+    if (clearEl && !clearEl._mysteryLogWired) {
+        clearEl._mysteryLogWired = true;
+        clearEl.addEventListener('click', () => {
+            _mysteryLogFilters = { search: '', from: '', to: '' };
+            if (searchEl) searchEl.value = '';
+            if (fromEl) fromEl.value = '';
+            if (toEl) toEl.value = '';
+            applyMysteryLogFilters();
+        });
+    }
+}
+
+// ==========================================================
+// 22d. MYSTERY QUESTS — add flow
+// ==========================================================
+
+async function openMysteryAddFlow() {
+    resetMysteryAddFlow();
+
+    const flow = document.getElementById('mystery-add-flow');
+    const btn = document.getElementById('mystery-add-btn');
+    if (!flow || !btn) return;
+
+    flow.style.display = 'block';
+    btn.style.display = 'none';
+
+    // Populate the quest dropdown
+    const select = document.getElementById('mystery-quest-select');
+    if (select) {
+        select.innerHTML = '<option value="">-- Select a quest --</option>';
+        const allQuests = await getAllQuestsForTeacher();
+        const sorted = Object.entries(allQuests)
+            .sort((a, b) => (a[1].title || '').localeCompare(b[1].title || ''));
+        for (const [id, quest] of sorted) {
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = quest.title || id;
+            select.appendChild(opt);
+        }
+    }
+
+    // Populate the class list
+    renderMysteryClassCheckboxes();
+
+    wireMysteryAddFlowEvents();
+}
+
+function renderMysteryClassCheckboxes() {
+    const list = document.getElementById('mystery-class-list');
+    if (!list) return;
+
+    // Filter to the current grade level (same convention as required quests)
+    const visible = (teacherClasses || []).filter(cls => {
+        const lvl = cls.grade_level || 'hs';
+        return lvl === currentGradeLevel;
+    });
+
+    if (visible.length === 0) {
+        list.innerHTML = `<div class="mystery-empty-state">No ${currentGradeLevel.toUpperCase()} classes yet.</div>`;
+        return;
+    }
+
+    list.innerHTML = '';
+    for (const cls of visible) {
+        const label = document.createElement('label');
+        label.className = 'mystery-class-item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = cls.id;
+        cb.dataset.classId = cls.id;
+        cb.addEventListener('change', () => {
+            if (cb.checked) _mysteryOverlayState.selectedClasses.add(cls.id);
+            else _mysteryOverlayState.selectedClasses.delete(cls.id);
+            syncCheckAllMystery();
+        });
+        label.appendChild(cb);
+        const span = document.createElement('span');
+        span.textContent = cls.name;
+        label.appendChild(span);
+        list.appendChild(label);
+    }
+}
+
+function syncCheckAllMystery() {
+    const checkAll = document.getElementById('mystery-check-all');
+    const boxes = document.querySelectorAll('#mystery-class-list input[type=checkbox]');
+    if (!checkAll || boxes.length === 0) return;
+    const allChecked = Array.from(boxes).every(b => b.checked);
+    const anyChecked = Array.from(boxes).some(b => b.checked);
+    checkAll.checked = allChecked;
+    checkAll.indeterminate = anyChecked && !allChecked;
+}
+
+function wireMysteryAddFlowEvents() {
+    // Step 1: quest selection
+    const select = document.getElementById('mystery-quest-select');
+    if (select && !select._mysteryWired) {
+        select._mysteryWired = true;
+        select.addEventListener('change', async () => {
+            const questId = select.value;
+            _mysteryOverlayState.selectedQuestId = questId;
+            await updateMysteryPreview(questId);
+        });
+    }
+
+    // Step 2: gift name
+    const giftInput = document.getElementById('mystery-gift-name');
+    if (giftInput && !giftInput._mysteryWired) {
+        giftInput._mysteryWired = true;
+        giftInput.addEventListener('input', () => {
+            _mysteryOverlayState.giftName = giftInput.value.trim();
+        });
+    }
+
+    // Step 2: image picker
+    const pickBtn = document.getElementById('mystery-image-pick-btn');
+    const imgInput = document.getElementById('mystery-image-input');
+    if (pickBtn && imgInput && !pickBtn._mysteryWired) {
+        pickBtn._mysteryWired = true;
+        pickBtn.addEventListener('click', () => imgInput.click());
+    }
+    if (imgInput && !imgInput._mysteryWired) {
+        imgInput._mysteryWired = true;
+        imgInput.addEventListener('change', () => {
+            const f = imgInput.files[0];
+            if (!f) { _mysteryOverlayState.giftImageFile = null; return; }
+            if (!f.type.startsWith('image/')) {
+                alert("Please select an image file.");
+                imgInput.value = '';
+                _mysteryOverlayState.giftImageFile = null;
+                return;
+            }
+            if (f.size > 5 * 1024 * 1024) {
+                alert("Image is too large. Max 5 MB.");
+                imgInput.value = '';
+                _mysteryOverlayState.giftImageFile = null;
+                return;
+            }
+            _mysteryOverlayState.giftImageFile = f;
+            const status = document.getElementById('mystery-image-status');
+            if (status) status.textContent = f.name;
+            const wrap = document.getElementById('mystery-image-preview-wrap');
+            const prev = document.getElementById('mystery-image-preview');
+            if (wrap && prev) {
+                prev.src = URL.createObjectURL(f);
+                wrap.style.display = 'inline-block';
+            }
+        });
+    }
+
+    // Step 3: check-all
+    const checkAll = document.getElementById('mystery-check-all');
+    if (checkAll && !checkAll._mysteryWired) {
+        checkAll._mysteryWired = true;
+        checkAll.addEventListener('change', () => {
+            const boxes = document.querySelectorAll('#mystery-class-list input[type=checkbox]');
+            boxes.forEach(b => {
+                b.checked = checkAll.checked;
+                if (checkAll.checked) _mysteryOverlayState.selectedClasses.add(b.dataset.classId);
+                else _mysteryOverlayState.selectedClasses.delete(b.dataset.classId);
+            });
+            syncCheckAllMystery();
+        });
+    }
+
+    // Save
+    const saveBtn = document.getElementById('mystery-save-btn');
+    if (saveBtn && !saveBtn._mysteryWired) {
+        saveBtn._mysteryWired = true;
+        saveBtn.addEventListener('click', saveMysteryQuestFromFlow);
+    }
+
+    // Cancel
+    const cancelBtn = document.getElementById('mystery-add-cancel');
+    if (cancelBtn && !cancelBtn._mysteryWired) {
+        cancelBtn._mysteryWired = true;
+        cancelBtn.addEventListener('click', resetMysteryAddFlow);
+    }
+}
+
+async function updateMysteryPreview(questId) {
+    const previewWrap = document.getElementById('mystery-preview-wrap');
+    const previewCard = document.getElementById('mystery-preview-card');
+    const infoMsg = document.getElementById('mystery-quest-already-featured');
+
+    if (!previewWrap || !previewCard) return;
+
+    if (!questId) {
+        previewWrap.style.display = 'none';
+        if (infoMsg) infoMsg.style.display = 'none';
+        return;
+    }
+
+    const allQuests = await getAllQuestsForTeacher();
+    const quest = allQuests[questId];
+    if (!quest) {
+        previewWrap.style.display = 'none';
+        return;
+    }
+
+    // Build the card
+    previewCard.innerHTML = '';
+    const img = document.createElement('img');
+    img.className = 'mystery-card-image';
+    img.src = quest.character || 'profile.png';
+    img.alt = quest.title || questId;
+    previewCard.appendChild(img);
+
+    const title = document.createElement('div');
+    title.className = 'mystery-card-title';
+    title.textContent = quest.title || questId;
+    previewCard.appendChild(title);
+
+    const reqDiv = document.createElement('div');
+    reqDiv.className = 'mystery-card-requirements';
+    const reqs = (quest.requirements || []).slice(0, 4);
+    if (reqs.length > 0) {
+        const ul = document.createElement('ul');
+        reqs.forEach(r => { const li = document.createElement('li'); li.textContent = r; ul.appendChild(li); });
+        reqDiv.appendChild(ul);
+    } else {
+        reqDiv.textContent = 'No requirements listed.';
+    }
+    previewCard.appendChild(reqDiv);
+
+    previewWrap.style.display = 'flex';
+
+    // Already-featured notice
+    const already = await isQuestFeaturedThisWeek(questId);
+    if (infoMsg) infoMsg.style.display = already ? 'block' : 'none';
+}
+
+async function saveMysteryQuestFromFlow() {
+    const msg = document.getElementById('mystery-save-message');
+    const saveBtn = document.getElementById('mystery-save-btn');
+
+    const questId = _mysteryOverlayState.selectedQuestId;
+    const giftName = (document.getElementById('mystery-gift-name')?.value || '').trim();
+    const classIds = Array.from(_mysteryOverlayState.selectedClasses);
+
+    // Validation
+    if (!questId) { if (msg) msg.textContent = 'Please choose a quest (Step 1).'; return; }
+    if (!giftName) { if (msg) msg.textContent = 'Please enter a gift name (Step 2).'; return; }
+    if (classIds.length === 0) { if (msg) msg.textContent = 'Please select at least one class (Step 3).'; return; }
+    if (!_mysteryOverlayState.giftImageFile) { if (msg) msg.textContent = 'Please load a gift image (Step 2).'; return; }
+
+    if (msg) msg.textContent = '';
+
+    // Build confirmation text
+    const allQuests = await getAllQuestsForTeacher();
+    const questTitle = allQuests[questId]?.title || questId;
+
+    const classNames = classIds
+        .map(id => teacherClasses.find(c => c.id === id)?.name || 'Unknown')
+        .sort();
+    const classesText = classNames.length === teacherClasses.length
+        ? 'all classes'
+        : classNames.join(', ');
+
+    const confirmed = confirm(
+        `The quest "${questTitle}" will be added as a mystery quest,\n` +
+        `and the reward is "${giftName}" for ${classesText}.\n\n` +
+        `Is this correct?`
+    );
+    if (!confirmed) return;
+
+    // Disable save button during upload/save
+    const originalText = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    if (msg) msg.textContent = 'Uploading image…';
+
+    try {
+        // Upload image
+        const giftImageUrl = await uploadGiftImage(_mysteryOverlayState.giftImageFile);
+        if (!giftImageUrl) {
+            if (msg) msg.textContent = 'Image upload failed. Please try again.';
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalText;
+            return;
+        }
+
+        if (msg) msg.textContent = 'Saving mystery quest…';
+
+        const auth = await checkTeacherAuth();
+        if (!auth) { throw new Error('Not logged in'); }
+
+        const weekKey = _getTeacherISOWeekKey();
+
+        // Insert one row per class. Unique constraint will error if any duplicate exists.
+        // Use upsert with ignoreDuplicates to be safe.
+        const rows = classIds.map(classId => ({
+            teacher_id: auth.teacher.id,
+            quest_id: questId,
+            week_key: weekKey,
+            class_id: classId,
+            gift_name: giftName,
+            gift_image_url: giftImageUrl
+        }));
+
+        const { error } = await window.supabase
+            .from('teacher_featured_quests')
+            .upsert(rows, {
+                onConflict: 'teacher_id,quest_id,week_key,class_id',
+                ignoreDuplicates: false
+            });
+
+        if (error) throw error;
+
+        if (msg) msg.textContent = '';
+        resetMysteryAddFlow();
+        await renderActiveMysteryQuests();
+    } catch (e) {
+        console.error("[mystery] save failed:", e);
+        if (msg) msg.textContent = 'Failed to save: ' + (e.message || 'unknown error');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+    }
+}
+
+/**
+ * Loads the full mystery quest log for this teacher.
+ * Returns one row per (student, quest, week) claim that has been earned.
+ * Uses gift_claims which stores { student_id, teacher_id, quest_id, week_key,
+ * gift_name, gift_image_url, earned_at, revealed_at }.
+ *
+ * To show the "from date / to date" of the featured week, we join against
+ * the teacher_featured_quests metadata (not the rows — just to resolve the
+ * week → date range mapping we compute locally).
+ *
+ * Returns array of:
+ *   { studentId, studentName, questId, questTitle, giftName,
+ *     weekKey, weekStart, weekEnd, earnedAt, revealedAt }
+ */
+async function loadMysteryLogData() {
+    const auth = await checkTeacherAuth();
+    if (!auth) return [];
+
+    // Fetch gift_claims for this teacher's students
+    const { data: claims, error } = await window.supabase
+        .from('gift_claims')
+        .select('id, student_id, quest_id, week_key, gift_name, gift_image_url, earned_at, revealed_at')
+        .eq('teacher_id', auth.teacher.id)
+        .order('earned_at', { ascending: false });
+
+    if (error) {
+        console.error("[mystery log] load failed:", error);
+        return [];
+    }
+    if (!claims || claims.length === 0) return [];
+
+    // Resolve student names in one batch
+    const studentIds = [...new Set(claims.map(c => c.student_id))];
+    const { data: profiles } = await window.supabase
+        .from('profiles')
+        .select('id, name')
+        .in('id', studentIds);
+
+    const nameById = new Map((profiles || []).map(p => [p.id, p.name]));
+
+    // Resolve quest titles from the cached quest map
+    const allQuests = await getAllQuestsForTeacher();
+
+    return claims.map(c => {
+        const [start, end] = _weekKeyToDateRange(c.week_key);
+        return {
+            studentId: c.student_id,
+            studentName: nameById.get(c.student_id) || 'Unknown',
+            questId: c.quest_id,
+            questTitle: allQuests[c.quest_id]?.title || c.quest_id,
+            giftName: c.gift_name,
+            weekKey: c.week_key,
+            weekStart: start,
+            weekEnd: end,
+            earnedAt: c.earned_at,
+            revealedAt: c.revealed_at
+        };
+    });
+}
+
+/**
+ * Converts an ISO week key ("2026-W41") to [startDate, endDate] (Monday–Sunday).
+ */
+function _weekKeyToDateRange(weekKey) {
+    const m = /^(\d{4})-W(\d{2})$/.exec(weekKey || '');
+    if (!m) return ['—', '—'];
+    const year = parseInt(m[1], 10);
+    const week = parseInt(m[2], 10);
+
+    // ISO week 1 contains the first Thursday of the year.
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const jan4Day = jan4.getUTCDay() || 7;
+    const week1Monday = new Date(jan4);
+    week1Monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1));
+
+    const start = new Date(week1Monday);
+    start.setUTCDate(start.getUTCDate() + (week - 1) * 7);
+
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 6);
+
+    const fmt = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    return [fmt(start), fmt(end)];
+}
+// ==========================================================
+// 23. DOMContentLoaded BOOTSTRAP
 // ==========================================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -7410,6 +8585,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initEditContestModal();
     setupDateRangeTabs();
     initResetPasswordModal();
+    initializeMysteryQuests();
 
     // Schedule range buttons
     document.getElementById('add-range-btn')?.addEventListener('click', addDateRange);
