@@ -520,8 +520,8 @@
                             </table>
                         </div>
                         <div class="teacher-profile-rewards">
-                            <h4>Rewards</h4>
-                            <p id="teacher-total-coins">Loading...</p>
+                            <h4>Experience</h4>
+                            <div id="teacher-exp-container">Loading...</div>
                         </div>
                         <div class="teacher-profile-badges">
                             <h4>Badges</h4>
@@ -581,12 +581,42 @@
             </div>
         </div>       
      </div>
+             <!-- Assign Quest Overlay -->
+<div id="assign-quest-overlay" class="teacher-work-modal" style="display: none;">
+    <div class="teacher-work-modal-content" style="max-width: 800px;">
+        <span class="teacher-work-close" id="assign-quest-close">&times;</span>
+        <h3>📌 Assign Quest</h3>
+
+        <p id="assign-quest-title" class="assign-quest-title"></p>
+
+        <div class="assign-quest-class-row">
+            <label for="assign-quest-class-select">Class:</label>
+            <select id="assign-quest-class-select" class="assign-quest-class-select">
+                <option value="">-- Select a class --</option>
+            </select>
+        </div>
+
+        <div id="assign-quest-student-list" class="assign-quest-student-list">
+            <div class="assign-quest-placeholder">Select a class to see students</div>
+        </div>
+
+        <div id="assign-quest-summary" class="assign-quest-summary"></div>
+        <div id="assign-quest-message" class="assign-quest-message"></div>
+
+        <div class="assign-quest-actions">
+            <button id="assign-quest-cancel" class="assign-quest-cancel">Cancel</button>
+            <button id="assign-quest-confirm" class="assign-quest-confirm">Assign Quest</button>
+        </div>
+    </div>
+</div>
+
         <div id="teacher-work-modal" class="teacher-work-modal">
             <div class="teacher-work-modal-content">
                 <span class="teacher-work-close">&times;</span>
                 <div id="teacher-work-content"></div>
             </div>
         </div>
+
     <!-- Create Custom Quest Modal -->
     <div id="create-custom-quest-modal" class="teacher-work-modal custom-quest-modal" style="display: none;">
         <div class="teacher-work-modal-content">
@@ -754,19 +784,21 @@
             </div>
         </div>        
         <!-- Active Students Tab -->
-        <div id="quest-students-tab" class="teacher-tab-content" style="display:none;">
-            <div class="quest-students-container">
-                <div class="active-students-section">
-                    <h4>🟢 Active Students</h4>
-                    <div id="active-students-list" class="active-students-list"></div>
-                </div>
-                <div class="completed-students-section">
-                    <h4>✅ Completed Students</h4>
-                    <div id="completed-students-list" class="completed-students-list"></div>
-                </div>
-            </div>
+<div id="quest-students-tab" class="teacher-tab-content" style="display:none;">
+    <div class="quest-students-container">
+        <div class="assign-quest-header">
+            <button id="assign-quest-btn" class="assign-quest-btn">📌 Assign Quest</button>
+        </div>
+        <div class="active-students-section">
+            <h4>🟢 Active Students</h4>
+            <div id="active-students-list" class="active-students-list"></div>
+        </div>
+        <div class="completed-students-section">
+            <h4>✅ Completed Students</h4>
+            <div id="completed-students-list" class="completed-students-list"></div>
         </div>
     </div>
+</div>
     <!-- Mystery Quests Overlay -->
 <div id="mystery-quests-overlay" class="mystery-overlay" style="display: none;">
     <div class="mystery-panel">
