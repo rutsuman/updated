@@ -1853,6 +1853,14 @@ async function loadActiveStudentsForQuest(questId) {
     const completedContainer = document.getElementById('completed-students-list');
     if (!activeContainer || !completedContainer) return;
 
+    // Wire the "Assign Quest" button (clone to avoid stale listeners)
+    const assignBtn = document.getElementById('assign-quest-btn');
+    if (assignBtn) {
+        const fresh = assignBtn.cloneNode(true);
+        assignBtn.parentNode.replaceChild(fresh, assignBtn);
+        fresh.addEventListener('click', () => openAssignQuestOverlay(questId));
+    }
+
     const students = await getStudentsCached();
     if (!students.length) {
         activeContainer.innerHTML = '<div class="no-data">No students found</div>';
@@ -2684,7 +2692,7 @@ async function loadStudentDetails(userId, studentName) {
             getAllQuestsForTeacher(),
             window.supabase
                 .from('student_progress')
-                .select('completed_quests, quest_grades, earned_badges, quest_accepted, quest_start_times, standard_deductions, self_assessments')
+                .select('completed_quests, quest_grades, earned_badges, quest_accepted, quest_start_times, standard_deductions, self_assessments, exp_total, exp_log')
                 .eq('user_id', userId)
                 .maybeSingle(),
             window.supabase
@@ -2720,6 +2728,266 @@ async function loadStudentDetails(userId, studentName) {
     }
 }
 
+// ==========================================================
+// 9a. EXP DISPLAY HELPERS
+// ==========================================================
+// These are ports of the student-side helpers. They're pure functions
+// (no reliance on student-side globals), parameterized so they can be
+// called with a teacher-side quest map and badge list.
+
+/**
+ * Level curve — identical to the student side.
+ *   Level N requires 100 * N * (N+1) / 2 total EXP to reach.
+ *   L0 = 0–99, L1 = 100–299, L2 = 300–599, L3 = 600–999, ...
+ */
+function getLevelInfo(totalExp) {
+    const total = Number(totalExp) || 0;
+    let level = 0;
+    while (true) {
+        const nextLevelTotal = 100 * (level + 1) * (level + 2) / 2;
+        if (total < nextLevelTotal) break;
+        level++;
+    }
+    const currentLevelFloor = level === 0 ? 0 : (100 * level * (level + 1) / 2);
+    const nextLevelCeil = 100 * (level + 1) * (level + 2) / 2;
+    return {
+        level,
+        current: total - currentLevelFloor,
+        needed: nextLevelCeil - currentLevelFloor,
+        total
+    };
+}
+
+/**
+ * Human-readable label for an EXP source key.
+ * Signature: (key, questsMap, badgesArray)
+ */
+function labelForExpKey(key, questsMap, badgesData) {
+    // ---- Quest completion ----
+    if (key.startsWith("quest:")) {
+        const qid = key.slice(6);
+        const q = questsMap[qid];
+        return q ? `${qid} · ${q.title}` : `${qid} (deleted quest)`;
+    }
+    // ---- Before deadline ----
+    if (key.startsWith("before_time:")) {
+        const qid = key.slice("before_time:".length);
+        const q = questsMap[qid];
+        return `Before-deadline · ${q ? q.title : qid}`;
+    }
+    // ---- Upload bonus (per quest per week) ----
+    if (key.startsWith("upload:")) {
+        const rest = key.slice("upload:".length);
+        const idx = rest.lastIndexOf(":");
+        const qid = idx >= 0 ? rest.slice(0, idx) : rest;
+        const week = idx >= 0 ? rest.slice(idx + 1) : "";
+        const q = questsMap[qid];
+        return `Upload bonus · ${q ? q.title : qid} · week ${week}`;
+    }
+    // ---- First upload of the week ----
+    if (key.startsWith("first_upload:")) {
+        return `First upload · week ${key.slice("first_upload:".length)}`;
+    }
+    // ---- All standards ≥ 3.5 ----
+    if (key.startsWith("high_standards:")) {
+        const qid = key.slice("high_standards:".length);
+        const q = questsMap[qid];
+        return `All standards ≥ 3.5 · ${q ? q.title : qid}`;
+    }
+    // ---- Achievement ----
+    if (key.startsWith("achievement:")) {
+        return `Achievement · ${key.slice("achievement:".length)}`;
+    }
+    // ---- Badge ----
+    if (key.startsWith("badge:")) {
+        const rest = key.slice("badge:".length);
+        const tIndex = rest.lastIndexOf(":t");
+        const badgeId = tIndex >= 0 ? rest.slice(0, tIndex) : rest;
+        const tierSuffix = tIndex >= 0 ? ` (tier ${rest.slice(tIndex + 2)})` : "";
+        if (Array.isArray(badgesData)) {
+            const b = badgesData.find(b => b.id === badgeId);
+            if (b) return `Badge · ${b.name}${tierSuffix}`;
+        }
+        return key;
+    }
+    // ---- Gift ----
+    if (key.startsWith("gift:")) {
+        const rest = key.slice(5);
+        const idx = rest.indexOf(":");
+        if (idx < 0) return key;
+        const week = rest.slice(0, idx);
+        const qid = rest.slice(idx + 1);
+        const q = questsMap[qid];
+        return `Gift · week ${week} · ${q ? q.title : qid}`;
+    }
+    // ---- Art battle ----
+    if (key.startsWith("vote:")) {
+        return `Art battle vote`;
+    }
+    if (key.startsWith("submit_battle:")) {
+        return `Art battle submission`;
+    }
+    return key;
+}
+
+/**
+ * Group key → which display bucket an entry belongs to.
+ */
+function groupForExpKey(key) {
+    if (key.startsWith("quest:"))         return "quest";
+    if (key.startsWith("before_time:"))   return "timing";
+    if (key.startsWith("upload:"))        return "timing";
+    if (key.startsWith("first_upload:"))  return "timing";
+    if (key.startsWith("high_standards:"))return "timing";
+    if (key.startsWith("achievement:"))   return "achievement";
+    if (key.startsWith("badge:"))         return "badge";
+    if (key.startsWith("gift:"))          return "gift";
+    if (key.startsWith("vote:"))          return "battle";
+    if (key.startsWith("submit_battle:")) return "battle";
+    return "other";
+}
+
+/**
+ * Turn a raw expLog into grouped, labeled entries.
+ * Returns an array of groups, each with { key, label, entries[] }.
+ *   entry = { rawKey, label, amount }
+ */
+function buildExpBreakdownGroups(expLog, questsMap, badgesData) {
+    const groupDefs = [
+        { key: "quest",       label: "Quest completion",         entries: [] },
+        { key: "timing",      label: "Upload & timing bonuses",  entries: [] },
+        { key: "achievement", label: "Achievement bonuses",      entries: [] },
+        { key: "badge",       label: "Badge bonuses",            entries: [] },
+        { key: "gift",        label: "Gift bonuses",             entries: [] },
+        { key: "battle",      label: "Art battle & community",   entries: [] },
+        { key: "other",       label: "Other",                    entries: [] }
+    ];
+    const byKey = {};
+    groupDefs.forEach(g => { byKey[g.key] = g; });
+
+    for (const [key, amount] of Object.entries(expLog || {})) {
+        if (!amount) continue;
+        const groupKey = groupForExpKey(key);
+        const bucket = byKey[groupKey] || byKey.other;
+        bucket.entries.push({
+            rawKey: key,
+            label: labelForExpKey(key, questsMap, badgesData),
+            amount
+        });
+    }
+
+    // Sort entries within each group: highest amount first, then alpha
+    groupDefs.forEach(g => {
+        g.entries.sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label));
+    });
+
+    return groupDefs;
+}
+
+/**
+ * Renders the Experience block for a student profile.
+ * Called from renderStudentProfileData.
+ */
+function renderStudentExp(expTotal, expLog, allQuests, badgesData) {
+    const container = document.getElementById('teacher-exp-container');
+    if (!container) return;
+
+    const total = Number(expTotal) || 0;
+    const log = expLog || {};
+    const info = getLevelInfo(total);
+    const pct = info.needed > 0
+        ? Math.max(0, Math.min(100, (info.current / info.needed) * 100))
+        : 0;
+
+    // Header + bar always visible. Breakdown hidden by default.
+    container.innerHTML = `
+        <div class="teacher-exp-header">
+            <div class="teacher-exp-level">Lv ${info.level}</div>
+            <div class="teacher-exp-bar-wrap">
+                <div class="teacher-exp-bar">
+                    <div class="teacher-exp-bar-fill" style="width: ${pct.toFixed(2)}%"></div>
+                </div>
+                <div class="teacher-exp-numbers">
+                    <span>${info.current} / ${info.needed} to next level</span>
+                    <span class="teacher-exp-total">${total} EXP total</span>
+                </div>
+            </div>
+            <button class="teacher-exp-toggle" id="teacher-exp-toggle" title="Show EXP breakdown">▼</button>
+        </div>
+        <div class="teacher-exp-breakdown" id="teacher-exp-breakdown" style="display: none;"></div>
+    `;
+
+    const toggle = container.querySelector('#teacher-exp-toggle');
+    const breakdown = container.querySelector('#teacher-exp-breakdown');
+    let rendered = false;
+
+    toggle.addEventListener('click', () => {
+        const isOpen = breakdown.style.display !== 'none';
+        if (isOpen) {
+            breakdown.style.display = 'none';
+            toggle.textContent = '▼';
+            toggle.title = 'Show EXP breakdown';
+            return;
+        }
+        if (!rendered) {
+            breakdown.innerHTML = renderExpBreakdownHtml(log, allQuests, badgesData, total);
+            // Wire per-group accordion toggles
+            breakdown.querySelectorAll('.teacher-exp-group-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const group = header.closest('.teacher-exp-group');
+                    const isExpanded = group.classList.toggle('expanded');
+                    header.querySelector('.teacher-exp-group-arrow').textContent = isExpanded ? '▼' : '▶';
+                });
+            });
+            rendered = true;
+        }
+        breakdown.style.display = 'block';
+        toggle.textContent = '▲';
+        toggle.title = 'Hide EXP breakdown';
+    });
+}
+
+/**
+ * Returns the HTML for the breakdown panel: the total line and
+ * one collapsible group per bucket that has entries.
+ */
+function renderExpBreakdownHtml(expLog, allQuests, badgesData, totalExp) {
+    const groups = buildExpBreakdownGroups(expLog, allQuests, badgesData);
+    const nonEmpty = groups.filter(g => g.entries.length > 0);
+
+    if (nonEmpty.length === 0) {
+        return `<div class="teacher-exp-empty">
+            No EXP earned yet.<br>
+            Complete and get graded on a quest to start earning.
+        </div>`;
+    }
+
+    let html = '';
+    for (const g of nonEmpty) {
+        const groupTotal = g.entries.reduce((s, e) => s + e.amount, 0);
+        const rows = g.entries.map(e => `
+            <div class="teacher-exp-row">
+                <span class="teacher-exp-row-label" title="${escapeHtml(e.rawKey)}">${escapeHtml(e.label)}</span>
+                <span class="teacher-exp-row-amount">+${e.amount}</span>
+            </div>
+        `).join('');
+
+        html += `
+            <div class="teacher-exp-group" data-group="${escapeHtml(g.key)}">
+                <div class="teacher-exp-group-header" role="button" tabindex="0">
+                    <span class="teacher-exp-group-arrow">▶</span>
+                    <span class="teacher-exp-group-label">${escapeHtml(g.label)}</span>
+                    <span class="teacher-exp-group-count">(${g.entries.length})</span>
+                    <span class="teacher-exp-group-total">+${groupTotal}</span>
+                </div>
+                <div class="teacher-exp-group-body">${rows}</div>
+            </div>
+        `;
+    }
+
+    return html;
+}
+
 // --- Profile tab (sync) ---
 function renderStudentProfileData(profile, progress, badgesData, allQuests) {
     document.getElementById('teacher-profile-avatar').src = profile.avatar_url || 'profile.png';
@@ -2736,8 +3004,12 @@ function renderStudentProfileData(profile, progress, badgesData, allQuests) {
     const earnedBadges = progress?.earned_badges || {};
     const standardDeductions = progress?.standard_deductions || {};
 
+    // --- EXP data (new) ---
+    const expTotal = progress?.exp_total || 0;
+    const expLog = progress?.exp_log || {};
+
     renderStudentStandardsTable(questGrades, completedQuests, isMS, allQuests);
-    renderStudentRewards(questGrades, standardDeductions);
+    renderStudentExp(expTotal, expLog, allQuests, badgesData);
     renderStudentBadges(earnedBadges, badgesData, profile.name);
 }
 
@@ -9253,6 +9525,453 @@ async function importICSEvents(events, applyToAll) {
     invalidateTabCache('schedule');
     await loadScheduleData();
     alert(`Imported ${events.length} event(s).`);
+}
+
+// ==========================================================
+// 20b. ASSIGN QUEST — overlay shell (open, populate, close)
+// ==========================================================
+
+let _assignQuestContext = null;
+// Shape: { questId, quest, selectedStudents: Set<uuid> }
+
+async function openAssignQuestOverlay(questId) {
+    const allQuests = await getAllQuestsForTeacher();
+    const quest = allQuests[questId];
+    if (!quest) {
+        alert("Quest not found.");
+        return;
+    }
+
+    // Reset context every time the overlay opens
+    _assignQuestContext = {
+        questId,
+        quest,
+        selectedStudents: new Set()
+    };
+
+    // Title
+    const titleEl = document.getElementById('assign-quest-title');
+    if (titleEl) {
+        const mvpTag = quest.style === 'mvp' ? ' (MVP)' : '';
+        titleEl.textContent = `Quest: ${quest.title || questId}${mvpTag}`;
+    }
+
+    // Populate class dropdown — same grade-level filter used elsewhere
+    const selectEl = document.getElementById('assign-quest-class-select');
+    if (selectEl) {
+        selectEl.innerHTML = '<option value="">-- Select a class --</option>';
+        const visibleClasses = (teacherClasses || []).filter(cls => {
+            const lvl = cls.grade_level || 'hs';
+            return lvl === currentGradeLevel;
+        });
+        if (visibleClasses.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = `No ${currentGradeLevel.toUpperCase()} classes found`;
+            opt.disabled = true;
+            selectEl.appendChild(opt);
+        } else {
+            visibleClasses.forEach(cls => {
+                const opt = document.createElement('option');
+                opt.value = cls.id;
+                opt.textContent = cls.name;
+                selectEl.appendChild(opt);
+            });
+        }
+    }
+
+    // Reset student list to placeholder
+    const listEl = document.getElementById('assign-quest-student-list');
+    if (listEl) {
+        listEl.innerHTML = '<div class="assign-quest-placeholder">Select a class to see students</div>';
+    }
+
+    // Reset summary + message
+    const summaryEl = document.getElementById('assign-quest-summary');
+    if (summaryEl) summaryEl.textContent = '';
+    const msgEl = document.getElementById('assign-quest-message');
+    if (msgEl) { msgEl.textContent = ''; msgEl.style.color = ''; }
+
+    // Wire listeners (idempotent — safe to call every open)
+    wireAssignQuestOverlay();
+
+    // Show
+    const overlay = document.getElementById('assign-quest-overlay');
+    if (overlay) overlay.style.display = 'flex';
+}
+
+function closeAssignQuestOverlay() {
+    const overlay = document.getElementById('assign-quest-overlay');
+    if (overlay) overlay.style.display = 'none';
+    _assignQuestContext = null;
+}
+
+let _assignQuestWired = false;
+
+function wireAssignQuestOverlay() {
+    // We only attach these listeners once per page load. Because the elements
+    // never get replaced (we only swap innerHTML of child containers), plain
+    // addEventListener is safe here.
+    if (_assignQuestWired) return;
+    _assignQuestWired = true;
+
+    // Close button (✕)
+    document.getElementById('assign-quest-close')
+        ?.addEventListener('click', closeAssignQuestOverlay);
+
+    // Cancel button
+    document.getElementById('assign-quest-cancel')
+        ?.addEventListener('click', closeAssignQuestOverlay);
+
+    // Backdrop click
+    const overlay = document.getElementById('assign-quest-overlay');
+    if (overlay) {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeAssignQuestOverlay();
+        });
+    }
+
+    // Class dropdown change → load and render students
+    const selectEl = document.getElementById('assign-quest-class-select');
+    if (selectEl) {
+        selectEl.addEventListener('change', async (e) => {
+            const classId = e.target.value;
+            await renderAssignQuestStudentList(classId);
+        });
+    }
+
+        // Confirm button → save assignments
+    document.getElementById('assign-quest-confirm')
+        ?.addEventListener('click', confirmAssignQuest);
+
+    // ESC key
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const ov = document.getElementById('assign-quest-overlay');
+        if (ov && ov.style.display === 'flex') {
+            closeAssignQuestOverlay();
+        }
+    });
+}
+
+/**
+ * Loads and renders the student list for the selected class.
+ * Re-fetches progress every time the class changes, so the reason
+ * tooltips always reflect current state.
+ */
+async function renderAssignQuestStudentList(classId) {
+    const listEl = document.getElementById('assign-quest-student-list');
+    if (!listEl) return;
+
+    if (!classId || !_assignQuestContext) {
+        listEl.innerHTML = '<div class="assign-quest-placeholder">Select a class to see students</div>';
+        return;
+    }
+
+    listEl.innerHTML = '<div class="assign-quest-placeholder">Loading…</div>';
+
+    // Clear any previous selection state — different class, different roster
+    _assignQuestContext.selectedStudents.clear();
+
+    // --- 1. Students in this class ---
+    const allStudents = await getStudentsCached();
+    const classStudents = (allStudents || [])
+        .filter(s => s.class_id === classId)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (classStudents.length === 0) {
+        listEl.innerHTML = '<div class="assign-quest-placeholder">No students in this class</div>';
+        updateAssignQuestSummary(0, 0);
+        return;
+    }
+
+    // --- 2. Their progress rows, in one batch ---
+    const ids = classStudents.map(s => s.id);
+    const { data: progressRows, error: progressError } = await window.supabase
+        .from('student_progress')
+        .select('user_id, completed_quests, quest_accepted')
+        .in('user_id', ids);
+
+    if (progressError) {
+        console.error('[assign-quest] progress load failed:', progressError);
+        listEl.innerHTML = '<div class="assign-quest-placeholder">Error loading student progress</div>';
+        return;
+    }
+
+    const progressByUser = new Map((progressRows || []).map(p => [p.user_id, p]));
+
+    // --- 3. Quest info we need for the eligibility rules ---
+    const quest = _assignQuestContext.quest;
+    const questId = _assignQuestContext.questId;
+    const isMVP = quest.style === 'mvp';
+    const prereqIds = isMVP ? (quest.prerequisites || []) : [];
+    const neededPrereqs = Math.min(2, prereqIds.length);
+
+    // Teacher's full quest map — needed to check if a student's
+    // "accepted" quest is actually a timer quest (which are the only
+    // ones that block acceptance).
+    const allQuests = await getAllQuestsForTeacher();
+
+    // --- 4. Render ---
+    listEl.innerHTML = '';
+    let enabledCount = 0;
+
+    for (const student of classStudents) {
+        const progress = progressByUser.get(student.id) || {};
+        const completed = progress.completed_quests || {};
+        const accepted = progress.quest_accepted || {};
+
+        const isCompleted = completed[questId] === true;
+        const isAlreadyAccepted = accepted[questId] === true;
+
+        // Find any OTHER accepted-and-not-completed timer quest
+        let activeQuestId = null;
+        for (const [qid, acc] of Object.entries(accepted)) {
+            if (acc !== true) continue;
+            if (completed[qid] === true) continue;
+            if (!allQuests[qid]?.timer) continue;   // non-timer quests don't block
+            if (qid === questId) continue;
+            activeQuestId = qid;
+            break;
+        }
+
+        // MVP prerequisite count
+        const donePrereqs = prereqIds.filter(pid => completed[pid] === true).length;
+
+        // --- Decide status ---
+        let status, reason = '';
+        if (isCompleted) {
+            status = 'completed';
+            reason = 'Already completed';
+        } else if (isAlreadyAccepted) {
+            status = 'accepted';
+            reason = 'Already assigned';
+        } else if (activeQuestId) {
+            status = 'busy';
+            const activeTitle = allQuests[activeQuestId]?.title || activeQuestId;
+            reason = `Active quest: ${activeTitle}`;
+        } else if (isMVP && donePrereqs < neededPrereqs) {
+            status = 'prereq';
+            reason = `Finished ${donePrereqs}/${neededPrereqs} required`;
+        } else {
+            status = 'eligible';
+        }
+
+        const isEligible = status === 'eligible';
+        if (isEligible) enabledCount++;
+
+        // --- Build the row ---
+        const row = document.createElement('label');
+        row.className = 'assign-quest-student' + (isEligible ? '' : ' disabled');
+        row.dataset.userId = student.id;
+        row.title = reason || 'Click to select';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.dataset.userId = student.id;
+        cb.disabled = !isEligible;
+
+        const img = document.createElement('img');
+        img.src = student.avatar_url || 'profile.png';
+        img.alt = student.name || '';
+
+        const info = document.createElement('div');
+        info.className = 'assign-quest-student-info';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'assign-quest-student-name';
+        nameEl.textContent = student.name || 'Unnamed';
+
+        info.appendChild(nameEl);
+
+        if (reason) {
+            const reasonEl = document.createElement('div');
+            reasonEl.className = 'assign-quest-student-reason';
+            reasonEl.textContent = reason;
+            info.appendChild(reasonEl);
+        }
+
+        row.appendChild(cb);
+        row.appendChild(img);
+        row.appendChild(info);
+
+        // Toggle on checkbox change (label click also triggers this)
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                _assignQuestContext.selectedStudents.add(student.id);
+                row.classList.add('selected');
+            } else {
+                _assignQuestContext.selectedStudents.delete(student.id);
+                row.classList.remove('selected');
+            }
+            updateAssignQuestSummary(enabledCount, classStudents.length);
+        });
+
+        listEl.appendChild(row);
+    }
+
+    updateAssignQuestSummary(enabledCount, classStudents.length);
+}
+
+/**
+ * Updates the summary line under the student list.
+ * Shows:  "N of M eligible students selected"
+ */
+function updateAssignQuestSummary(enabledCount, totalCount) {
+    const el = document.getElementById('assign-quest-summary');
+    if (!el) return;
+
+    if (!_assignQuestContext) {
+        el.textContent = '';
+        return;
+    }
+
+    const selectedCount = _assignQuestContext.selectedStudents.size;
+
+    if (totalCount === 0) {
+        el.textContent = '';
+        return;
+    }
+
+    el.textContent = `${selectedCount} of ${enabledCount} eligible selected (${totalCount} student${totalCount === 1 ? '' : 's'} in class)`;
+}
+
+/**
+ * Persists the teacher's assignment choices.
+ *
+ * For each selected student, we:
+ *   1. Read their current student_progress row (so we don't clobber
+ *      completed_quests, quest_grades, earned_badges, etc.)
+ *   2. Merge { questId: true } into quest_accepted
+ *   3. Merge { questId: nowISO } into quest_start_times
+ *   4. Upsert the whole row back
+ *
+ * Uses upsert so a student who has never opened a quest (no row yet)
+ * gets one created for them, and existing rows are preserved.
+ */
+async function confirmAssignQuest() {
+    const ctx = _assignQuestContext;
+    if (!ctx) return;
+
+    const selected = Array.from(ctx.selectedStudents);
+    if (selected.length === 0) {
+        const msg = document.getElementById('assign-quest-message');
+        if (msg) {
+            msg.textContent = 'Select at least one student first.';
+            msg.style.color = '#ff8888';
+        }
+        return;
+    }
+
+    // Which class are we writing to? Needed for the confirmation text.
+    const classId = document.getElementById('assign-quest-class-select')?.value;
+    const className = (teacherClasses || []).find(c => c.id === classId)?.name || 'this class';
+
+    const questTitle = ctx.quest.title || ctx.questId;
+    const confirmed = confirm(
+        `Assign "${questTitle}" to ${selected.length} student${selected.length === 1 ? '' : 's'} in ${className}?\n\n` +
+        `This will mark the quest as accepted and start their timer.`
+    );
+    if (!confirmed) return;
+
+    // Loading state
+    const confirmBtn = document.getElementById('assign-quest-confirm');
+    const cancelBtn = document.getElementById('assign-quest-cancel');
+    const msg = document.getElementById('assign-quest-message');
+    const originalText = confirmBtn?.textContent;
+
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving…'; }
+    if (cancelBtn) cancelBtn.disabled = true;
+    if (msg) { msg.textContent = 'Saving…'; msg.style.color = '#ffd700'; }
+
+    const nowIso = new Date().toISOString();
+    let okCount = 0;
+    let failCount = 0;
+
+    // One batch read so we're not firing N sequential selects
+    const { data: rows, error: readError } = await window.supabase
+        .from('student_progress')
+        .select('user_id, completed_quests, quest_grades, earned_badges, quest_accepted, quest_start_times, self_assessments')
+        .in('user_id', selected);
+
+    if (readError) {
+        console.error('[assign-quest] batch read failed:', readError);
+        if (msg) { msg.textContent = 'Error reading student data: ' + readError.message; msg.style.color = '#ff8888'; }
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
+        if (cancelBtn) cancelBtn.disabled = false;
+        return;
+    }
+
+    const byUser = new Map((rows || []).map(r => [r.user_id, r]));
+
+    // Fire all upserts in parallel
+    const results = await Promise.all(selected.map(async (userId) => {
+        const row = byUser.get(userId) || {};
+
+        // Merge in the new entries, preserving everything else
+        const accepted = { ...(row.quest_accepted || {}) };
+        const startTimes = { ...(row.quest_start_times || {}) };
+
+        accepted[ctx.questId] = true;
+        startTimes[ctx.questId] = nowIso;
+
+        const payload = {
+            user_id: userId,
+            completed_quests:  row.completed_quests  || {},
+            quest_grades:      row.quest_grades      || {},
+            earned_badges:     row.earned_badges     || {},
+            quest_accepted:    accepted,
+            quest_start_times: startTimes,
+            self_assessments:  row.self_assessments  || {},
+            updated_at:        nowIso
+        };
+
+        const { error } = await window.supabase
+            .from('student_progress')
+            .upsert(payload, { onConflict: 'user_id' });
+
+        if (error) {
+            console.error('[assign-quest] upsert failed for', userId, error);
+            return false;
+        }
+        return true;
+    }));
+
+    okCount = results.filter(Boolean).length;
+    failCount = results.length - okCount;
+
+    // Restore buttons
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
+    if (cancelBtn) cancelBtn.disabled = false;
+
+    if (failCount === 0) {
+        if (msg) {
+            msg.textContent = `✓ Assigned to ${okCount} student${okCount === 1 ? '' : 's'}.`;
+            msg.style.color = '#4caf50';
+        }
+    } else {
+        if (msg) {
+            msg.textContent = `Assigned to ${okCount}, but ${failCount} failed. Check console for details.`;
+            msg.style.color = '#ff8888';
+        }
+    }
+
+    // Invalidate caches that could be stale
+    invalidateStudentsCache();
+    invalidateTabCache('students');
+    invalidateTabCache('analytics');
+
+    // Give the teacher a beat to read the message, then close + refresh
+    setTimeout(async () => {
+        closeAssignQuestOverlay();
+
+        // If the Active Students tab is currently visible, refresh it
+        // so the newly-assigned students show up in the list.
+        const studentsTab = document.getElementById('quest-students-tab');
+        if (studentsTab && studentsTab.style.display !== 'none' && currentQuestData) {
+            await loadActiveStudentsForQuest(currentQuestData.id);
+        }
+    }, 1500);
 }
 
 
