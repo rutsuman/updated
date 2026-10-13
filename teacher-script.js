@@ -2692,8 +2692,7 @@ async function loadStudentDetails(userId, studentName) {
             getAllQuestsForTeacher(),
             window.supabase
                 .from('student_progress')
-                .select('completed_quests, quest_grades, earned_badges, quest_accepted, quest_start_times, standard_deductions, self_assessments, exp_total, exp_log')
-                .eq('user_id', userId)
+                .select('completed_quests, quest_grades, earned_badges, quest_accepted, quest_start_times, standard_deductions, self_assessments, exp_total, exp_log, current_level, level_reached_at')                .eq('user_id', userId)
                 .maybeSingle(),
             window.supabase
                 .from('student_works')
@@ -2888,7 +2887,7 @@ function buildExpBreakdownGroups(expLog, questsMap, badgesData) {
  * Renders the Experience block for a student profile.
  * Called from renderStudentProfileData.
  */
-function renderStudentExp(expTotal, expLog, allQuests, badgesData) {
+function renderStudentExp(expTotal, expLog, allQuests, badgesData, levelReachedAt) {
     const container = document.getElementById('teacher-exp-container');
     if (!container) return;
 
@@ -2900,9 +2899,24 @@ function renderStudentExp(expTotal, expLog, allQuests, badgesData) {
         : 0;
 
     // Header + bar always visible. Breakdown hidden by default.
+        // --- Format the level-reached date ---
+    const levelDateText = levelReachedAt
+        ? new Date(levelReachedAt).toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric', year: 'numeric'
+          })
+        : '—';
+
+    const levelTitle = levelReachedAt
+        ? `Lv ${info.level} reached on ${levelDateText}`
+        : `Lv ${info.level}`;
+
+    // Header + bar always visible. Breakdown hidden by default.
     container.innerHTML = `
         <div class="teacher-exp-header">
-            <div class="teacher-exp-level">Lv ${info.level}</div>
+            <div class="teacher-exp-level-wrap">
+                <div class="teacher-exp-level" title="${escapeHtml(levelTitle)}">Lv ${info.level}</div>
+                <div class="teacher-exp-level-date">${escapeHtml(levelDateText)}</div>
+            </div>
             <div class="teacher-exp-bar-wrap">
                 <div class="teacher-exp-bar">
                     <div class="teacher-exp-bar-fill" style="width: ${pct.toFixed(2)}%"></div>
@@ -3009,7 +3023,7 @@ function renderStudentProfileData(profile, progress, badgesData, allQuests) {
     const expLog = progress?.exp_log || {};
 
     renderStudentStandardsTable(questGrades, completedQuests, isMS, allQuests);
-    renderStudentExp(expTotal, expLog, allQuests, badgesData);
+    renderStudentExp(expTotal, expLog, allQuests, badgesData, progress?.level_reached_at || null);
     renderStudentBadges(earnedBadges, badgesData, profile.name);
 }
 
