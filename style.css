@@ -5951,14 +5951,29 @@ input:focus,
     gap: 14px;
 }
 
+.teacher-exp-level-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 80px;
+    text-align: center;
+}
+
 .teacher-exp-level {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: bold;
     color: #ffd700;
-    flex-shrink: 0;
-    min-width: 60px;
-    text-align: center;
     line-height: 1;
+}
+
+.teacher-exp-level-date {
+    font-size: 10px;
+    color: #aaa;
+    margin-top: 4px;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
 }
 
 .teacher-exp-bar-wrap {
@@ -6127,6 +6142,7 @@ input:focus,
     background: rgba(255, 215, 0, 0.5);
     border-radius: 3px;
 }
+
 
 /* ==============================================================================================================
                                           QUEST TAB STYLES
@@ -6601,6 +6617,14 @@ input:focus,
     padding: 20px;
     color: #fff;
     position: relative;
+}
+
+.assign-quest-student.prereq-override {
+    border-left: 3px solid #ffa726;
+    background: rgba(255, 167, 38, 0.08);
+}
+.assign-quest-student.prereq-override .assign-quest-student-reason {
+    color: #ffa726;
 }
 /* ==============================================================================================================
                                          END OF QUEST TAB STYLES
