@@ -9752,8 +9752,11 @@ async function renderAssignQuestStudentList(classId) {
         // MVP prerequisite count
         const donePrereqs = prereqIds.filter(pid => completed[pid] === true).length;
 
-        // --- Decide status ---
+                // --- Decide status ---
+        // NOTE: MVP prerequisite counts no longer block teacher assignment.
+        // The teacher may override; we just surface the gap as a warning.
         let status, reason = '';
+        let prereqOverride = false;
         if (isCompleted) {
             status = 'completed';
             reason = 'Already completed';
@@ -9764,19 +9767,21 @@ async function renderAssignQuestStudentList(classId) {
             status = 'busy';
             const activeTitle = allQuests[activeQuestId]?.title || activeQuestId;
             reason = `Active quest: ${activeTitle}`;
-        } else if (isMVP && donePrereqs < neededPrereqs) {
-            status = 'prereq';
-            reason = `Finished ${donePrereqs}/${neededPrereqs} required`;
         } else {
             status = 'eligible';
+            if (isMVP && donePrereqs < neededPrereqs) {
+                prereqOverride = true;
+                reason = `⚠ Teacher override — finished ${donePrereqs}/${neededPrereqs} required`;
+            }
         }
 
         const isEligible = status === 'eligible';
         if (isEligible) enabledCount++;
 
-        // --- Build the row ---
         const row = document.createElement('label');
-        row.className = 'assign-quest-student' + (isEligible ? '' : ' disabled');
+        row.className = 'assign-quest-student'
+            + (isEligible ? '' : ' disabled')
+            + (prereqOverride ? ' prereq-override' : '');
         row.dataset.userId = student.id;
         row.title = reason || 'Click to select';
 
