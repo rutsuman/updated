@@ -1887,6 +1887,7 @@ select:focus {
   display: none;
 }
 
+
 /* ============================================================
    REWARDS OVERLAY — EXP BREAKDOWN
    ============================================================ */
@@ -5567,9 +5568,217 @@ input:focus,
 }
 
 
+/* ==========================================================
+   WEIGHTED GRADES — "Average Grade by Domain" card (NCAS)
+   ========================================================== */
+
+/* When the grid is in weighted mode, collapse the parent grid
+   to a single column so the two stacked blocks (overall + 5 cells)
+   flow vertically. */
+#analytics-avg-grade-grid.weighted-grade-grid-mode {
+    display: block;
+}
+
+/* --- Overall cell (big, on top) --- */
+.weighted-grade-overall {
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.18), rgba(255, 215, 0, 0.06));
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: 10px;
+    padding: 18px 20px;
+    text-align: center;
+    margin-bottom: 14px;
+}
+
+.weighted-grade-overall-label {
+    font-size: 13px;
+    color: #ffd700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+
+.weighted-grade-overall-value {
+    font-size: 42px;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.05;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.weighted-grade-overall-sub {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 6px;
+}
+
+/* --- 5-category row (below) --- */
+.weighted-grade-category-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+}
+
+@media (max-width: 900px) {
+    .weighted-grade-category-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+}
+
+.weighted-grade-cell {
+    border-radius: 8px;
+    padding: 12px 10px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.weighted-grade-cell-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.25;
+    min-height: 28px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.weighted-grade-cell-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 4px;
+}
+
+.weighted-grade-cell-weight {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.5px;
+}
+
+/* Per-cell accent colors (subtle borders matching weight importance) */
+.weighted-grade-cell.wg-cell-resolved { border-left: 3px solid #ffd700; }
+.weighted-grade-cell.wg-cell-artstudy { border-left: 3px solid #4ecdc4; }
+.weighted-grade-cell.wg-cell-research { border-left: 3px solid #aa96da; }
+.weighted-grade-cell.wg-cell-collab   { border-left: 3px solid #f38181; }
+.weighted-grade-cell.wg-cell-material { border-left: 3px solid #95e1d3; }
 
 
+/* ==========================================================
+   WEIGHTED GRADES — students table cell (NCAS)
+   ========================================================== */
 
+.weighted-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+    min-width: 300px;
+}
+
+@media (max-width: 1100px) {
+    .weighted-mini-grid {
+        grid-template-columns: repeat(3, 1fr);
+        min-width: 160px;
+    }
+}
+
+.weighted-mini-cell {
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
+    padding: 4px 4px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Overall gets a subtle gold accent so it reads as the headline number */
+.weighted-mini-cell-overall {
+    background: rgba(255, 215, 0, 0.14);
+    border-color: rgba(255, 215, 0, 0.4);
+}
+
+.weighted-mini-label {
+    font-size: 9px;
+    letter-spacing: 0.3px;
+    color: rgba(255, 255, 255, 0.65);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.weighted-mini-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.1;
+}
+
+.weighted-mini-cell-overall .weighted-mini-value {
+    color: #ffd700;
+    font-size: 14px;
+}
+
+/* ==========================================================
+   QUEST ANALYTICS — collapsible accordion + new Avg Grade cell
+   ========================================================== */
+
+.analytics-accordion {
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.analytics-accordion-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border: none;
+    color: #ffd700;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: left;
+    transition: background 0.15s ease;
+}
+
+.analytics-accordion-header:hover {
+    background: rgba(255, 215, 0, 0.08);
+}
+
+.analytics-accordion-title {
+    flex: 1;
+}
+
+.analytics-accordion-hint {
+    font-size: 12px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.3px;
+}
+
+.analytics-accordion-arrow {
+    font-size: 12px;
+    color: rgba(255, 215, 0, 0.85);
+    transition: transform 0.15s ease;
+}
+
+.analytics-accordion-body {
+    padding: 8px 12px 14px 12px;
+}
+
+.quest-avg-grade-value {
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.quest-avg-grade-empty {
+    color: rgba(255, 255, 255, 0.4);
+}
 
 
 
@@ -8992,6 +9201,87 @@ input:focus,
     color: #666;
     border: 1px dashed rgba(150, 150, 150, 0.3);
     font-weight: normal;
+}
+
+/* ==========================================================
+   WEIGHTED GRADES — student profile block (NCAS, dark theme)
+   ========================================================== */
+
+.teacher-profile-standards {
+    margin-top: 20px;
+}
+
+#teacher-weighted-grades {
+    margin-top: 10px;
+}
+
+.teacher-weighted-overall {
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.18), rgba(255, 215, 0, 0.06));
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+.teacher-weighted-overall-label {
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #ffd700;
+    margin-bottom: 6px;
+}
+
+.teacher-weighted-overall-value {
+    font-size: 36px;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.05;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.teacher-weighted-categories {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+@media (max-width: 900px) {
+    .teacher-weighted-categories {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    }
+}
+
+.teacher-weighted-cat {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 10px 8px;
+    text-align: center;
+}
+
+.teacher-weighted-cat-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.25;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+}
+
+.teacher-weighted-cat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 2px;
+}
+
+.teacher-weighted-cat-weight {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.5px;
 }
 
 /* ==============================================================================================================
