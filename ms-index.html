@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Artheim - Middle School Quest Map</title>
-    <link rel="stylesheet" href="style.css?v=20260725-ms">
+    <link rel="stylesheet" href="style.css?v=20261022">
     <link rel="icon" type="image/png" href="favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 </head>
@@ -127,6 +127,11 @@
     <div class="hotspot debug" style="top:8.7%; left:35%;" data-city="quest94"></div>
     <div class="hotspot debug" style="top:17%; left:39.9%;" data-city="quest95"></div>
     <div class="hotspot debug" style="top:20.9%; left:45.15%;" data-city="quest96"></div>
+
+    <!-- ============================================= -->
+    <!-- MATERIAL CARE                                 -->
+    <!-- ============================================= -->
+    <div class="hotspot debug" style="top:12.6%; left:60%;" data-city="quest97"></div>
 </div>
 
 <!------------------------ Active Quest Timer Button  --------------------------------------------------------->
@@ -673,30 +678,15 @@
             <canvas id="radar-chart"></canvas>
             <div id="radar-tooltip" class="radar-tooltip"></div>
           </div>
+          <!-- RIGHT COLUMN — Badges -->
           <div class="profile-right">
-            <h3>Assessment</h3>
-            <h3>Standards/Domains/Objectives</h3>
-            <ul id="standards-list"></ul>
-            <table id="standards-table">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>Formative Grade</th>
-                  <th>Summative (MVP) Grade</th>
-                </tr>
-              </thead>
-              <tbody id="standards-table-body">
-                <tr><td colspan="3">Loading...</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="badge-row">
             <div class="badge-title">
               <span class="filigree-left">⚜—————✧—————⚜</span>
               <span class="badge-title-text" id="badge-title">Artheim Art Badges</span>
               <span class="filigree-right">⚜—————✧—————⚜</span>
             </div>
-            <div class="badge-container" id="badge-container"></div>
+            <div class="badge-container" id="badge-container">
+            </div>
           </div>
         </div>
     </div>
@@ -870,6 +860,6 @@
    window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    console.log('Supabase initialized:', window.supabase);
 </script>
-<script src="ms-script.js"></script>
+<script src="script.js?v=20261022"></script>
 </body>
 </html>
