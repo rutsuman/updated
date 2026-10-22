@@ -7,7 +7,7 @@
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-10-22-2";
+const SESSION_VERSION = "2026-10-22-1";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
@@ -7713,12 +7713,23 @@ function showAvatarChangeUI() {
             const confirmInput = document.getElementById("student-confirm-password-input");
             const createBtn = document.getElementById("student-create-account-btn");
             const backLink = document.getElementById("back-to-login-link");
+            const teacherCode = document.getElementById("student-teacher-code");
+
+            // Hide account-creation fields (already there)
             if (nameInput) nameInput.style.display = "none";
             if (emailInput) emailInput.style.display = "none";
             if (passwordInput) passwordInput.style.display = "none";
             if (confirmInput) confirmInput.style.display = "none";
             if (createBtn) createBtn.style.display = "none";
             if (backLink) backLink.style.display = "none";
+
+            // NEW: hide the heading, subtitle, and teacher code
+            const headingEl = setupOverlay.querySelector(".scroll-body > h1");
+            const subtitleEl = setupOverlay.querySelector(".scroll-body > p");
+            if (headingEl) headingEl.style.display = "none";
+            if (subtitleEl) subtitleEl.style.display = "none";
+            if (teacherCode) teacherCode.style.display = "none";
+
             const characterDiv = document.getElementById("character-selection");
             if (characterDiv) characterDiv.style.display = "block";
             const charactersList = document.getElementById("characters-list");
@@ -7765,6 +7776,23 @@ function loadCharacterSelectionForProfile(container) {
             });
         })
         .catch(err => console.error("Failed to load characters.json:", err));
+}
+
+function resetSetupOverlayVisibility() {
+    const overlay = document.getElementById("student-setup-overlay");
+    if (!overlay) return;
+    ["student-name-input","student-email-input","student-password-input",
+     "student-confirm-password-input","student-create-account-btn",
+     "back-to-login-link","student-teacher-code"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = "";
+    });
+    const heading = overlay.querySelector(".scroll-body > h1");
+    const subtitle = overlay.querySelector(".scroll-body > p");
+    if (heading) heading.style.display = "";
+    if (subtitle) subtitle.style.display = "";
+    const characterDiv = document.getElementById("character-selection");
+    if (characterDiv) characterDiv.style.display = "none";
 }
 
 // ==============================================
