@@ -1316,7 +1316,26 @@ select:focus {
   display: block;
   border-radius: 0; /* Remove any rounding */
 }
-
+.profile-bat {
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    width: 42px;
+    height: auto;
+    pointer-events: none;
+    transform: translateX(-50%);
+    z-index: 10;
+    animation: batFlutter 3s ease-in-out infinite alternate;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+    mix-blend-mode: darken;
+}
+@keyframes batFlutter {
+    0%   { transform: translateX(-50%) translate(-22px, 0)   rotate(-8deg); }
+    25%  { transform: translateX(-50%) translate(-8px, -6px) rotate(4deg); }
+    50%  { transform: translateX(-50%) translate(0, -10px)   rotate(0deg); }
+    75%  { transform: translateX(-50%) translate(8px, -6px)  rotate(-4deg); }
+    100% { transform: translateX(-50%) translate(22px, 0)    rotate(8deg); }
+}
 
 
 
