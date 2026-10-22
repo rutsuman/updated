@@ -398,7 +398,6 @@
                     <div class="analytics-header-buttons">
                         <button id="print-all-compact-btn" class="export-btn">📄 Print All (No Quests)</button>
                         <button id="print-all-full-btn" class="export-btn">📚 Print All (With Quests)</button>
-                        <button id="export-analytics-btn" class="export-btn">📎 Export to CSV</button>
                     </div>
                 </div>
 
@@ -446,7 +445,7 @@
                                     <th>Class</th>
                                     <th>Quests Done</th>
                                     <th>Active Quest</th>
-                                    <th>Domain Grades</th>
+                                    <th>Average Grades</th>
                                     <th>Last Upload</th>
                                 </tr>
                             </thead>
@@ -461,27 +460,33 @@
                 </div>
 
                 <div class="analytics-quests">
-                    <h3>Most Popular Quests</h3>
-                    <div class="table-container">
-                        <table id="analytics-quests-table" class="analytics-table">
-                            <thead>
-                                <tr>
-                                    <th>Quest</th>
-                                    <th>Path</th>
-                                    <th>Type</th>
-                                    <th>Completed</th>
-                                    <th>Avg Time</th>
-                                    <th>Avg Grade</th>
-                                    <th>Popularity</th>
-                                </tr>
-                            </thead>
-                            <tbody id="analytics-quests-tbody">
-                                <tr><td colspan="7">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="analytics-pagination" id="analytics-pagination">
-                        <!-- Pagination controls will go here -->
+                    <div class="analytics-accordion" id="analytics-quests-accordion">
+                        <button class="analytics-accordion-header" id="analytics-quests-accordion-header" type="button">
+                            <span class="analytics-accordion-title">Most Popular Quests</span>
+                            <span class="analytics-accordion-hint">Click to load</span>
+                            <span class="analytics-accordion-arrow">▼</span>
+                        </button>
+                        <div class="analytics-accordion-body" id="analytics-quests-accordion-body" style="display: none;">
+                            <div class="table-container">
+                                <table id="analytics-quests-table" class="analytics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Quest</th>
+                                            <th>Path</th>
+                                            <th>Type</th>
+                                            <th>Avg Grade</th>
+                                            <th>Popularity</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="analytics-quests-tbody">
+                                        <tr><td colspan="5">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="analytics-pagination" id="analytics-pagination">
+                                <!-- Pagination controls will go here -->
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -526,8 +531,13 @@
                     </div>
 
                     <div class="teacher-profile-standards">
-                        <h4>Art Standards Grades</h4>
-                        <table class="rubric-table" id="teacher-standards-table">
+                        <h4 id="teacher-profile-standards-title">Art Standards Grades</h4>
+
+                        <!-- NCAS: weighted grades block -->
+                        <div id="teacher-weighted-grades" style="display: none;"></div>
+
+                        <!-- IB / IGCSE: existing standards table (shown only for those frameworks) -->
+                        <table class="rubric-table" id="teacher-standards-table" style="display: none;">
                             <thead>
                                 <tr>
                                     <th>Standard Code</th>
