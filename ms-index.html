@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Artheim - Middle School Quest Map</title>
-    <link rel="stylesheet" href="style.css?v=20261022">
+    <link rel="stylesheet" href="style.css?v=20261022b">
     <link rel="icon" type="image/png" href="favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 </head>
@@ -636,6 +636,8 @@
 <!-- Profile Button -->
 <button id="profile-btn" class="profile-btn">
   <img src="profile.png" alt="Profile" />
+    <img src="charimage/halloween-bat.gif" class="profile-bat" alt="" aria-hidden="true" />  <!--- Only during halloween---> 
+
   <div class="exp-bar-wrap" id="exp-bar-wrap">
     <div class="exp-bar">
         <div class="exp-bar-fill" id="exp-bar-fill"></div>
@@ -860,6 +862,6 @@
    window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    console.log('Supabase initialized:', window.supabase);
 </script>
-<script src="script.js?v=20261022"></script>
+<script src="ms-script.js?v=20261022b"></script>
 </body>
 </html>
