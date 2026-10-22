@@ -744,6 +744,7 @@ async function initializeFrameworkSelector() {
 
             if (success) {
                 currentFramework = newFramework;
+                invalidateQuestAnalyticsCache();
                 cachedQuests = null;
                 refreshQuestsCache();
                 invalidateAllQuestsCache();
@@ -3022,9 +3023,73 @@ function renderStudentProfileData(profile, progress, badgesData, allQuests) {
     const expTotal = progress?.exp_total || 0;
     const expLog = progress?.exp_log || {};
 
+    // Framework branch: NCAS gets the weighted block, IB/IGCSE keep the
+    // standards table. Both containers are in the DOM (Patch A); we show
+    // exactly one and rename the section header accordingly.
+    const teacherFramework = currentFramework || 'ncas';
+    const weightedContainer    = document.getElementById('teacher-weighted-grades');
+    const standardsTable       = document.getElementById('teacher-standards-table');
+    const sectionTitle         = document.getElementById('teacher-profile-standards-title');
+
+    if (teacherFramework === 'ncas') {
+        if (sectionTitle) sectionTitle.textContent = 'Weighted Grades';
+        if (weightedContainer) weightedContainer.style.display = 'block';
+        if (standardsTable) standardsTable.style.display = 'none';
+        renderTeacherWeightedGradesBlock(progress, allQuests);
+    } else {
+        if (sectionTitle) sectionTitle.textContent = 'Art Standards Grades';
+        if (weightedContainer) weightedContainer.style.display = 'none';
+        if (standardsTable) standardsTable.style.display = 'table';
     renderStudentStandardsTable(questGrades, completedQuests, isMS, allQuests);
+}
     renderStudentExp(expTotal, expLog, allQuests, badgesData, progress?.level_reached_at || null);
     renderStudentBadges(earnedBadges, badgesData, profile.name);
+}
+
+/**
+ * Renders the NCAS "Weighted Grades" block inside the student profile.
+ * Same 1-big + 5-small layout and same values as the printed report
+ * and the analytics views — all four surfaces are guaranteed to agree
+ * because they all call calculateStudentWeightedGrades().
+ */
+function renderTeacherWeightedGradesBlock(progress, allQuests) {
+    const container = document.getElementById('teacher-weighted-grades');
+    if (!container) return;
+
+    const completedQuests = progress?.completed_quests || {};
+    const questGrades     = progress?.quest_grades     || {};
+
+    const weighted = calculateStudentWeightedGrades(completedQuests, questGrades, allQuests);
+
+    const categories = [
+        { key: 'resolvedArtworks',    label: 'Resolved Artworks',                 weight: 45 },
+        { key: 'artStudy',            label: 'Art Study',                         weight: 20 },
+        { key: 'independentResearch', label: 'Independent Art Research',          weight: 15 },
+        { key: 'collaboration',       label: 'Art Community Collaboration',       weight: 10 },
+        { key: 'materialCare',        label: 'Art Material and Resources Care',   weight: 10 }
+    ];
+
+    let catsHtml = '';
+    for (const cat of categories) {
+        const val = Number(weighted[cat.key]) || 0;
+        catsHtml += `
+            <div class="teacher-weighted-cat">
+                <div class="teacher-weighted-cat-label">${escapeHtml(cat.label)}</div>
+                <div class="teacher-weighted-cat-value">${val.toFixed(2)}%</div>
+                <div class="teacher-weighted-cat-weight">${cat.weight}% weight</div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = `
+        <div class="teacher-weighted-overall">
+            <div class="teacher-weighted-overall-label">Overall Grade</div>
+            <div class="teacher-weighted-overall-value">${(Number(weighted.overall) || 0).toFixed(2)}%</div>
+        </div>
+        <div class="teacher-weighted-categories">
+            ${catsHtml}
+        </div>
+    `;
 }
 
 function renderStudentStandardsTable(questGrades, completedQuests, isMS, allQuests) {
@@ -5297,16 +5362,327 @@ async function resetScheduleSettings() {
     await loadScheduleData();
 }
 
+// ==========================================================
+// 15b. WEIGHTED GRADE ENGINE (NCAS)
+// ==========================================================
+// Ported from the student script (Section 66) so the teacher
+// analytics and the student profile always agree on the same
+// numbers. If you change anything here, mirror it in the
+// student script and vice versa.
+//
+// TWO DELIBERATE DEVIATIONS from the student version:
+//
+//   1. The teacher script has no module-level `quests` global
+//      (quests live in `_cachedAllQuests`). So the quest map is
+//      passed in explicitly.
+//
+//   2. The teacher script has no module-level `completedQuests`
+//      or `questGrades` globals either — those are per-student
+//      values fetched inside loadStudentAnalytics(). So they are
+//      also passed in explicitly.
+//
+// The net effect: this function is pure. Same three inputs →
+// same output, no hidden global reads. The math is byte-identical
+// to the student version.
 
+const WEIGHTED_CATEGORY_CONFIG = {
+    resolvedArtworks: {
+        key: 'resolvedArtworks',
+        label: 'Resolved Artworks',
+        fullLabel: 'Resolved Artworks',
+        weight: 45,
+        dbCategory: 'Resolved Artworks'
+    },
+    artStudy: {
+        key: 'artStudy',
+        label: 'Art Study',
+        fullLabel: 'Art Study',
+        weight: 20,
+        dbCategory: 'Art Study'
+    },
+    independentResearch: {
+        key: 'independentResearch',
+        label: 'Independent Art Research',
+        fullLabel: 'Independent Art Research',
+        weight: 15,
+        dbCategory: null   // derived from CN.10.1.IA, not from `category`
+    },
+    collaboration: {
+        key: 'collaboration',
+        label: 'Art Community Collaboration',
+        fullLabel: 'Art Community Collaboration',
+        weight: 10,
+        dbCategory: 'Art Community Collaboration'
+    },
+    materialCare: {
+        key: 'materialCare',
+        label: 'Art Material and Resources Care.',
+        fullLabel: 'Art Material and Resources Care',
+        weight: 10,
+        dbCategory: 'Art Material and Resources Care'
+    }
+};
+
+const INDEPENDENT_RESEARCH_STANDARD = 'Art.FA.CN.10.1.IA';
+
+/**
+ * Resolve which category a quest's *non-research* standards belong to.
+ * Handles the compound form  "Art Study + Independent Art Research"
+ * by taking the first segment. Falls back to MVP / formative defaults.
+ */
+function resolveQuestBaseCategory(quest) {
+    if (!quest) return 'Art Study';
+
+    let raw = quest.category;
+
+    // Support accidental array form for safety
+    if (Array.isArray(raw)) raw = raw[0];
+
+    if (typeof raw === 'string' && raw.trim()) {
+        // "Art Study + Independent Art Research" → "Art Study"
+        const base = raw.split('+')[0].trim();
+        const known = [
+            'Resolved Artworks',
+            'Art Study',
+            'Art Community Collaboration',
+            'Art Material and Resources Care'
+        ];
+        if (known.includes(base)) return base;
+    }
+
+    // Fallback: MVP → Resolved Artworks, else Art Study
+    return quest.style === 'mvp' ? 'Resolved Artworks' : 'Art Study';
+}
+
+/**
+ * Iterate every completed quest, every graded standard, and bucket
+ * each grade into the correct weighted category.
+ *
+ * Only considers quests where completedQuests[id] === true.
+ * Skips null/undefined/"" grades (a 0 is a valid grade and is kept).
+ *
+ * Buckets accumulate QUEST AVERAGES, not raw standard grades:
+ *   sum   = sum of the per-quest averages that touched this bucket
+ *   count = number of DISTINCT quests that touched this bucket
+ * Each quest counts exactly once per category it contributes to,
+ * regardless of how many standards it assessed in that category.
+ *
+ * @param {Object} completedQuests  - the student's completedQuests map
+ * @param {Object} questGrades      - the student's questGrades map
+ * @param {Object} allQuests        - the quest metadata map
+ *                                    (e.g. _cachedAllQuests or the
+ *                                    value returned by
+ *                                    getAllQuestsForTeacher())
+ *
+ * Returns:
+ *   {
+ *     resolvedArtworks:     { rawAvg, percent, weighted, count, sum },
+ *     artStudy:             { ... },
+ *     independentResearch:  { ... },
+ *     collaboration:        { ... },
+ *     materialCare:         { ... },
+ *     overallPercent:       number
+ *   }
+ */
+function calculateWeightedCategories(completedQuests, questGrades, allQuests = {}) {
+    const buckets = {
+        resolvedArtworks:    { sum: 0, count: 0 },
+        artStudy:            { sum: 0, count: 0 },
+        independentResearch: { sum: 0, count: 0 },
+        collaboration:       { sum: 0, count: 0 },
+        materialCare:        { sum: 0, count: 0 }
+    };
+
+    // Map DB category string → bucket key
+    const categoryToBucket = {
+        'Resolved Artworks':                'resolvedArtworks',
+        'Art Study':                        'artStudy',
+        'Art Community Collaboration':      'collaboration',
+        'Art Material and Resources Care':  'materialCare'
+    };
+
+    for (const [questId, isCompleted] of Object.entries(completedQuests || {})) {
+        if (isCompleted !== true) continue;
+
+        const quest = allQuests[questId];
+        if (!quest) continue;
+
+        const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
+        const grades = questGrades?.[questId]?.[column];
+        if (!grades || typeof grades !== 'object') continue;
+
+        const baseCategory = resolveQuestBaseCategory(quest);
+        const baseBucket = categoryToBucket[baseCategory] || 'artStudy';
+
+        // --- First pass: group this quest's grades by target bucket ---
+        // A quest may touch multiple buckets if it contains CN.10.1.IA
+        // alongside its base-category standards.
+        const gradesByBucket = {};
+
+        for (const [standardCode, rawGrade] of Object.entries(grades)) {
+            if (standardCode === 'teacher_comment') continue;
+            if (standardCode === 'completed_at') continue;
+
+            // Parse numeric grade (framework NCAS only uses numbers)
+            const grade = parseFloat(rawGrade);
+            if (isNaN(grade)) continue;
+
+            // Route: research standard is always severed
+            const bucketKey = (standardCode === INDEPENDENT_RESEARCH_STANDARD)
+                ? 'independentResearch'
+                : baseBucket;
+
+            if (!gradesByBucket[bucketKey]) gradesByBucket[bucketKey] = [];
+            gradesByBucket[bucketKey].push(grade);
+        }
+
+        // --- Second pass: each touched bucket gets ONE contribution —
+        // the average of this quest's standards that landed in it. ---
+        for (const [bucketKey, arr] of Object.entries(gradesByBucket)) {
+            if (arr.length === 0) continue;
+            const questAvg = arr.reduce((s, v) => s + v, 0) / arr.length;
+            buckets[bucketKey].sum   += questAvg;
+            buckets[bucketKey].count += 1;   // count = number of quests, NOT standards
+        }
+    }
+
+    // Build the result object with derived metrics
+    const result = {};
+    let overallPercent = 0;
+
+    for (const [key, cfg] of Object.entries(WEIGHTED_CATEGORY_CONFIG)) {
+        const { sum, count } = buckets[key];
+        const rawAvg = count > 0 ? (sum / count) : 0;
+        const percent = count > 0 ? (rawAvg / 4) * 100 : 0;
+        const weighted = percent * (cfg.weight / 100);
+
+        result[key] = {
+            rawAvg:    rawAvg,
+            percent:   percent,
+            weighted:  weighted,
+            count:     count,   // number of quests in this category
+            sum:       sum      // sum of per-quest averages
+        };
+
+        overallPercent += weighted;
+    }
+
+    result.overallPercent = overallPercent;
+    return result;
+}
+
+// ----------------------------------------------------------
+// 15b (cont.) — Aggregation helpers
+// ----------------------------------------------------------
+// These sit on top of calculateWeightedCategories() and are what
+// the analytics UI (stages 3 & 4) will consume.
+//
+// "Mirror the student profile exactly" means: a student who has
+// zero graded quests contributes 0% to every metric, not "excluded
+// from the average" and not "—". That's what renderWeightedCategories()
+// shows on their profile, so that's what we sum and divide here.
+
+/**
+ * Per-student weighted grades — the 6 numbers shown on that student's
+ * profile ("Weighted Grades" table).
+ *
+ * Thin wrapper around calculateWeightedCategories() that flattens the
+ * result to the 6 numbers the UI needs, all in 0–100 space:
+ *
+ *   {
+ *     overall:             number,   // weighted overall %
+ *     resolvedArtworks:    number,   // raw category % (0–100)
+ *     artStudy:            number,
+ *     independentResearch: number,
+ *     collaboration:       number,
+ *     materialCare:        number
+ *   }
+ *
+ * Every key is always present. Absent categories are 0.
+ *
+ * @param {Object} completedQuests
+ * @param {Object} questGrades
+ * @param {Object} allQuests
+ */
+function calculateStudentWeightedGrades(completedQuests, questGrades, allQuests = {}) {
+    const r = calculateWeightedCategories(completedQuests, questGrades, allQuests);
+    return {
+        overall:             r.overallPercent,
+        resolvedArtworks:    r.resolvedArtworks.percent,
+        artStudy:            r.artStudy.percent,
+        independentResearch: r.independentResearch.percent,
+        collaboration:       r.collaboration.percent,
+        materialCare:        r.materialCare.percent
+    };
+}
+
+/**
+ * Class-wide weighted grades — the 6 numbers shown on the
+ * "Average Grade by Domain" card.
+ *
+ * Rule (a): sum each metric across ALL students in the filtered class,
+ * then divide by the number of students. Students with no graded work
+ * contribute 0 to each metric (matching what their profile shows), and
+ * they DO count toward the denominator.
+ *
+ * Because this is a simple average of per-student values (and division
+ * distributes over summation), the class average equals the average of
+ * the per-student numbers — i.e. the same numbers shown per row in the
+ * students table. The two displays will always agree by construction.
+ *
+ * @param {Array<{weighted: Object}>} studentRows
+ *        Each entry must have `.weighted` = the object returned by
+ *        calculateStudentWeightedGrades(). A row with no `.weighted`
+ *        (shouldn't happen, but defensive) is treated as all-zeros.
+ *
+ * Returns the same 6 keys as calculateStudentWeightedGrades(), plus
+ * `studentCount` for display purposes.
+ */
+function calculateClassWeightedAverages(studentRows) {
+    const rows = Array.isArray(studentRows) ? studentRows : [];
+    const n = rows.length;
+
+    const totals = {
+        overall: 0,
+        resolvedArtworks: 0,
+        artStudy: 0,
+        independentResearch: 0,
+        collaboration: 0,
+        materialCare: 0
+    };
+
+    for (const row of rows) {
+        const w = row?.weighted;
+        if (!w) continue;   // defensive: treat as all-zeros
+        totals.overall             += Number(w.overall)             || 0;
+        totals.resolvedArtworks    += Number(w.resolvedArtworks)    || 0;
+        totals.artStudy            += Number(w.artStudy)            || 0;
+        totals.independentResearch += Number(w.independentResearch) || 0;
+        totals.collaboration       += Number(w.collaboration)       || 0;
+        totals.materialCare        += Number(w.materialCare)        || 0;
+    }
+
+    const safeDiv = (v) => n > 0 ? v / n : 0;
+
+    return {
+        overall:             safeDiv(totals.overall),
+        resolvedArtworks:    safeDiv(totals.resolvedArtworks),
+        artStudy:            safeDiv(totals.artStudy),
+        independentResearch: safeDiv(totals.independentResearch),
+        collaboration:       safeDiv(totals.collaboration),
+        materialCare:        safeDiv(totals.materialCare),
+        studentCount:        n
+    };
+}
 // ==========================================================
 // 16. ANALYTICS TAB
 // ==========================================================
 
 async function loadAnalyticsData() {
     analyticsData.framework = await loadTeacherFramework();
+    invalidateQuestAnalyticsCache();
     await populateClassFilter();
     await loadStudentAnalytics();
-    await loadQuestAnalytics();
     await updateAnalyticsUI();
 }
 
@@ -5340,8 +5716,28 @@ async function populateClassFilter() {
 
 async function handleClassFilterChange(e) {
     analyticsData.classFilter = e.target.value;
+    invalidateQuestAnalyticsCache();
+
     await loadStudentAnalytics();
     await updateAnalyticsUI();
+
+    // If the quests accordion is currently open, refresh it in place
+    // so the teacher sees the new class's quests without having to
+    // close and re-open manually.
+    const root = document.getElementById('analytics-quests-accordion');
+    if (root && root.classList.contains('expanded')) {
+        const hint = root.querySelector('.analytics-accordion-hint');
+        if (hint) hint.textContent = 'Loading…';
+        try {
+            await loadQuestAnalytics();
+            await updateQuestsTable();
+            _questAnalyticsLoaded = true;
+        } catch (err) {
+            console.error('[quests accordion] refresh after filter failed:', err);
+        } finally {
+            if (hint) hint.textContent = '';
+        }
+    }
 }
 
 async function loadStudentAnalytics() {
@@ -5405,6 +5801,11 @@ async function loadStudentAnalytics() {
         const completedQuests = progress?.completed_quests || {};
         const questAccepted = progress?.quest_accepted || {};
         const questGrades = progress?.quest_grades || {};
+                // Weighted grades are NCAS-only. For IB/IGCSE we leave
+        // `weighted` undefined so the existing domain rendering still works.
+        const studentWeighted = (analyticsData.framework === 'ncas')
+            ? calculateStudentWeightedGrades(completedQuests, questGrades, allQuests)
+            : null;
 
         let completedCount = 0;
         for (const [questId, isCompleted] of Object.entries(completedQuests)) {
@@ -5439,15 +5840,21 @@ async function loadStudentAnalytics() {
             activeQuest,
             domainGrades,
             lastUpload,
-            gradeLevel: studentGradeLevel
+            gradeLevel: studentGradeLevel,
+            weighted: studentWeighted
         });
     }
 
-    const studentCount = analyticsData.students.length;
+        const studentCount = analyticsData.students.length;
     analyticsData.classAverages = {
         completionRate: studentCount > 0 ? (totalCompletedQuests / studentCount).toFixed(1) : 0,
         activeStudents: totalActiveStudents,
-        domainAverages: calculateClassDomainAverages(analyticsData.students)
+        // Kept for the IB / IGCSE branches of updateAverageGradeGrid().
+        domainAverages: calculateClassDomainAverages(analyticsData.students),
+        // Only meaningful for NCAS; null otherwise so the UI can branch cleanly.
+        weightedAverages: (analyticsData.framework === 'ncas')
+            ? calculateClassWeightedAverages(analyticsData.students)
+            : null
     };
 }
 
@@ -5566,95 +5973,6 @@ function calculateClassDomainAverages(students) {
     return averages;
 }
 
-async function loadQuestAnalytics() {
-    const auth = await checkTeacherAuth();
-    if (!auth) return;
-
-    let query = window.supabase
-        .from('profiles')
-        .select('id')
-        .eq('teacher_code', auth.teacher.class_code);
-
-    if (analyticsData.classFilter !== 'all') {
-        query = query.eq('class_id', analyticsData.classFilter);
-    }
-
-    const { data: students } = await query;
-    if (!students || students.length === 0) return;
-
-    const studentIds = students.map(s => s.id);
-
-    const { data: progressData } = await window.supabase
-        .from('student_progress')
-        .select('user_id, completed_quests, quest_grades, quest_accepted')
-        .in('user_id', studentIds);
-
-    const allQuests = await getQuests();
-    analyticsData.questStats = {};
-
-    for (const [questId, quest] of Object.entries(allQuests)) {
-        if (!questId.startsWith('quest')) continue;
-        analyticsData.questStats[questId] = {
-            id: questId,
-            title: quest.title,
-            path: quest.path?.[0] || 'Unknown',
-            type: quest.style === 'mvp' ? 'MVP' : 'Formative',
-            completedCount: 0,
-            totalStudents: students.length,
-            totalTime: 0,
-            timesCompleted: 0,
-            activeCount: 0,
-            domainScores: {},
-            domainCounts: {}
-        };
-    }
-
-    for (const progress of (progressData || [])) {
-        const completedQuests = progress.completed_quests || {};
-        const questGrades = progress.quest_grades || {};
-        const questAccepted = progress.quest_accepted || {};
-
-        for (const [questId, isCompleted] of Object.entries(completedQuests)) {
-            if (isCompleted === true && analyticsData.questStats[questId]) {
-                analyticsData.questStats[questId].completedCount++;
-                analyticsData.questStats[questId].timesCompleted++;
-
-                const quest = allQuests[questId];
-                if (quest) {
-                    const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
-                    const grades = questGrades[questId]?.[column] || {};
-                    collectQuestDomainGrades(questId, quest, grades, analyticsData.questStats[questId]);
-                }
-            }
-        }
-
-        for (const [questId, isAccepted] of Object.entries(questAccepted)) {
-            if (isAccepted === true && !completedQuests[questId] && analyticsData.questStats[questId]) {
-                analyticsData.questStats[questId].activeCount++;
-            }
-        }
-    }
-
-    for (const questId in analyticsData.questStats) {
-        const stat = analyticsData.questStats[questId];
-        stat.completionPercentage = stat.totalStudents > 0 ? ((stat.completedCount / stat.totalStudents) * 100).toFixed(1) : 0;
-        stat.popularity = stat.completedCount + stat.activeCount;
-
-        for (const domain in stat.domainScores) {
-            if (stat.domainCounts[domain] > 0) {
-                let avg = stat.domainScores[domain] / stat.domainCounts[domain];
-                if (analyticsData.framework === 'igcse') avg = convertNumberToLetterGrade(Math.round(avg));
-                else avg = avg.toFixed(1);
-                stat.domainAverages = stat.domainAverages || {};
-                stat.domainAverages[domain] = avg;
-            }
-        }
-    }
-
-    const questArray = Object.values(analyticsData.questStats);
-    questArray.sort((a, b) => b.popularity - a.popularity);
-    analyticsData.sortedQuests = questArray;
-}
 
 function collectQuestDomainGrades(questId, quest, grades, stat) {
     const framework = analyticsData.framework;
@@ -5698,7 +6016,6 @@ async function updateAnalyticsUI() {
     await updateTopCards();
     await updateAverageGradeGrid();
     await updateStudentsTable();
-    await updateQuestsTable();
 }
 
 async function updateTopCards() {
@@ -5729,6 +6046,56 @@ async function updateAverageGradeGrid() {
     const isMS = currentGradeLevel === 'ms';
 
     if (!gridContainer) return;
+
+    // ─────────────────────────────────────────────────────────
+    // NCAS: 1 big Overall cell + 5 weighted category cells
+    // ─────────────────────────────────────────────────────────
+    if (framework === 'ncas') {
+        const w = classAverages?.weightedAverages;
+        if (!w) {
+            gridContainer.innerHTML = '<div class="no-data">No weighted data available.</div>';
+            return;
+        }
+
+        // Display order matches the student profile's Weighted Grades row.
+        const categoryOrder = [
+            { key: 'resolvedArtworks',    label: 'Resolved Artworks',                 weight: 45, cls: 'wg-cell-resolved'    },
+            { key: 'artStudy',            label: 'Art Study',                         weight: 20, cls: 'wg-cell-artstudy'    },
+            { key: 'independentResearch', label: 'Independent Art Research',          weight: 15, cls: 'wg-cell-research'    },
+            { key: 'collaboration',       label: 'Art Community Collaboration',       weight: 10, cls: 'wg-cell-collab'      },
+            { key: 'materialCare',        label: 'Art Material and Resources Care',   weight: 10, cls: 'wg-cell-material'    }
+        ];
+
+        let html = `
+            <div class="weighted-grade-overall">
+                <div class="weighted-grade-overall-label">Overall Grade</div>
+                <div class="weighted-grade-overall-value">${w.overall.toFixed(2)}%</div>
+                <div class="weighted-grade-overall-sub">Class average · ${w.studentCount} student${w.studentCount === 1 ? '' : 's'}</div>
+            </div>
+            <div class="weighted-grade-category-grid">
+        `;
+
+        for (const cat of categoryOrder) {
+            const val = w[cat.key] ?? 0;
+            html += `
+                <div class="weighted-grade-cell ${cat.cls}">
+                    <div class="weighted-grade-cell-label">${cat.label}</div>
+                    <div class="weighted-grade-cell-value">${val.toFixed(2)}%</div>
+                    <div class="weighted-grade-cell-weight">${cat.weight}% weight</div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+        gridContainer.innerHTML = html;
+        gridContainer.classList.add('weighted-grade-grid-mode');
+        return;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // IB / IGCSE: unchanged 4-domain grid
+    // ─────────────────────────────────────────────────────────
+    gridContainer.classList.remove('weighted-grade-grid-mode');
 
     let domains = [], labels = [], cellClasses = [];
 
@@ -5780,11 +6147,120 @@ async function updateStudentsTable() {
 
     if (analyticsData.students.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6">No students found...</td></tr>';
+        if (tfoot) tfoot.style.display = 'none';
         return;
     }
 
     tbody.innerHTML = '';
 
+    // ─────────────────────────────────────────────────────────
+    // NCAS: "Weighted Grades" cell — 6 numbers per student
+    // ─────────────────────────────────────────────────────────
+    if (framework === 'ncas') {
+        const weightedCols = [
+            { key: 'overall',             label: 'Overall',        short: 'Ovr' },
+            { key: 'resolvedArtworks',    label: 'Resolved',       short: 'Res' },
+            { key: 'artStudy',            label: 'Art Study',      short: 'Study' },
+            { key: 'independentResearch', label: 'Research',       short: 'Resrch' },
+            { key: 'collaboration',       label: 'Collab',         short: 'Collab' },
+            { key: 'materialCare',        label: 'Material Care',  short: 'Material' }
+        ];
+
+        for (const student of analyticsData.students) {
+            const row = document.createElement('tr');
+
+            let lastUploadText = 'Never';
+            if (student.lastUpload) {
+                const date = new Date(student.lastUpload);
+                const daysAgo = Math.floor((Date.now() - date) / (1000 * 60 * 60 * 24));
+                if (daysAgo === 0) lastUploadText = 'Today';
+                else if (daysAgo === 1) lastUploadText = 'Yesterday';
+                else lastUploadText = `${daysAgo} days ago`;
+            }
+
+            const w = student.weighted || {
+                overall: 0, resolvedArtworks: 0, artStudy: 0,
+                independentResearch: 0, collaboration: 0, materialCare: 0
+            };
+
+            let weightedHtml = '<div class="weighted-mini-grid">';
+            for (const col of weightedCols) {
+                const val = Number(w[col.key]) || 0;
+                const isOverall = col.key === 'overall';
+                weightedHtml += `
+                    <div class="weighted-mini-cell${isOverall ? ' weighted-mini-cell-overall' : ''}">
+                        <div class="weighted-mini-label">${col.short}</div>
+                        <div class="weighted-mini-value">${val.toFixed(1)}</div>
+                    </div>
+                `;
+            }
+            weightedHtml += '</div>';
+
+            const gradeBadge = student.gradeLevel === 'ms' ? 'MS' : 'HS';
+
+            row.innerHTML = `
+                <td class="student-name-link" data-user-id="${student.id}">
+                    ${escapeHtml(student.name)}
+                    <span class="grade-level-badge ${student.gradeLevel || 'hs'}">${gradeBadge}</span>
+                </td>
+                <td>${escapeHtml(student.className)}</td>
+                <td>${student.completedCount}/${student.targetTotal} (${Math.round((student.completedCount/student.targetTotal)*100)}%)</td>
+                <td>${student.activeQuest ? `<span class="active-quest-badge">${escapeHtml(student.activeQuest)}</span>` : '—'}</td>
+                <td>${weightedHtml}</td>
+                <td>${lastUploadText}</td>
+            `;
+
+            tbody.appendChild(row);
+        }
+
+        document.querySelectorAll('.student-name-link').forEach(el => {
+            el.addEventListener('click', async () => {
+                const userId = el.dataset.userId;
+                const student = analyticsData.students.find(s => s.id === userId);
+                if (student) await loadStudentDetails(userId, student.name);
+            });
+        });
+
+        // --- Footer: class averages ---
+        if (tfoot && analyticsData.classAverages?.weightedAverages) {
+            tfoot.style.display = 'table-footer-group';
+            const w = analyticsData.classAverages.weightedAverages;
+
+            let avgHtml = '<div class="weighted-mini-grid">';
+            for (const col of weightedCols) {
+                const val = Number(w[col.key]) || 0;
+                const isOverall = col.key === 'overall';
+                avgHtml += `
+                    <div class="weighted-mini-cell${isOverall ? ' weighted-mini-cell-overall' : ''}">
+                        <div class="weighted-mini-label">${col.short}</div>
+                        <div class="weighted-mini-value">${val.toFixed(1)}</div>
+                    </div>
+                `;
+            }
+            avgHtml += '</div>';
+
+            const avgCompletion = analyticsData.students.reduce((sum, s) => sum + s.completedCount, 0) / analyticsData.students.length;
+
+            tfoot.innerHTML = `
+                <tr style="background: rgba(0, 0, 0, 0.3); font-weight: bold;">
+                    <td>Class Average</td>
+                    <td>—</td>
+                    <td>${avgCompletion.toFixed(1)}/${analyticsData.students[0]?.targetTotal || 22}</td>
+                    <td>—</td>
+                    <td>${avgHtml}</td>
+                    <td>—</td>
+                </tr>
+            `;
+        } else if (tfoot) {
+            tfoot.style.display = 'none';
+        }
+
+        return;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // IB / IGCSE: unchanged 4-domain mini-grid
+    // ─────────────────────────────────────────────────────────
     let domains = [], shortLabels = [], cellClasses = [];
 
     if (framework === 'ib-myp') {
@@ -5880,81 +6356,6 @@ async function updateStudentsTable() {
     }
 }
 
-async function updateQuestsTable() {
-    const tbody = document.getElementById('analytics-quests-tbody');
-    const framework = analyticsData.framework;
-    const isMS = currentGradeLevel === 'ms';
-
-    if (!tbody) return;
-
-    const sortedQuests = analyticsData.sortedQuests || [];
-
-    if (sortedQuests.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7">No quest data available...</td></tr>';
-        return;
-    }
-
-    const totalPages = Math.ceil(sortedQuests.length / QUESTS_PER_PAGE);
-    const startIndex = (currentQuestPage - 1) * QUESTS_PER_PAGE;
-    const pageQuests = sortedQuests.slice(startIndex, startIndex + QUESTS_PER_PAGE);
-
-    updatePaginationControls(totalPages);
-
-    let domains = [], shortLabels = [], cellClasses = [];
-
-    if (framework === 'ib-myp') {
-        domains = ['A', 'B', 'C', 'D'];
-        shortLabels = ['A', 'B', 'C', 'D'];
-    } else if (framework === 'igcse') {
-        domains = ['AO1', 'AO2', 'AO3', 'AO4'];
-        shortLabels = ['AO1', 'AO2', 'AO3', 'AO4'];
-    } else if (isMS) {
-        domains = ['creating', 'reflecting', 'responding', 'connecting'];
-        shortLabels = ['Cr', 'Re', 'Rs', 'Cn'];
-    } else {
-        domains = ['creating', 'presenting', 'responding', 'connecting'];
-        shortLabels = ['Cr', 'Pr', 'Re', 'Cn'];
-    }
-    cellClasses = ['grade-cell-creating', 'grade-cell-presenting', 'grade-cell-responding', 'grade-cell-connecting'];
-
-    tbody.innerHTML = '';
-
-    for (const quest of pageQuests) {
-        const row = document.createElement('tr');
-
-        let domainHtml = '<div class="domain-mini-grid">';
-        for (let i = 0; i < domains.length; i++) {
-            const grade = quest.domainAverages?.[domains[i]] || '—';
-            domainHtml += `
-                <div class="domain-mini-cell ${cellClasses[i]}">
-                    <div class="domain-mini-label">${shortLabels[i]}</div>
-                    <div>${grade}</div>
-                </div>
-            `;
-        }
-        domainHtml += '</div>';
-
-        row.innerHTML = `
-            <td class="quest-name-link" data-quest-id="${quest.id}">${escapeHtml(quest.title)}</td>
-            <td>${escapeHtml(quest.path)}</td>
-            <td>${quest.type}</td>
-            <td>${quest.completedCount}/${quest.totalStudents} (${quest.completionPercentage}%)</td>
-            <td>—</td>
-            <td>${domainHtml}</td>
-            <td>${quest.popularity}</td>
-        `;
-
-        tbody.appendChild(row);
-    }
-
-    document.querySelectorAll('.quest-name-link').forEach(el => {
-        el.addEventListener('click', async () => {
-            const questId = el.dataset.questId;
-            const allQuests = await getQuests();
-            openQuestDetailsPanel(questId, allQuests);
-        });
-    });
-}
 
 function updatePaginationControls(totalPages) {
     const container = document.getElementById('analytics-pagination');
@@ -5976,6 +6377,272 @@ function updatePaginationControls(totalPages) {
     });
 }
 
+// ==========================================================
+// 16b. QUEST ANALYTICS — per-quest weighted grade (Reading A)
+// ==========================================================
+// For each quest:
+//   1. Determine its base weighted category (resolveQuestBaseCategory()).
+//   2. For each student who completed it, compute that student's
+//      QUEST-SCOPED grade restricted to the quest's base-category
+//      standards (CN.10.1.IA is severed into Research and excluded
+//      from the quest's own row average — same rule as the profile).
+//   3. Convert to percent: avg(0–4) / 4 * 100.
+//   4. Row's Avg Grade = mean of those per-student percents, over
+//      the students who COMPLETED the quest (not the whole class).
+//   5. Row's Type = the base category name (e.g. "Resolved Artworks").
+//
+// Sort order and Popularity unchanged.
+
+async function loadQuestAnalytics() {
+    const auth = await checkTeacherAuth();
+    if (!auth) return;
+
+    let query = window.supabase
+        .from('profiles')
+        .select('id')
+        .eq('teacher_code', auth.teacher.class_code);
+
+    if (analyticsData.classFilter !== 'all') {
+        query = query.eq('class_id', analyticsData.classFilter);
+    }
+
+    const { data: students } = await query;
+    if (!students || students.length === 0) {
+        analyticsData.questStats = {};
+        analyticsData.sortedQuests = [];
+        return;
+    }
+
+    const studentIds = students.map(s => s.id);
+
+    const { data: progressData } = await window.supabase
+        .from('student_progress')
+        .select('user_id, completed_quests, quest_grades, quest_accepted')
+        .in('user_id', studentIds);
+
+    const allQuests = await getQuests();
+    analyticsData.questStats = {};
+
+    // Ensure _cachedAllQuests is present for calculateWeightedCategories()-adjacent work.
+    // (We don't call calculateWeightedCategories here — Reading A is quest-scoped —
+    //  but resolveQuestBaseCategory uses quest.category which is on the quest object.)
+    for (const [questId, quest] of Object.entries(allQuests)) {
+        if (!questId.startsWith('quest') && !questId.startsWith('custom_')) continue;
+        analyticsData.questStats[questId] = {
+            id: questId,
+            title: quest.title,
+            path: quest.path?.[0] || 'Unknown',
+            baseCategory: resolveQuestBaseCategory(quest),
+            completedCount: 0,
+            totalStudents: students.length,
+            activeCount: 0,
+            gradePercentSum: 0,   // sum of per-student per-quest percents
+            gradePercentCount: 0  // how many students contributed a grade
+        };
+    }
+
+    // questId → studentId → { grades, column }
+    const perStudentQuestGrades = new Map();
+    for (const progress of (progressData || [])) {
+        const completedQuests = progress.completed_quests || {};
+        const questGrades = progress.quest_grades || {};
+        const questAccepted = progress.quest_accepted || {};
+
+        for (const [questId, isCompleted] of Object.entries(completedQuests)) {
+            if (isCompleted !== true) continue;
+            const stat = analyticsData.questStats[questId];
+            if (!stat) continue;
+
+            stat.completedCount++;
+
+            const quest = allQuests[questId];
+            if (!quest) continue;
+            const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
+            const grades = questGrades[questId]?.[column];
+            if (!grades || typeof grades !== 'object') continue;
+
+            // ---- Reading A: quest-scoped grade, restricted to base-category standards ----
+            const baseBucketCodes = collectBaseCategoryStandardCodes(quest);
+            // Base-category codes for this quest: all graded standards EXCEPT the research one.
+            // We still need to know which standards belong to the base category —
+            // the profile engine uses resolveQuestBaseCategory() to route *all*
+            // non-research standards to that bucket. So the base set is:
+            //   every graded standard whose code !== INDEPENDENT_RESEARCH_STANDARD
+            // (each quest is graded only on standards it actually assesses,
+            //  so this is exactly "the quest's own base-category standards").
+
+            let sum = 0, n = 0;
+            for (const [code, rawGrade] of Object.entries(grades)) {
+                if (code === 'teacher_comment' || code === 'completed_at') continue;
+                if (code === INDEPENDENT_RESEARCH_STANDARD) continue;   // severed into Research
+                const grade = parseFloat(rawGrade);
+                if (isNaN(grade)) continue;
+                sum += grade;
+                n++;
+            }
+            if (n === 0) continue;
+
+            const questAvg = sum / n;                       // 0–4
+            const percent = (questAvg / 4) * 100;           // 0–100
+
+            stat.gradePercentSum   += percent;
+            stat.gradePercentCount += 1;
+        }
+
+        for (const [questId, isAccepted] of Object.entries(questAccepted)) {
+            if (isAccepted !== true) continue;
+            const stat = analyticsData.questStats[questId];
+            if (!stat) continue;
+            if (completedQuests[questId] === true) continue;
+            stat.activeCount++;
+        }
+    }
+
+    // Derive display fields
+    for (const questId in analyticsData.questStats) {
+        const stat = analyticsData.questStats[questId];
+        stat.completionPercentage = stat.totalStudents > 0
+            ? ((stat.completedCount / stat.totalStudents) * 100).toFixed(1)
+            : 0;
+        stat.popularity = stat.completedCount + stat.activeCount;
+
+        // Reading A: the row's Avg Grade is the mean of the per-student percents,
+        // over students who actually had a graded value for this quest.
+        stat.avgGradePercent = stat.gradePercentCount > 0
+            ? (stat.gradePercentSum / stat.gradePercentCount)
+            : null;
+    }
+
+    const questArray = Object.values(analyticsData.questStats);
+    questArray.sort((a, b) => b.popularity - a.popularity);
+    analyticsData.sortedQuests = questArray;
+}
+
+/**
+ * Returns the set of standard codes that route into this quest's
+ * base weighted category. Used only for documentation/reading here;
+ * the actual Reading-A filter in loadQuestAnalytics() is simply
+ * "every graded standard except the research one" (which is the same set).
+ *
+ * Kept as a named helper so the intent is explicit and so a future
+ * change to the routing rule only has to be made in one place.
+ */
+function collectBaseCategoryStandardCodes(quest) {
+    // In the weighted engine, ALL non-research graded standards of a
+    // quest contribute to the quest's base category (resolveQuestBaseCategory).
+    // We do not have a per-standard whitelist; the "set" is derived at
+    // grade time by excluding the research code. Returning an empty Set
+    // here signals "use the exclusion rule inline", which loadQuestAnalytics()
+    // does. This function exists for clarity / future extension.
+    return new Set(); // unused sentinel
+}
+
+async function updateQuestsTable() {
+    const tbody = document.getElementById('analytics-quests-tbody');
+    if (!tbody) return;
+
+    const sortedQuests = analyticsData.sortedQuests || [];
+
+    if (sortedQuests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">No quest data available...</td></tr>';
+        updatePaginationControls(0);
+        return;
+    }
+
+    const totalPages = Math.ceil(sortedQuests.length / QUESTS_PER_PAGE);
+    const startIndex = (currentQuestPage - 1) * QUESTS_PER_PAGE;
+    const pageQuests = sortedQuests.slice(startIndex, startIndex + QUESTS_PER_PAGE);
+
+    updatePaginationControls(totalPages);
+
+    tbody.innerHTML = '';
+
+    for (const quest of pageQuests) {
+        const row = document.createElement('tr');
+
+        const avgGradeHtml = (quest.avgGradePercent === null || quest.avgGradePercent === undefined)
+            ? '<span class="quest-avg-grade-empty">—</span>'
+            : `<span class="quest-avg-grade-value">${quest.avgGradePercent.toFixed(2)}%</span>`;
+
+        row.innerHTML = `
+            <td class="quest-name-link" data-quest-id="${quest.id}">${escapeHtml(quest.title || quest.id)}</td>
+            <td>${escapeHtml(quest.path)}</td>
+            <td>${escapeHtml(quest.baseCategory)}</td>
+            <td>${avgGradeHtml}</td>
+            <td>${quest.popularity}</td>
+        `;
+
+        tbody.appendChild(row);
+    }
+
+    document.querySelectorAll('.quest-name-link').forEach(el => {
+        el.addEventListener('click', async () => {
+            const questId = el.dataset.questId;
+            const allQuests = await getQuests();
+            openQuestDetailsPanel(questId, allQuests);
+        });
+    });
+}
+
+// ==========================================================
+// 16c. QUEST ANALYTICS — lazy-load accordion
+// ==========================================================
+// The heavy quest loop only runs the first time the teacher opens
+// the accordion, and is invalidated whenever the class filter or
+// framework changes.
+
+let _questAnalyticsLoaded = false;
+
+function invalidateQuestAnalyticsCache() {
+    _questAnalyticsLoaded = false;
+    analyticsData.questStats = {};
+    analyticsData.sortedQuests = [];
+}
+
+function setupQuestAnalyticsAccordion() {
+    const header = document.getElementById('analytics-quests-accordion-header');
+    const body   = document.getElementById('analytics-quests-accordion-body');
+    const hint   = header?.querySelector('.analytics-accordion-hint');
+    const arrow  = header?.querySelector('.analytics-accordion-arrow');
+    const root   = document.getElementById('analytics-quests-accordion');
+    if (!header || !body || !root) return;
+
+    // Clone to strip duplicate listeners on repeated setup.
+    const freshHeader = header.cloneNode(true);
+    header.parentNode.replaceChild(freshHeader, header);
+
+    freshHeader.addEventListener('click', async () => {
+        const isOpen = root.classList.contains('expanded');
+
+        if (isOpen) {
+            root.classList.remove('expanded');
+            body.style.display = 'none';
+            freshHeader.querySelector('.analytics-accordion-arrow').textContent = '▼';
+            return;
+        }
+
+        root.classList.add('expanded');
+        body.style.display = 'block';
+        freshHeader.querySelector('.analytics-accordion-arrow').textContent = '▲';
+
+        const h = freshHeader.querySelector('.analytics-accordion-hint');
+        if (!_questAnalyticsLoaded) {
+            if (h) h.textContent = 'Loading…';
+            try {
+                await loadQuestAnalytics();
+                await updateQuestsTable();
+                _questAnalyticsLoaded = true;
+            } catch (e) {
+                console.error('[quests accordion] load failed:', e);
+                const tbody = document.getElementById('analytics-quests-tbody');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="5">Error loading quest data.</td></tr>';
+            }
+        } else {
+            await updateQuestsTable();
+        }
+        if (h) h.textContent = '';
+    });
+}
 
 // ==========================================================
 // 17. ART BATTLE CONTESTS
@@ -6996,72 +7663,137 @@ async function printStudentProfile(includeQuests = true) {
 
 async function generateStudentPrintHtml(student, includeQuests = true) {
     const framework = await loadTeacherFramework();
-    const isMS = student.gradeLevel === 'ms';
 
     const { data: progress } = await window.supabase
         .from('student_progress').select('*').eq('user_id', student.id).maybeSingle();
 
     const completedQuests = progress?.completed_quests || {};
-    const questGrades = progress?.quest_grades || {};
-    const earnedBadges = progress?.earned_badges || {};
+    const questGrades     = progress?.quest_grades     || {};
+    const earnedBadges    = progress?.earned_badges    || {};
 
     const allQuests = await getQuests();
-    const classTargets = await getClassTargets(student.classId);
-    const targetTotal = classTargets.total;
-
-    let completedQuestList = [];
-    if (includeQuests) {
-        for (const [questId, isCompleted] of Object.entries(completedQuests)) {
-            if (isCompleted === true) {
-                const quest = allQuests[questId];
-                if (quest) completedQuestList.push({ id: questId, quest, grade: questGrades[questId] });
-            }
-        }
-    }
-
     const badgesRes = await fetch('badges.json');
     const badgesData = (await badgesRes.json()).badges;
 
-    const standardsHtml = await generateStandardsTableForPrint(student.id, framework);
-    const badgesHtml = generateBadgesForPrint(earnedBadges, badgesData);
+    const weighted = (framework === 'ncas')
+        ? calculateStudentWeightedGrades(completedQuests, questGrades, allQuests)
+        : null;
 
-    const totalCompleted = Object.keys(completedQuests).filter(qid => completedQuests[qid] === true).length;
-    const gradeLevelDisplay = isMS ? 'Middle School' : 'High School';
+    const weightedGradesHtml = buildWeightedGradesPrintSection(weighted, framework);
+    const badgesHtml         = generateBadgesForPrint(earnedBadges, badgesData);
+    const questsHtml         = includeQuests
+        ? buildCompletedQuestsPrintSection(progress, allQuests)
+        : '';
 
     return `<!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>${student.name} - Art Progress Report</title>
+        <title>${escapeHtml(student.name)} - Art Progress Report</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: Arial, sans-serif; background: white; color: black; padding: 20px; }
             .print-container { max-width: 1100px; margin: 0 auto; }
-            .print-student-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-            .print-student-info h1 { font-size: 24px; margin-bottom: 8px; color: #1a1a2e; }
-            .print-student-info p { margin: 5px 0; color: #333; }
-            .print-student-avatar img { width: 80px; height: 80px; }
-            .grade-level-tag { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; background: ${isMS ? '#4a6a8a' : '#2d5a27'}; color: white; margin-left: 10px; }
-            h2 { font-size: 18px; margin: 20px 0 15px 0; color: #1a1a2e; border-left: 4px solid #4a6a8a; padding-left: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
-            th { background: #f0f0f0; font-weight: bold; }
-            .badge-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px; }
-            .badge-item { text-align: center; width: 80px; }
-            .badge-item img { width: 60px; height: 60px; border-radius: 50%; }
-            .badge-item .badge-name { font-size: 11px; margin-top: 5px; color: #333; }
+
+            /* ---- Header ---- */
+            .print-student-header {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;
+            }
+            .print-student-info h1 { font-size: 24px; margin-bottom: 6px; color: #1a1a2e; }
+            .print-student-info p  { margin: 3px 0; color: #333; font-size: 13px; }
+            .print-student-avatar img { width: 80px; height: 80px; border-radius: 8px; }
+
+            /* ---- Section headings (centered, narrower underline) ---- */
+            h2 {
+                font-size: 18px; margin: 18px 0 12px 0; color: #1a1a2e;
+                text-align: center;
+                padding-bottom: 6px;
+            }
+            h2::after {
+                content: '';
+                display: block;
+                width: 60%;
+                margin: 6px auto 0 auto;
+                border-bottom: 2px solid #4a6a8a;
+            }
+
+            /* ---- Weighted Grades block ---- */
+            .weighted-grades-print { margin-bottom: 12px; }
+            .weighted-grades-overall {
+                text-align: center; padding: 10px; margin-bottom: 10px;
+                background: #f6f2df; border: 1px solid #d4c98b; border-radius: 8px;
+            }
+            .weighted-grades-overall-label {
+                font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+                color: #6b5a1e; margin-bottom: 4px;
+            }
+            .weighted-grades-overall-value {
+                font-size: 34px; font-weight: 800; color: #1a1a2e; line-height: 1.05;
+            }
+            .weighted-grades-categories {
+                display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+            }
+            .weighted-grades-cat {
+                border: 1px solid #ccc; border-radius: 6px; padding: 8px 6px;
+                text-align: center; background: #fafafa;
+            }
+            .weighted-grades-cat-label {
+                font-size: 10px; color: #555; line-height: 1.25; min-height: 28px;
+                display: flex; align-items: center; justify-content: center; margin-bottom: 4px;
+            }
+            .weighted-grades-cat-value {
+                font-size: 18px; font-weight: 700; color: #1a1a2e; margin-bottom: 2px;
+            }
+            .weighted-grades-cat-weight { font-size: 10px; color: #888; }
+
+            /* ---- Badges ---- */
+            .badge-grid { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; }
+            .badge-item { text-align: center; width: 76px; }
+            .badge-item img { width: 56px; height: 56px; border-radius: 50%; }
+            .badge-item .badge-name { font-size: 10px; margin-top: 4px; color: #333; line-height: 1.2; }
             .badge-item.unearned img { opacity: 0.3; filter: grayscale(100%); }
-            .quest-section { margin-bottom: 30px; break-inside: avoid; page-break-inside: avoid; }
-            .quest-section.mvp { border-left: 4px solid #ffd700; padding-left: 12px; }
-            .quest-header { margin-bottom: 10px; }
-            .quest-title { font-size: 16px; font-weight: bold; color: #1a1a2e; }
-            .quest-path { font-size: 12px; color: #666; margin-left: 10px; }
-            .highlight { background-color: #ffff99 !important; font-weight: bold !important; }
+
+            /* ---- Notes ---- */
+            .notes-box {
+                border: 1px solid #ccc; padding: 10px 12px; min-height: 90px;
+                margin: 10px 0 16px; background: #fafafa; border-radius: 8px;
+            }
+            .notes-box p { color: #555; margin-bottom: 6px; font-size: 13px; }
+            .notes-box .notes-lines { color: #666; margin-bottom: 8px; }
+
+            /* ---- Completed Quests ---- */
+            .cq-group { margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
+            .cq-group-title {
+                font-size: 14px; font-weight: 700; color: #1a1a2e;
+                padding: 6px 10px; background: #eef1f5; border-left: 4px solid #4a6a8a;
+                border-radius: 3px; margin-bottom: 6px;
+            }
+            .cq-quest {
+                display: flex; justify-content: space-between; gap: 16px;
+                border: 1px solid #ccc; border-radius: 4px;
+                padding: 8px 10px; margin-bottom: 6px;
+                align-items: stretch;
+            }
+            .cq-quest-left { flex: 1; min-width: 0; }
+            .cq-quest-right {
+                display: flex; flex-direction: column; align-items: flex-end;
+                justify-content: flex-start; white-space: nowrap;
+            }
+            .cq-quest-title { font-weight: 700; font-size: 13px; color: #1a1a2e; margin-bottom: 2px; }
+            .cq-quest-category { font-size: 10px; color: #777; margin-bottom: 4px; }
+            .cq-quest-reqs { font-size: 11px; color: #444; line-height: 1.35; }
+            .cq-quest-reqs-label { font-weight: 700; color: #333; }
+            .cq-quest-grade { font-size: 16px; font-weight: 800; color: #1a1a2e; }
+            .cq-empty {
+                font-size: 12px; color: #888; font-style: italic;
+                padding: 8px 10px; background: #fafafa; border: 1px dashed #ccc;
+                border-radius: 4px;
+            }
+
             @media print {
                 body { padding: 0; }
-                .quest-section { break-inside: avoid; page-break-inside: avoid; }
-                table { break-inside: avoid; }
-                .highlight { background-color: #ffff99 !important; font-weight: bold !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                .cq-group, .cq-quest { break-inside: avoid; page-break-inside: avoid; }
             }
         </style>
     </head>
@@ -7069,151 +7801,189 @@ async function generateStudentPrintHtml(student, includeQuests = true) {
         <div class="print-container">
             <div class="print-student-header">
                 <div class="print-student-info">
-                    <h1>${escapeHtml(student.name)} <span class="grade-level-tag">${gradeLevelDisplay}</span></h1>
-                    <p><strong>Email:</strong> ${escapeHtml(student.email)}</p>
-                    <p><strong>Class:</strong> ${escapeHtml(student.className)}</p>
-                    <p><strong>Teacher:</strong> ${escapeHtml(student.teacherName)}</p>
+                    <h1>${escapeHtml(student.name)}</h1>
+                    <p>${escapeHtml(student.email || '')}</p>
+                    <p>Teacher: ${escapeHtml(student.teacherName)} · Class: ${escapeHtml(student.className)}</p>
                 </div>
-                <div class="print-student-avatar"><img src="${student.avatar}" alt="Avatar"></div>
+                <div class="print-student-avatar">
+                    <img src="${student.avatar}" alt="Avatar">
+                </div>
             </div>
-            <h2>🎨 Art Standards Summary</h2>
-            ${standardsHtml}
+
+            ${weightedGradesHtml}
+
             <h2>🏆 Badges Earned</h2>
             ${badgesHtml}
-            <h2>📝 Teacher Notes</h2>
-            <div style="border: 1px solid #ccc; padding: 15px; min-height: 120px; margin: 20px 0; background: #fafafa; border-radius: 8px;">
-                <p style="color: #666; margin-bottom: 8px;"><strong>Strengths:</strong></p>
-                <p style="color: #666; margin-bottom: 15px;">_________________________________________</p>
-                <p style="color: #666; margin-bottom: 8px;"><strong>Areas for Improvement:</strong></p>
-                <p style="color: #666; margin-bottom: 15px;">_________________________________________</p>
-                <p style="color: #666; margin-bottom: 8px;"><strong>Teacher's Signature:</strong></p>
-                <p style="color: #666;">_________________________  Date: ___________</p>
+
+            <h2>Notes</h2>
+            <div class="notes-box">
+                <p><strong>Strengths:</strong></p>
+                <p class="notes-lines">_________________________________________________________________________________________</p>
+                <p><strong>Areas for Improvement:</strong></p>
+                <p class="notes-lines">_________________________________________________________________________________________</p>
+                <p><strong>Teacher's Signature:</strong></p>
+                <p>_________________________  Date: ___________</p>
             </div>
-            ${includeQuests && completedQuestList.length > 0 ? '<h2>📋 Completed Quests</h2>' + await generateCompletedQuestsForPrint(completedQuestList, framework) : ''}
+
+            ${includeQuests ? `<h2>📋 Completed Quests</h2>${questsHtml}` : ''}
         </div>
     </body>
     </html>`;
 }
+/**
+ * Weighted Grades block for the printed page.
+ * For NCAS: big Overall % on top, 5 category cells below (label, %, weight).
+ * For IB/IGCSE: a single-line note that weighted grades only apply to NCAS.
+ */
+function buildWeightedGradesPrintSection(weighted, framework) {
+    if (framework !== 'ncas' || !weighted) {
+        return `
+            <h2>Weighted Grades</h2>
+            <div class="cq-empty">
+                Weighted grades apply only to the NCAS framework.
+            </div>
+        `;
+    }
 
-async function generateStandardsTableForPrint(userId, framework) {
-    const { data: profile } = await window.supabase
-        .from('profiles').select('grade_level').eq('id', userId).maybeSingle();
+    const categories = [
+        { key: 'resolvedArtworks',    label: 'Resolved Artworks',                 weight: 45 },
+        { key: 'artStudy',            label: 'Art Study',                         weight: 20 },
+        { key: 'independentResearch', label: 'Independent Art Research',          weight: 15 },
+        { key: 'collaboration',       label: 'Art Community Collaboration',       weight: 10 },
+        { key: 'materialCare',        label: 'Art Material and Resources Care',   weight: 10 }
+    ];
 
-    const isMS = (profile?.grade_level || 'hs') === 'ms';
-    const { data: progress } = await window.supabase
-        .from('student_progress').select('quest_grades, completed_quests').eq('user_id', userId).maybeSingle();
+    let catsHtml = '';
+    for (const cat of categories) {
+        const val = Number(weighted[cat.key]) || 0;
+        catsHtml += `
+            <div class="weighted-grades-cat">
+                <div class="weighted-grades-cat-label">${escapeHtml(cat.label)}</div>
+                <div class="weighted-grades-cat-value">${val.toFixed(2)}%</div>
+                <div class="weighted-grades-cat-weight">${cat.weight}% weight</div>
+            </div>
+        `;
+    }
 
-    const questGrades = progress?.quest_grades || {};
+    return `
+        <h2>Weighted Grades</h2>
+        <div class="weighted-grades-print">
+            <div class="weighted-grades-overall">
+                <div class="weighted-grades-overall-label">Overall Grade</div>
+                <div class="weighted-grades-overall-value">${(Number(weighted.overall) || 0).toFixed(2)}%</div>
+            </div>
+            <div class="weighted-grades-categories">
+                ${catsHtml}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Completed Quests block for the printed page.
+ * Grouped by base weighted category (fixed order, all 5 groups rendered).
+ * Each quest is one block:
+ *
+ *   [Title]                                                       [Grade]
+ *   [Category]
+ *   Requirements: • req1 • req2 • req3 …
+ *
+ * "Grade" is Reading A: quest-scoped avg of the quest's base-category
+ * standards (CN.10.1.IA excluded), as a percent.
+ */
+function buildCompletedQuestsPrintSection(progress, allQuests) {
     const completedQuests = progress?.completed_quests || {};
-    const allQuests = await getQuests();
+    const questGrades     = progress?.quest_grades     || {};
 
-    const mvpQuests = [];
-    const regularQuests = [];
+    const bucketDefs = [
+        { key: 'resolvedArtworks',    label: 'Resolved Artworks' },
+        { key: 'artStudy',            label: 'Art Study' },
+        { key: 'independentResearch', label: 'Independent Art Research' },
+        { key: 'collaboration',       label: 'Art Community Collaboration' },
+        { key: 'materialCare',        label: 'Art Material and Resources Care' }
+    ];
+
+    const categoryToBucket = {
+        'Resolved Artworks':                'resolvedArtworks',
+        'Art Study':                        'artStudy',
+        'Art Community Collaboration':      'collaboration',
+        'Art Material and Resources Care':  'materialCare'
+    };
+
+    const buckets = {};
+    for (const b of bucketDefs) buckets[b.key] = [];
+
     for (const [questId, isCompleted] of Object.entries(completedQuests)) {
-        if (!isCompleted) continue;
+        if (isCompleted !== true) continue;
         const quest = allQuests[questId];
         if (!quest) continue;
-        if (quest.style === 'mvp') mvpQuests.push(questId);
-        else regularQuests.push(questId);
+
+        const baseCategory = resolveQuestBaseCategory(quest);
+        const bucketKey = categoryToBucket[baseCategory] || 'artStudy';
+
+        const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
+        const grades = questGrades[questId]?.[column];
+
+        let gradePercent = null;
+        if (grades && typeof grades === 'object') {
+            let sum = 0, n = 0;
+            for (const [code, rawGrade] of Object.entries(grades)) {
+                if (code === 'teacher_comment' || code === 'completed_at') continue;
+                if (code === INDEPENDENT_RESEARCH_STANDARD) continue;
+                const g = parseFloat(rawGrade);
+                if (isNaN(g)) continue;
+                sum += g;
+                n++;
+            }
+            if (n > 0) gradePercent = (sum / n / 4) * 100;
+        }
+
+        buckets[bucketKey].push({
+            title: quest.title || questId,
+            category: baseCategory,
+            requirements: Array.isArray(quest.requirements) ? quest.requirements : [],
+            gradePercent
+        });
     }
 
-    const isIB = framework === 'ib-myp';
-    const isIGCSE = framework === 'igcse';
+    let html = '';
+    for (const def of bucketDefs) {
+        const list = buckets[def.key];
+        html += `<div class="cq-group">`;
+        html += `<div class="cq-group-title">${escapeHtml(def.label)}</div>`;
 
-    if (isIB) {
-        const mvpScores = { A: 0, B: 0, C: 0, D: 0 }, mvpCounts = { A: 0, B: 0, C: 0, D: 0 };
-        const regScores = { A: 0, B: 0, C: 0, D: 0 }, regCounts = { A: 0, B: 0, C: 0, D: 0 };
+        if (list.length === 0) {
+            html += `<div class="cq-empty">No assignment completed for this category.</div>`;
+        } else {
+            for (const item of list) {
+                const gradeText = (item.gradePercent === null)
+                    ? '—'
+                    : `${item.gradePercent.toFixed(2)}%`;
 
-        for (const questId of regularQuests) {
-            const quest = allQuests[questId];
-            if (!quest?.rubric?.criteria) continue;
-            const grades = questGrades[questId]?.grade || {};
-            quest.rubric.criteria.forEach(c => {
-                const g = grades[c.code];
-                if (typeof g === 'number') { regScores[c.code] += g; regCounts[c.code]++; }
-            });
-        }
-        for (const questId of mvpQuests) {
-            const quest = allQuests[questId];
-            if (!quest?.rubric?.criteria) continue;
-            const grades = questGrades[questId]?.mvpGrade || {};
-            quest.rubric.criteria.forEach(c => {
-                const g = grades[c.code];
-                if (typeof g === 'number') { mvpScores[c.code] += g; mvpCounts[c.code]++; }
-            });
-        }
+                const reqsText = item.requirements.length > 0
+                    ? item.requirements.map(r => escapeHtml(r)).join(' • ')
+                    : 'No requirements listed.';
 
-        const criteria = [
-            { code: "A", name: "Knowing & Understanding" },
-            { code: "B", name: "Developing Skills" },
-            { code: "C", name: "Thinking Creatively" },
-            { code: "D", name: "Responding" }
-        ];
-
-        let html = `<table><thead><tr><th>Criterion</th><th>Description</th><th>Formative Grade</th><th>Summative Grade</th></tr></thead><tbody>`;
-        for (const c of criteria) {
-            const fa = regCounts[c.code] ? (regScores[c.code] / regCounts[c.code]).toFixed(2) : '—';
-            const sa = mvpCounts[c.code] ? (mvpScores[c.code] / mvpCounts[c.code]).toFixed(2) : '—';
-            html += `<tr><td><strong>${c.code}</strong></td><td>${c.name}</td><td>${fa}</td><td>${sa}</td></tr>`;
-        }
-        return html + `</tbody></table>`;
-    } else if (isIGCSE) {
-        const allCompleted = [...regularQuests, ...mvpQuests];
-        const totalScores = { AO1: 0, AO2: 0, AO3: 0, AO4: 0 };
-        const totalCounts = { AO1: 0, AO2: 0, AO3: 0, AO4: 0 };
-
-        for (const questId of allCompleted) {
-            const quest = allQuests[questId];
-            if (!quest?.rubric?.assessment_objectives) continue;
-            const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
-            const grades = questGrades[questId]?.[column] || {};
-            quest.rubric.assessment_objectives.forEach(ao => {
-                const g = grades[ao.code];
-                if (typeof g === 'number') { totalScores[ao.code] += g; totalCounts[ao.code]++; }
-            });
-        }
-
-        const aos = [
-            { code: "AO1", name: "Record" },
-            { code: "AO2", name: "Explore & Select" },
-            { code: "AO3", name: "Develop" },
-            { code: "AO4", name: "Present" }
-        ];
-
-        let html = `<table><thead><tr><th>Assessment Objective</th><th>Description</th><th>Grade</th></tr></thead><tbody>`;
-        for (const ao of aos) {
-            const avg = totalCounts[ao.code] ? (totalScores[ao.code] / totalCounts[ao.code]).toFixed(2) : '—';
-            const display = avg !== '—' ? convertNumberToLetterGrade(Math.round(parseFloat(avg))) : avg;
-            html += `<tr><td><strong>${ao.code}</strong></td><td>${ao.name}</td><td>${display}</td></tr>`;
-        }
-        return html + `</tbody></table>`;
-    } else {
-        const standardsList = isMS ? MS_STANDARDS : HS_STANDARDS;
-        const mvpScores = {}, mvpCounts = {}, regScores = {}, regCounts = {};
-
-        for (const questId of regularQuests) {
-            const grades = questGrades[questId]?.grade || {};
-            for (const [standard, grade] of Object.entries(grades)) {
-                regScores[standard] = (regScores[standard] || 0) + grade;
-                regCounts[standard] = (regCounts[standard] || 0) + 1;
-            }
-        }
-        for (const questId of mvpQuests) {
-            const grades = questGrades[questId]?.mvpGrade || {};
-            for (const [standard, grade] of Object.entries(grades)) {
-                mvpScores[standard] = (mvpScores[standard] || 0) + grade;
-                mvpCounts[standard] = (mvpCounts[standard] || 0) + 1;
+                html += `
+                    <div class="cq-quest">
+                        <div class="cq-quest-left">
+                            <div class="cq-quest-title">${escapeHtml(item.title)}</div>
+                            <div class="cq-quest-category">${escapeHtml(item.category)}</div>
+                            <div class="cq-quest-reqs">
+                                <span class="cq-quest-reqs-label">Requirements:</span> ${reqsText}
+                            </div>
+                        </div>
+                        <div class="cq-quest-right">
+                            <div class="cq-quest-grade">${gradeText}</div>
+                        </div>
+                    </div>
+                `;
             }
         }
 
-        let html = `<table><thead><tr><th>Standard Code</th><th>Standard Name</th><th>Formative Grade</th><th>Summative Grade</th></tr></thead><tbody>`;
-        for (const std of standardsList) {
-            const fa = regCounts[std.code] ? (regScores[std.code] / regCounts[std.code]).toFixed(2) : '—';
-            const sa = mvpCounts[std.code] ? (mvpScores[std.code] / mvpCounts[std.code]).toFixed(2) : '—';
-            html += `<tr><td>${std.code}</td><td>${std.name}</td><td>${fa}</td><td>${sa}</td></tr>`;
-        }
-        return html + `</tbody></table>`;
+        html += `</div>`;
     }
+    return html;
 }
 
 function generateBadgesForPrint(earnedBadges, badgesData) {
@@ -7354,26 +8124,110 @@ async function printAllProfilesBatch(includeQuests) {
         }
 
         const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Class Progress Reports</title>
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; background: white; color: black; padding: 20px; }
-            .print-container { max-width: 1100px; margin: 0 auto; }
-            .student-section { margin-bottom: 40px; page-break-after: always; break-after: page; }
-            .student-section:last-child { page-break-after: auto; }
-            h2 { font-size: 18px; margin: 20px 0 15px 0; border-left: 4px solid #4a6a8a; padding-left: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
-            th { background: #f0f0f0; }
-            .badge-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px; }
-            .badge-item { text-align: center; width: 80px; }
-            .badge-item img { width: 60px; height: 60px; border-radius: 50%; }
-            .highlight { background-color: #ffff99 !important; font-weight: bold !important; }
-            @media print {
-                body { padding: 0; }
-                .student-section { page-break-after: always; }
-                .highlight { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            }
-        </style></head><body><div class="print-container">${allHtmlChunks.join('')}</div></body></html>`;
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: white; color: black; padding: 20px; }
+    .print-container { max-width: 1100px; margin: 0 auto; }
+    .student-section { margin-bottom: 40px; page-break-after: always; break-after: page; }
+    .student-section:last-child { page-break-after: auto; }
+
+    /* ---- Header ---- */
+    .print-student-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;
+    }
+    .print-student-info h1 { font-size: 24px; margin-bottom: 6px; color: #1a1a2e; }
+    .print-student-info p  { margin: 3px 0; color: #333; font-size: 13px; }
+    .print-student-avatar img { width: 80px; height: 80px; border-radius: 8px; }
+
+    /* ---- Section headings ---- */
+    h2 {
+        font-size: 18px; margin: 18px 0 12px 0; color: #1a1a2e;
+        text-align: center; padding-bottom: 6px;
+    }
+    h2::after {
+        content: ''; display: block; width: 60%; margin: 6px auto 0 auto;
+        border-bottom: 2px solid #4a6a8a;
+    }
+
+    /* ---- Weighted Grades ---- */
+    .weighted-grades-print { margin-bottom: 12px; }
+    .weighted-grades-overall {
+        text-align: center; padding: 10px; margin-bottom: 10px;
+        background: #f6f2df; border: 1px solid #d4c98b; border-radius: 8px;
+    }
+    .weighted-grades-overall-label {
+        font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+        color: #6b5a1e; margin-bottom: 4px;
+    }
+    .weighted-grades-overall-value {
+        font-size: 34px; font-weight: 800; color: #1a1a2e; line-height: 1.05;
+    }
+    .weighted-grades-categories {
+        display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+    }
+    .weighted-grades-cat {
+        border: 1px solid #ccc; border-radius: 6px; padding: 8px 6px;
+        text-align: center; background: #fafafa;
+    }
+    .weighted-grades-cat-label {
+        font-size: 10px; color: #555; line-height: 1.25; min-height: 28px;
+        display: flex; align-items: center; justify-content: center; margin-bottom: 4px;
+    }
+    .weighted-grades-cat-value {
+        font-size: 18px; font-weight: 700; color: #1a1a2e; margin-bottom: 2px;
+    }
+    .weighted-grades-cat-weight { font-size: 10px; color: #888; }
+
+    /* ---- Badges ---- */
+    .badge-grid { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; }
+    .badge-item { text-align: center; width: 76px; }
+    .badge-item img { width: 56px; height: 56px; border-radius: 50%; }
+    .badge-item .badge-name { font-size: 10px; margin-top: 4px; color: #333; line-height: 1.2; }
+    .badge-item.unearned img { opacity: 0.3; filter: grayscale(100%); }
+
+    /* ---- Notes ---- */
+    .notes-box {
+        border: 1px solid #ccc; padding: 10px 12px; min-height: 90px;
+        margin: 10px 0 16px; background: #fafafa; border-radius: 8px;
+    }
+    .notes-box p { color: #555; margin-bottom: 6px; font-size: 13px; }
+    .notes-box .notes-lines { color: #666; margin-bottom: 8px; }
+
+    /* ---- Completed Quests ---- */
+    .cq-group { margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
+    .cq-group-title {
+        font-size: 14px; font-weight: 700; color: #1a1a2e;
+        padding: 6px 10px; background: #eef1f5; border-left: 4px solid #4a6a8a;
+        border-radius: 3px; margin-bottom: 6px;
+    }
+    .cq-quest {
+        display: flex; justify-content: space-between; gap: 16px;
+        border: 1px solid #ccc; border-radius: 4px;
+        padding: 8px 10px; margin-bottom: 6px; align-items: stretch;
+    }
+    .cq-quest-left { flex: 1; min-width: 0; }
+    .cq-quest-right {
+        display: flex; flex-direction: column; align-items: flex-end;
+        justify-content: flex-start; white-space: nowrap;
+    }
+    .cq-quest-title { font-weight: 700; font-size: 13px; color: #1a1a2e; margin-bottom: 2px; }
+    .cq-quest-category { font-size: 10px; color: #777; margin-bottom: 4px; }
+    .cq-quest-reqs { font-size: 11px; color: #444; line-height: 1.35; }
+    .cq-quest-reqs-label { font-weight: 700; color: #333; }
+    .cq-quest-grade { font-size: 16px; font-weight: 800; color: #1a1a2e; }
+    .cq-empty {
+        font-size: 12px; color: #888; font-style: italic;
+        padding: 8px 10px; background: #fafafa; border: 1px dashed #ccc;
+        border-radius: 4px;
+    }
+
+    @media print {
+        body { padding: 0; }
+        .student-section { page-break-after: always; }
+        .cq-group, .cq-quest { break-inside: avoid; page-break-inside: avoid; }
+    }
+</style></head><body><div class="print-container">${allHtmlChunks.join('')}</div></body></html>`;
 
         const printWindow = window.open('', '_blank');
         printWindow.document.write(fullHtml);
@@ -7392,83 +8246,6 @@ async function printAllProfilesBatch(includeQuests) {
     }
 }
 
-async function exportAnalyticsToCSV() {
-    const allQuests = await getQuests();
-    const framework = analyticsData.framework;
-    const isMS = currentGradeLevel === 'ms';
-
-    let domainHeaders = [];
-    if (framework === 'ib-myp') domainHeaders = ['A: Knowing & Understanding', 'B: Developing Skills', 'C: Thinking Creatively', 'D: Responding'];
-    else if (framework === 'igcse') domainHeaders = ['AO1: Record', 'AO2: Explore & Select', 'AO3: Develop', 'AO4: Present'];
-    else if (isMS) domainHeaders = ['Creating (Cr)', 'Reflecting (Re)', 'Responding (Rs)', 'Connecting (Cn)'];
-    else domainHeaders = ['Creating (Cr)', 'Presenting (Pr)', 'Responding (Re)', 'Connecting (Cn)'];
-
-    const studentsData = [['Student Name', 'Class', 'Grade Level', 'Quests Completed', 'Target Quests', 'Completion %', 'Active Quest', ...domainHeaders, 'Last Upload']];
-
-    for (const student of analyticsData.students) {
-        const targetTotal = student.targetTotal || 22;
-        const completionPercent = targetTotal > 0 ? Math.round((student.completedCount / targetTotal) * 100) : 0;
-        const domainKeys = Object.keys(student.domainGrades);
-
-        studentsData.push([
-            student.name, student.className, student.gradeLevel || 'HS',
-            student.completedCount, targetTotal, `${completionPercent}%`,
-            student.activeQuest || 'None',
-            domainKeys.length > 0 ? student.domainGrades[domainKeys[0]] || '—' : '—',
-            domainKeys.length > 1 ? student.domainGrades[domainKeys[1]] || '—' : '—',
-            domainKeys.length > 2 ? student.domainGrades[domainKeys[2]] || '—' : '—',
-            domainKeys.length > 3 ? student.domainGrades[domainKeys[3]] || '—' : '—',
-            student.lastUpload ? new Date(student.lastUpload).toLocaleDateString() : 'Never'
-        ]);
-    }
-
-    const questsData = [['Quest ID', 'Title', 'Path', 'Type', 'Completed Count', 'Total Students', 'Completion %', 'Popularity', ...domainHeaders]];
-    const allQuestIds = Object.keys(allQuests).filter(id => id.startsWith('quest')).sort();
-
-    for (const questId of allQuestIds) {
-        const quest = allQuests[questId];
-        const stats = analyticsData.questStats[questId] || { completedCount: 0, totalStudents: analyticsData.students.length, completionPercentage: 0, popularity: 0, domainAverages: {} };
-        const completionPercent = stats.totalStudents > 0 ? ((stats.completedCount / stats.totalStudents) * 100).toFixed(1) : 0;
-        const domainKeys = Object.keys(stats.domainAverages || {});
-
-        questsData.push([
-            questId, quest.title || 'Untitled', quest.path?.[0] || 'Unknown',
-            quest.style === 'mvp' ? 'MVP (Summative)' : 'Formative',
-            stats.completedCount, stats.totalStudents, `${completionPercent}%`, stats.popularity || 0,
-            domainKeys.length > 0 ? stats.domainAverages[domainKeys[0]] || '—' : '—',
-            domainKeys.length > 1 ? stats.domainAverages[domainKeys[1]] || '—' : '—',
-            domainKeys.length > 2 ? stats.domainAverages[domainKeys[2]] || '—' : '—',
-            domainKeys.length > 3 ? stats.domainAverages[domainKeys[3]] || '—' : '—'
-        ]);
-    }
-
-    downloadCSV(convertToCSV(studentsData), `analytics_students_${new Date().toISOString().slice(0, 19)}.csv`);
-    setTimeout(() => downloadCSV(convertToCSV(questsData), `analytics_quests_${new Date().toISOString().slice(0, 19)}.csv`), 100);
-
-    alert("✅ Export complete! Two CSV files have been downloaded.");
-}
-
-function convertToCSV(data) {
-    return data.map(row => row.map(cell => {
-        if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))) {
-            return `"${cell.replace(/"/g, '""')}"`;
-        }
-        return cell;
-    }).join(',')).join('\n');
-}
-
-function downloadCSV(csvContent, filename) {
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
 
 
 // ==========================================================
@@ -8732,7 +9509,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Analytics / class settings
-    document.getElementById('export-analytics-btn')?.addEventListener('click', exportAnalyticsToCSV);
     document.getElementById('save-class-settings-btn')?.addEventListener('click', saveAllClassSettings);
 
     // Invitations
@@ -8872,6 +9648,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupDateRangeTabs();
     initResetPasswordModal();
     initializeMysteryQuests();
+    setupQuestAnalyticsAccordion();
 
     // Schedule range buttons
     document.getElementById('add-range-btn')?.addEventListener('click', addDateRange);
