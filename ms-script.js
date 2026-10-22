@@ -7,7 +7,7 @@
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-10-22-1";
+const SESSION_VERSION = "2026-10-22-2";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
