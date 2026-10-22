@@ -5329,5 +5329,51 @@
     "timer": {"allottedMinutes": 225},
     "accepted": false,
     "acceptedAt": null
-  }
+  },
+
+  "quest97": {
+  "path": [],
+  "difficulty": 1,
+  "title": "The One Who Cares",
+  "rationale": "<h2>The One Who Cares</h2><p><strong>Why it's important:</strong><br>An artist's tools are the extension of their hand. Brushes, palettes, pails, rulers, electric erasers, and brush cases are shared resources that must last the whole semester for every student. Learning to clean, store, and maintain them is part of being a responsible artist — and it directly affects the quality of your work.</p><p><strong>Skills developed:</strong></p><ul><li>Responsible stewardship of shared materials</li><li>Proper cleaning and storage of brushes and tools</li><li>Routine maintenance habits</li><li>Respect for communal studio resources</li></ul>",
+  "description": "The Guild of Keepers watches over the tools of Artheim. You are entrusted with the materials given to you at the beginning of the semester: brushes, pail, palette, rulers, electric eraser, and brush case. Demonstrate that you can care for them properly so they remain in good condition throughout the term.",
+  "requirements": [
+    "Clean your brushes thoroughly after every use and reshape the bristles",
+    "Wash and dry your pail and palette after each session",
+    "Keep rulers clean and free of paint or graphite buildup",
+    "Clean the electric eraser and empty its shavings regularly",
+    "Store all brushes in your brush case when not in use",
+    "Keep all materials in good condition for the full semester. Remember that any damaged or lost aterial must be replaced"
+  ],
+  "rubric": {
+    "overall": "The One Who Cares",
+    "standards": [
+      {
+        "code": "VA:Cr2.1.7a",
+        "name": "Material Care & Stewardship",
+        "levels": {
+          "4": "All materials are consistently clean, well-maintained, and properly stored. Brushes are reshaped after every use, pail and palette are washed, rulers and eraser are kept free of residue, and the brush case is used correctly. Sets an example for others.",
+          "3": "Materials are generally well cared for with occasional reminders. Most items are clean and stored properly, but one area (e.g., brush reshaping or ruler cleaning) is inconsistent.",
+          "2": "Materials show signs of neglect. Brushes are sometimes left uncleaned, pail or palette is not washed, or tools are not returned to the brush case. Requires frequent reminders.",
+          "1": "Materials are poorly maintained. Brushes are damaged or left dirty, tools are lost or misused, and the brush case is not used. Shows little regard for shared resources."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "How to clean and store paintbrushes", "url": "https://www.youtube.com/watch?v=IcYRR3DEniU"}
+  ],
+  "reward": "mvp",
+  "character": "charimage/char88.gif",
+  "style": "mvp",
+  "category": "Art Material and Resources Care",
+  "prerequisites": [],
+  "completed": false,
+  "timer": {
+    "allottedMinutes": 75
+  },
+  "accepted": false,
+  "acceptedAt": null
 }
+}
+
