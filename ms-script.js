@@ -1,13 +1,13 @@
 // ==============================================
 // ==============================================
-// ARTHEIM - MS STUDENT SCRIPT
-// COMPLETE OPTIMIZED VERSION (Single Scrollable Map)
+// ARTHEIM - STUDENT SCRIPT
+// COMPLETE OPTIMIZED VERSION
 // ==============================================
 // ==============================================
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-10-22-2";
+const SESSION_VERSION = "2026-10-22-1";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
@@ -53,7 +53,7 @@ const SESSION_VERSION = "2026-10-22-2";
 // SECTION 1: GLOBAL STATE & CACHE MANAGEMENT
 // ==============================================
 
-// --- Global State Object (For caching) ---
+// --- Global State Object (NEW - For caching) ---
 const AppState = {
     studentData: {
         completedQuests: null,
@@ -61,7 +61,6 @@ const AppState = {
         questAccepted: null,
         questStartTimes: null,
         earnedBadges: null,
-        selfAssessments: null,
         interestState: null,
         loaded: false,
         lastLoadTime: null
@@ -70,8 +69,8 @@ const AppState = {
         customTimers: {},
         classDuration: 75,
         loaded: false,
-        requiredQuests: [],
-        requiredQuestsLoaded: false
+        requiredQuests: [],           
+        requiredQuestsLoaded: false   
     },
     questRelationships: {
         leadsTo: {},
@@ -82,12 +81,12 @@ const AppState = {
 
 // --- Teacher Data Cache (framework, teacherId, name, selected standards) ---
 const TeacherCache = {
-    framework: null,
-    teacherId: null,
-    teacherName: null,
-    classDuration: null,
-    selectedStandards: {},
-    loaded: false
+    framework: null,          // 'ncas' | 'ib-myp' | 'igcse'
+    teacherId: null,          // teacher UUID
+    teacherName: null,        // teacher display name
+    classDuration: null,      // minutes per class (from class_settings)
+    selectedStandards: {},    // questId -> [standardCode, ...]  (null means "none set")
+    loaded: false             // true once framework+teacherId are resolved
 };
 
 function invalidateTeacherCache() {
@@ -97,7 +96,6 @@ function invalidateTeacherCache() {
     TeacherCache.classDuration = null;
     TeacherCache.selectedStandards = {};
     TeacherCache.loaded = false;
-
 }
 
 // --- Original Global Variables ---
@@ -129,7 +127,6 @@ let closeBtn = null;
 let realtimeSubscription = null;
 let currentUserId = null;
 let cachedQuests = null;
-let cachedQuestsIncludeCustom = false;
 let cachedCustomTimer = null;
 let cachedClassDuration = null;
 let cachedTimerQuestId = null;
@@ -173,26 +170,25 @@ const EXP_RULES = {
     GIFT_FORMATIVE:        15,
     GIFT_SUMMATIVE:        50
 };
+
+
 window.raceJitterInterval = null;
 
-// --- Cache Invalidation Functions ---
+// --- Cache Invalidation Functions (NEW) ---
 function invalidateStudentDataCache() {
     AppState.studentData.loaded = false;
     AppState.studentData.lastLoadTime = null;
-
 }
 
 function invalidateTeacherDataCache() {
     AppState.teacherData.loaded = false;
     AppState.teacherData.customTimers = {};
-
 }
 
 function invalidateAllCaches() {
     invalidateStudentDataCache();
     invalidateTeacherDataCache();
     invalidateTeacherCache();
-
 }
 
 // ==============================================
@@ -237,7 +233,6 @@ async function guardAuth(callback) {
     if (result?.error) {
 
     } else {
-
     }
     return result;
 }
@@ -267,27 +262,30 @@ async function ensureFreshSession() {
     }
 }
 // ==============================================
-// SECTION 2: QUEST RELATIONSHIP BUILDER
+// SECTION 2: QUEST RELATIONSHIP BUILDER (NEW)
 // ==============================================
 
 function buildQuestRelationships() {
     if (AppState.relationshipsBuilt && Object.keys(AppState.questRelationships.leadsTo).length > 0) {
-        return;
+        return; // Already built
     }
-
+    
 
     const questKeys = Object.keys(quests);
-
+    
+    // Reset
     AppState.questRelationships.leadsTo = {};
     AppState.questRelationships.prerequisites = {};
-
+    
     for (const questId of questKeys) {
         const quest = quests[questId];
         if (!quest) continue;
-
+        
+        // Store prerequisites
         if (quest.prerequisites && quest.prerequisites.length) {
             AppState.questRelationships.prerequisites[questId] = quest.prerequisites;
-
+            
+            // Build reverse lookup (leads to)
             for (const prereqId of quest.prerequisites) {
                 if (!AppState.questRelationships.leadsTo[prereqId]) {
                     AppState.questRelationships.leadsTo[prereqId] = [];
@@ -300,7 +298,7 @@ function buildQuestRelationships() {
             AppState.questRelationships.prerequisites[questId] = [];
         }
     }
-
+    
     AppState.relationshipsBuilt = true;
 
 }
@@ -320,53 +318,53 @@ function escapeHtml(str) {
 }
 
 // ==============================================
-// SECTION 4: STANDARD NAMES (MS VERSION)
+// SECTION 4: STANDARD/DOMAIN NAMES
 // ==============================================
 
 const STANDARD_NAMES = {
-    "VA:Cr1.2.7a": "Goal Setting & Collaboration",
-    "VA:Cr2.1.7a": "Skill Development",
-    "VA:Cr2.3.8a": "Visual Communication",
-    "VA:Cr3.1.7a": "Reflection & Artist Statement",
-    "VA:Re8.1.8a": "Art Interpretation",
-    "VA:Cn11.1.8a": "Art & Cultural Context"
+    "Art.FA.CR.1.1.IA": "Generate: Conceptualize artistic ideas",
+    "Art.FA.CR.1.2.IA": "Practice: Organize and develop ideas",
+    "Art.FA.CR.2.1.IA": "Explore: Refine artistic work",
+    "Art.FA.CR.2.3.IA": "Transform: Document creative process",
+    "Art.FA.CR.3.1.IA": "Reflect: Reflect on artistic process",
+    "Art.FA.PR.6.1.IA": "Analyze: Convey meaning through presentation",
+    "Art.FA.RE.8.1.8A": "Interpret: Interpret intent and meaning",
+    "Art.FA.CN.10.1.IA": "Document: Synthesize and relate knowledge"
 };
-
 const STANDARD_SHORT_NAMES = {
-    "VA:Cr1.2.7a": "Goal Setting",
-    "VA:Cr2.1.7a": "Skill Dev",
-    "VA:Cr2.3.8a": "Visual Comm",
-    "VA:Cr3.1.7a": "Reflection",
-    "VA:Re8.1.8a": "Interpretation",
-    "VA:Cn11.1.8a": "Cultural Context"
+    "Art.FA.CR.1.1.IA": "Generate",
+    "Art.FA.CR.1.2.IA": "Practice",
+    "Art.FA.CR.2.1.IA": "Explore",
+    "Art.FA.CR.2.3.IA": "Transform",
+    "Art.FA.CR.3.1.IA": "Reflect",
+    "Art.FA.PR.6.1.IA": "Analyze",
+    "Art.FA.RE.8.1.8A": "Interpret",
+    "Art.FA.CN.10.1.IA": "Document"
 };
-
 const IB_CRITERIA_MAPPING = {
     "A": {
         name: "A: Knowing & Understanding",
-        ncasStandards: ["VA:Cn11.1.8a", "VA:Re8.1.8a"]
+        ncasStandards: ["Art.FA.CN.10.1.IA", "Art.FA.PR.6.1.IA"]
     },
     "B": {
-        name: "B: Developing Skills",
-        ncasStandards: ["VA:Cr2.1.7a", "VA:Cr2.3.8a"]
+        name: "B: Developing Skills", 
+        ncasStandards: ["Art.FA.CR.1.2.IA", "Art.FA.CR.2.1.IA", "Art.FA.CR.2.3.IA"]
     },
     "C": {
         name: "C: Thinking Creatively",
-        ncasStandards: ["VA:Cr1.2.7a"]
+        ncasStandards: ["Art.FA.CR.1.1.IA"]
     },
     "D": {
         name: "D: Responding",
-        ncasStandards: ["VA:Cr3.1.7a"]
+        ncasStandards: ["Art.FA.CR.3.1.IA", "Art.FA.RE.8.1.8A"]
     }
 };
-
 const IB_BANDS = {
     "7-8": "Excellent (7-8)",
-    "5-6": "Good (5-6)",
+    "5-6": "Good (5-6)", 
     "3-4": "Satisfactory (3-4)",
     "1-2": "Limited (1-2)"
 };
-
 const IGCSE_MAPPING = {};
 
 // ==============================================
@@ -378,21 +376,21 @@ function updateActiveQuestButton(timestamp) {
         _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
         return;
     }
-
+    
     if (timestamp && timestamp - _lastUpdateTime < 1000) {
         _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
         return;
     }
     _lastUpdateTime = timestamp || Date.now();
-
+    
     const button = document.getElementById('floating-active-quest');
     const timerSpan = document.getElementById('active-quest-timer');
-
+    
     if (!button || !timerSpan) {
         _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
         return;
     }
-
+    
     let activeQuestId = null;
     for (const [questId, isAccepted] of Object.entries(questAccepted)) {
         if (isAccepted === true && !completedQuests[questId]) {
@@ -400,7 +398,7 @@ function updateActiveQuestButton(timestamp) {
             break;
         }
     }
-
+    
     if (!activeQuestId) {
         if (button.style.display !== 'none') {
             button.style.display = 'none';
@@ -411,24 +409,24 @@ function updateActiveQuestButton(timestamp) {
         }
         return;
     }
-
+    
     button.style.display = 'flex';
     button.dataset.questId = activeQuestId;
-
+    
     const remaining = calculateRemainingMinutes(activeQuestId);
     const quest = quests[activeQuestId];
-
+    
     let totalMinutes = quest?.timer?.allottedMinutes || 75;
     const customTimer = getCustomTimerForQuestSync(activeQuestId);
     const classDuration = getClassDurationSync();
     if (customTimer !== null) {
         totalMinutes = customTimer * classDuration;
     }
-
+    
     let timeString;
     let warningClass = '';
     let timesUpClass = '';
-
+    
     if (remaining <= 0) {
         timeString = '⏰ TIME UP!';
         timesUpClass = 'times-up';
@@ -438,26 +436,26 @@ function updateActiveQuestButton(timestamp) {
     } else {
         timeString = formatTime(remaining, true);
     }
-
+    
     if (timeString !== _lastDisplayedTime) {
         timerSpan.textContent = timeString;
         _lastDisplayedTime = timeString;
     }
-
+    
     button.classList.remove('warning', 'times-up');
     if (timesUpClass) button.classList.add(timesUpClass);
     if (warningClass) button.classList.add(warningClass);
-
+    
     _animationFrameId = requestAnimationFrame(updateActiveQuestButton);
 }
 
 function setupActiveQuestButton() {
     const button = document.getElementById('floating-active-quest');
     if (!button) return;
-
+    
     const newButton = button.cloneNode(true);
     button.parentNode.replaceChild(newButton, button);
-
+    
     newButton.addEventListener('click', function() {
         const questId = this.dataset.questId;
         if (questId) {
@@ -534,36 +532,56 @@ function handlePreviewClick(e) {
         openFullscreenImageSimple(preview.src);
     }
 }
+// ==============================================
+// WORK OVERLAY — UI STATE MACHINE
+// ==============================================
 
+// Snapshot of the form state when the overlay opens.
+// Used to decide "is the form dirty?" (Rule Y).
 let _workOverlaySnapshot = null;
 
+/**
+ * Read the current state of the overlay and update:
+ *   - preview image visibility
+ *   - PDF status line
+ *   - Save button enabled/disabled
+ *   - Delete-image / Delete-PDF / Delete-all enabled/disabled
+ */
 function updateWorkOverlayUI() {
     const overlay = document.getElementById("work-overlay");
     if (!overlay) return;
     const questId = overlay.dataset.questId;
     if (!questId) return;
 
+    // --- Current file inputs ---
     const imageInput = document.getElementById("work-image");
     const pdfInput = document.getElementById("work-research-pdf");
     const pickedImage = imageInput?.files?.[0] || null;
     const pickedPdf = pdfInput?.files?.[0] || null;
 
+    // --- Saved work (from local cache) ---
     const saved = studentWorks[questId] || null;
     const savedImageUrl = saved?.image && saved.image !== "pending" ? saved.image : null;
     const savedPdfUrl = saved?.research_pdf_url || null;
     const savedPdfName = saved?.research_pdf_name || null;
 
+    // --- Current text fields ---
     const title = document.getElementById("work-title")?.value.trim() || "";
     const size = document.getElementById("work-size")?.value.trim() || "";
     const media = document.getElementById("work-media")?.value.trim() || "";
     const description = document.getElementById("work-description")?.value.trim() || "";
 
+    // --- Quest info (for MVP description rule) ---
     const quest = quests[questId];
     const isMVP = quest?.style === "mvp";
 
+    // ----------------------------------------------------------------
+    // 1. PREVIEW IMAGE
+    // ----------------------------------------------------------------
     const preview = document.getElementById("image-preview");
     if (preview) {
         if (pickedImage) {
+            // Newly picked file preview (live)
             const reader = new FileReader();
             reader.onload = (e) => {
                 preview.src = e.target.result;
@@ -579,13 +597,18 @@ function updateWorkOverlayUI() {
         }
     }
 
+    // ----------------------------------------------------------------
+    // 2. PDF STATUS LINE
+    // ----------------------------------------------------------------
     const pdfStatus = document.getElementById("work-pdf-status");
     if (pdfStatus) {
         if (pickedPdf) {
+            // Newly picked (not yet saved)
             const sizeKb = (pickedPdf.size / 1024).toFixed(1);
             pdfStatus.innerHTML = `📎 Selected: ${escapeHtml(pickedPdf.name)} (${sizeKb} KB)`;
             pdfStatus.style.display = "block";
         } else if (savedPdfUrl) {
+            // Saved on the server
             pdfStatus.innerHTML = `📄 Current research: <a href="${savedPdfUrl}" target="_blank">${escapeHtml(savedPdfName || "research.pdf")}</a>`;
             pdfStatus.style.display = "block";
         } else {
@@ -594,6 +617,9 @@ function updateWorkOverlayUI() {
         }
     }
 
+    // ----------------------------------------------------------------
+    // 3. DELETE BUTTONS
+    // ----------------------------------------------------------------
     const delImageBtn = document.getElementById("delete-image-btn");
     const delPdfBtn = document.getElementById("delete-pdf-btn");
     const delAllBtn = document.getElementById("delete-all-btn");
@@ -602,17 +628,26 @@ function updateWorkOverlayUI() {
     if (delPdfBtn) delPdfBtn.disabled = !(pickedPdf || savedPdfUrl);
     if (delAllBtn) delAllBtn.disabled = !(savedImageUrl || savedPdfUrl);
 
+    // ----------------------------------------------------------------
+    // 4. SAVE BUTTON
+    // ----------------------------------------------------------------
+    // Rule X (never saved): enable when title+size+media+image are all present,
+    //                       plus description if quest is MVP.
+    // Rule Y (something saved): enable only when the form is dirty.
     const saveBtn = document.querySelector(".save-work");
+
     const hasAnySaved = !!(savedImageUrl || savedPdfUrl || saved?.title || saved?.description);
 
     let shouldEnableSave = false;
 
     if (!hasAnySaved) {
+        // Rule X — brand-new work
         const hasImage = !!(pickedImage || savedImageUrl);
         const baseValid = title && size && media && hasImage;
         const descriptionValid = isMVP ? description.length > 0 : true;
         shouldEnableSave = baseValid && descriptionValid;
     } else {
+        // Rule Y — dirty check
         const snap = _workOverlaySnapshot;
         const isDirty =
             !snap ||
@@ -623,6 +658,7 @@ function updateWorkOverlayUI() {
             media !== snap.media ||
             description !== snap.description;
 
+        // Even when dirty, the form must still be valid
         const hasImage = !!(pickedImage || savedImageUrl);
         const baseValid = title && size && media && hasImage;
         const descriptionValid = isMVP ? description.length > 0 : true;
@@ -633,6 +669,10 @@ function updateWorkOverlayUI() {
     if (saveBtn) saveBtn.disabled = !shouldEnableSave;
 }
 
+/**
+ * Snapshot the current overlay state — called when the overlay opens
+ * and after a successful save.
+ */
 function snapshotWorkOverlay() {
     const overlay = document.getElementById("work-overlay");
     if (!overlay) return;
@@ -653,6 +693,7 @@ function snapshotWorkOverlay() {
 }
 
 async function saveWorkData() {
+    // Prevent multiple simultaneous saves
     if (isSavingWork) {
 
         return;
@@ -666,6 +707,7 @@ async function saveWorkData() {
         return;
     }
 
+    // ---- DECLARATIONS FIRST (before any use) ----
     const title = document.getElementById("work-title").value;
     const size = document.getElementById("work-size").value;
     const media = document.getElementById("work-media").value;
@@ -675,20 +717,24 @@ async function saveWorkData() {
     const pdfInput = document.getElementById("work-research-pdf");
     const pdfFile = pdfInput ? pdfInput.files[0] : null;
 
+    // ---- Confirm-replace block (only when a NEW image is picked) ----
     if (imageFile && studentWorks[questId] && studentWorks[questId].image && studentWorks[questId].image !== "pending") {
         const confirmResave = confirm("You have selected a new image. This will replace your saved artwork. Continue?");
         if (!confirmResave) {
             return;
         }
 
+        // Since the work is being replaced, clear the old self-assessment
         localStorage.removeItem('pendingSelfAssessment_' + questId);
         localStorage.removeItem('pendingSelfAssessmentQuest');
 
+        // Clear the submitted self-assessment locally
         if (window.selfAssessments && window.selfAssessments[questId]) {
             delete window.selfAssessments[questId];
             localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
         }
 
+        // Clear the submitted self-assessment in the cloud
         try {
             const { data: { session } } = await window.supabase.auth.getSession();
             if (session) {
@@ -712,11 +758,13 @@ async function saveWorkData() {
         }
     }
 
+    // ---- Validation ----
     if (!title) {
         alert("Please enter a title for your work.");
         return;
     }
 
+    // An image is "present" if either a new one was picked OR one is already saved
     const saved = studentWorks[questId] || {};
     const hasSavedImage = saved.image && saved.image !== "pending";
     const hasImage = !!imageFile || hasSavedImage;
@@ -726,10 +774,12 @@ async function saveWorkData() {
         return;
     }
 
+    // Check file size (only if a new image was actually picked)
     if (imageFile && imageFile.size > 5 * 1024 * 1024) {
         alert("Image is very large (over 5MB). It will be compressed but may take a moment.");
     }
 
+    // Set lock
     isSavingWork = true;
 
     const workData = {
@@ -740,20 +790,24 @@ async function saveWorkData() {
         lastModified: new Date().toISOString()
     };
 
+    // Store in local studentWorks
     studentWorks[questId] = {
         ...workData,
         image: "pending"
     };
     saveStudentWorks();
 
+    // Show saving indicator
     const saveBtn = document.querySelector(".save-work");
     if (saveBtn) {
         saveBtn.textContent = "Saving...";
         saveBtn.disabled = true;
     }
 
+    // Use a unique upload ID to prevent duplicates
     const uploadId = `${questId}_${Date.now()}`;
 
+    // --- Upload PDF first (if any) ---
     let pdfMeta = null;
     if (pdfFile) {
         pdfMeta = await uploadResearchPdf(questId, pdfFile);
@@ -796,8 +850,10 @@ async function saveWorkData() {
             snapshotWorkOverlay();
             closeWorkOverlay();
 
+            // AUTO-TRIGGER SELF-ASSESSMENT
             window._selfAssessmentPending = true;
 
+            // Grab the freshly-saved image URL from memory (avoids a redundant DB fetch)
             const freshImageUrl = studentWorks[questId]?.image_url
                                 || studentWorks[questId]?.image
                                 || null;
@@ -806,6 +862,7 @@ async function saveWorkData() {
                 openRubricPopup(questId, true, freshImageUrl);
             }, 400);
 
+            // Refresh gallery if visible
             const galleryOverlay = document.getElementById("gallery-overlay");
             if (galleryOverlay && galleryOverlay.style.display === "flex") {
                 renderGalleryItems();
@@ -824,6 +881,15 @@ async function saveWorkData() {
     });
 }
 
+// ==============================================
+// DELETE HANDLERS (work overlay)
+// ==============================================
+
+/**
+ * Handle click on "Delete image 🗑️".
+ * - If a new image is picked but not saved: just clear the input.
+ * - If a saved image exists: delete it from storage + DB, keep PDF + row.
+ */
 async function handleDeleteImageClick() {
     const overlay = document.getElementById("work-overlay");
     const questId = overlay?.dataset?.questId;
@@ -834,6 +900,7 @@ async function handleDeleteImageClick() {
     const saved = studentWorks[questId] || {};
     const savedImageUrl = saved?.image && saved.image !== "pending" ? saved.image : null;
 
+    // Case 1: only a newly-picked (unsaved) image is present
     if (pickedImage && !savedImageUrl) {
         if (!confirm("Remove the selected image?")) return;
         imageInput.value = "";
@@ -841,6 +908,7 @@ async function handleDeleteImageClick() {
         return;
     }
 
+    // Case 2: saved image exists → delete from storage + DB
     if (savedImageUrl) {
         if (!confirm("Delete the saved image for this quest? The rest of the work (title, description, PDF) will be kept.")) return;
 
@@ -848,11 +916,13 @@ async function handleDeleteImageClick() {
             const { data: { session } } = await window.supabase.auth.getSession();
             if (!session) return;
 
+            // Delete from storage
             const fileName = `${session.user.id}/${questId}.jpg`;
             await window.supabase.storage
                 .from('student-works')
                 .remove([fileName]);
 
+            // Null the DB image_url (keep the rest of the row)
             const { error } = await window.supabase
                 .from('student_works')
                 .update({ image_url: null })
@@ -865,12 +935,14 @@ async function handleDeleteImageClick() {
                 return;
             }
 
+            // Update local cache
             if (studentWorks[questId]) {
                 delete studentWorks[questId].image;
                 delete studentWorks[questId].image_url;
                 saveStudentWorks();
             }
 
+            // Clear any picked file too
             if (imageInput) imageInput.value = "";
 
             updateWorkOverlayUI();
@@ -881,6 +953,11 @@ async function handleDeleteImageClick() {
     }
 }
 
+/**
+ * Handle click on "Delete PDF 🗑️".
+ * - If a new PDF is picked but not saved: just clear the input.
+ * - If a saved PDF exists: delete it from storage + DB, keep image + row.
+ */
 async function handleDeletePdfClick() {
     const overlay = document.getElementById("work-overlay");
     const questId = overlay?.dataset?.questId;
@@ -891,6 +968,7 @@ async function handleDeletePdfClick() {
     const saved = studentWorks[questId] || {};
     const savedPdfUrl = saved?.research_pdf_url || null;
 
+    // Case 1: only a newly-picked (unsaved) PDF is present
     if (pickedPdf && !savedPdfUrl) {
         if (!confirm("Remove the selected PDF?")) return;
         pdfInput.value = "";
@@ -898,6 +976,7 @@ async function handleDeletePdfClick() {
         return;
     }
 
+    // Case 2: saved PDF exists → delete from storage + DB
     if (savedPdfUrl) {
         if (!confirm("Delete the saved research PDF for this quest? The rest of the work (image, title, description) will be kept.")) return;
 
@@ -905,11 +984,13 @@ async function handleDeletePdfClick() {
             const { data: { session } } = await window.supabase.auth.getSession();
             if (!session) return;
 
+            // Delete from research bucket
             const fileName = `${session.user.id}/${questId}.pdf`;
             await window.supabase.storage
                 .from('student-research')
                 .remove([fileName]);
 
+            // Null the DB research fields
             const { error } = await window.supabase
                 .from('student_works')
                 .update({
@@ -926,12 +1007,14 @@ async function handleDeletePdfClick() {
                 return;
             }
 
+            // Update local cache
             if (studentWorks[questId]) {
                 delete studentWorks[questId].research_pdf_url;
                 delete studentWorks[questId].research_pdf_name;
                 saveStudentWorks();
             }
 
+            // Clear picked file
             if (pdfInput) pdfInput.value = "";
 
             updateWorkOverlayUI();
@@ -942,6 +1025,10 @@ async function handleDeletePdfClick() {
     }
 }
 
+/**
+ * Handle click on "Delete all".
+ * Wipes the entire work: image + PDF (storage + DB row) + local cache + form fields.
+ */
 async function handleDeleteAllClick() {
     const overlay = document.getElementById("work-overlay");
     const questId = overlay?.dataset?.questId;
@@ -953,9 +1040,11 @@ async function handleDeleteAllClick() {
         const { data: { session } } = await window.supabase.auth.getSession();
         if (!session) return;
 
+        // Remove both storage files (best-effort, ignore missing)
         await window.supabase.storage.from('student-works').remove([`${session.user.id}/${questId}.jpg`]);
         await window.supabase.storage.from('student-research').remove([`${session.user.id}/${questId}.pdf`]);
 
+        // Delete the DB row
         const { error } = await window.supabase
             .from('student_works')
             .delete()
@@ -968,9 +1057,11 @@ async function handleDeleteAllClick() {
             return;
         }
 
+        // Clear local cache
         delete studentWorks[questId];
         saveStudentWorks();
 
+        // Clear form fields + file inputs
         const imageInput = document.getElementById("work-image");
         const pdfInput = document.getElementById("work-research-pdf");
         if (imageInput) imageInput.value = "";
@@ -991,14 +1082,20 @@ async function handleDeleteAllClick() {
     }
 }
 
+/**
+ * Legacy shim — if anything still calls deleteWorkImage(),
+ * it now routes to the "delete all" flow.
+ */
 async function deleteWorkImage() {
     return handleDeleteAllClick();
 }
 
 function initializeWorkOverlay() {
+    // --- The bottom "Finished Work" button on the quest ---
     const finishedWorkBtn = document.getElementById("finished-work-btn");
     if (finishedWorkBtn) {
         finishedWorkBtn.removeAttribute("onclick");
+        // Clone to strip any old listeners
         const freshBtn = finishedWorkBtn.cloneNode(true);
         finishedWorkBtn.parentNode.replaceChild(freshBtn, finishedWorkBtn);
         freshBtn.addEventListener("click", function (e) {
@@ -1011,6 +1108,7 @@ function initializeWorkOverlay() {
         });
     }
 
+    // --- Close buttons ---
     const closeButtons = document.querySelectorAll(
         "#work-overlay .close-overlay, #work-overlay button[onclick='closeWorkOverlay()']"
     );
@@ -1024,6 +1122,7 @@ function initializeWorkOverlay() {
         });
     });
 
+        // --- Clone the file inputs FIRST, so all references point to the live ones ---
     let imageInput = document.getElementById("work-image");
     let pdfInput = document.getElementById("work-research-pdf");
 
@@ -1038,6 +1137,7 @@ function initializeWorkOverlay() {
         pdfInput = fresh;
     }
 
+    // --- Upload buttons trigger the (cloned, live) file inputs ---
     const uploadImageBtn = document.getElementById("upload-image-btn");
     const uploadPdfBtn = document.getElementById("upload-pdf-btn");
 
@@ -1052,6 +1152,7 @@ function initializeWorkOverlay() {
         fresh.addEventListener("click", () => pdfInput.click());
     }
 
+    // --- Image input change ---
     if (imageInput) {
         imageInput.addEventListener("change", function (e) {
             const file = e.target.files[0];
@@ -1072,6 +1173,7 @@ function initializeWorkOverlay() {
         });
     }
 
+    // --- PDF input change ---
     if (pdfInput) {
         pdfInput.addEventListener("change", function (e) {
             const file = e.target.files[0];
@@ -1092,6 +1194,7 @@ function initializeWorkOverlay() {
         });
     }
 
+    // --- Delete buttons ---
     const delImageBtn = document.getElementById("delete-image-btn");
     const delPdfBtn = document.getElementById("delete-pdf-btn");
     const delAllBtn = document.getElementById("delete-all-btn");
@@ -1112,6 +1215,7 @@ function initializeWorkOverlay() {
         fresh.addEventListener("click", handleDeleteAllClick);
     }
 
+    // --- Text fields → live UI update (for Save button enablement) ---
     ["work-title", "work-size", "work-media", "work-description"].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1120,6 +1224,7 @@ function initializeWorkOverlay() {
         fresh.addEventListener("input", updateWorkOverlayUI);
     });
 
+    // --- Save button ---
     const saveBtn = document.querySelector(".save-work");
     if (saveBtn) {
         const fresh = saveBtn.cloneNode(true);
@@ -1196,6 +1301,7 @@ function closeWorkOverlay() {
 // ==============================================
 
 async function detectTeacherFramework() {
+    // --- CACHE HIT: framework already resolved this session ---
     if (TeacherCache.framework !== null) {
         return TeacherCache.framework;
     }
@@ -1208,6 +1314,7 @@ async function detectTeacherFramework() {
         return 'ncas';
     }
 
+    // Fetch framework AND id in one query, cache both
     const { data: teacher, error } = await window.supabase
         .from('teachers')
         .select('id, framework, name')
@@ -1237,7 +1344,7 @@ function getQuestsFileForFramework(framework) {
         case 'igcse':
             return 'quests-igcse.json';
         default:
-            return 'quests-ms.json';
+            return 'quests.json';
     }
 }
 // ==============================================
@@ -1297,7 +1404,68 @@ function recomputeExpTotal() {
     saveExpToLocal();
     scheduleExpSaveToCloud();
     renderExpBar();
+
+    // Detect level changes and persist them (fire-and-forget)
+    _syncLevelToCloud();
+
     return expTotal;
+}
+
+/**
+ * Compares the student's computed level to what's stored on the server,
+ * and writes the new level + timestamp when they differ.
+ *
+ * Fire-and-forget: never awaited, never blocks UI, never throws.
+ * Rate-limited to one DB check every 30 seconds per session.
+ */
+let _lastLevelSyncCheck = 0;
+let _lastSyncedLevel = null;
+
+async function _syncLevelToCloud() {
+    const now = Date.now();
+    if (now - _lastLevelSyncCheck < 30_000) return;
+    _lastLevelSyncCheck = now;
+
+    try {
+        const computed = getLevelInfo(expTotal).level;
+
+        // Skip the DB hit if we already know the synced level matches
+        if (_lastSyncedLevel !== null && _lastSyncedLevel === computed) return;
+
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (!session) return;
+
+        const { data: row } = await window.supabase
+            .from('student_progress')
+            .select('current_level')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+        const stored = row?.current_level ?? null;
+
+        if (stored === computed) {
+            _lastSyncedLevel = computed;
+            return;
+        }
+
+        const { error } = await window.supabase
+            .from('student_progress')
+            .update({
+                current_level: computed,
+                level_reached_at: new Date().toISOString()
+            })
+            .eq('user_id', session.user.id);
+
+        if (error) {
+
+            _lastLevelSyncCheck = 0; // allow retry on next award
+        } else {
+            _lastSyncedLevel = computed;
+
+        }
+    } catch (e) {
+
+    }
 }
 
 /**
@@ -1355,9 +1523,11 @@ function addExp(amount, sourceKey = null, reason = "", opts = {}) {
  * etc. Caller decides which prefixes to clear.
  */
 function revokeExpPrefix(prefix) {
+    // Tolerate callers passing "test:" instead of "test"
+    const cleanPrefix = prefix.endsWith(":") ? prefix.slice(0, -1) : prefix;
     let removed = 0;
     for (const key of Object.keys(expLog)) {
-        if (key === prefix || key.startsWith(prefix + ":")) {
+        if (key === cleanPrefix || key.startsWith(cleanPrefix + ":")) {
             removed += expLog[key] || 0;
             delete expLog[key];
         }
@@ -1838,6 +2008,7 @@ async function _wasQuestFeaturedInWeek(questId, weekKey) {
 function invalidateFeaturedWeekCache() {
     _featuredWeekCache.clear();
 }
+
 /**
  * Award EXP for approved art battle submissions.
  * Called when the student opens the Art Battle overlay (no realtime —
@@ -1994,7 +2165,6 @@ function reconcileQuestExp() {
     }
     return revoked;
 }
-
 /**
  * Removes EXP keys that should never exist in production:
  *   - anything starting with "test:"
@@ -2017,6 +2187,7 @@ function purgeDebugExpKeys() {
     }
     return removed;
 }
+
 // ==============================================
 // SECTION 8d: EXP BAR RENDERING & LEVEL-UP
 // ==============================================
@@ -2145,7 +2316,6 @@ function renderProfileExpBar() {
     totalEl.textContent   = `${expTotal} EXP total`;
     fillEl.style.width    = pct.toFixed(2) + "%";
 }
-
 /**
  * Level-up celebration.
  * Fires whenever addExp crosses a level threshold.
@@ -2976,6 +3146,7 @@ async function renderMysteryGiftList() {
         </div>`;
     }
 }
+
 // ==============================================
 // SECTION 9: INTEREST TOGGLE (MVP quests only)
 // ==============================================
@@ -2985,6 +3156,7 @@ function renderInterestToggle(questId, quest) {
     const checkbox = document.getElementById("quest-interest-checkbox");
     if (!label || !checkbox) return;
 
+    // Only MVP quests get the toggle
     if (!quest || quest.style !== "mvp") {
         label.style.display = "none";
         checkbox.checked = false;
@@ -2992,12 +3164,16 @@ function renderInterestToggle(questId, quest) {
         return;
     }
 
+    // Ensure interest map exists
     if (!window.interestState) window.interestState = {};
 
+    // Set initial checked state (from cache; the cloud load will refresh it)
     checkbox.checked = window.interestState[questId] === true;
 
+    // Show it
     label.style.display = "inline-flex";
 
+    // Wire the change handler (clone-free: just reassign onchange)
         checkbox.onchange = () => {
         const interested = checkbox.checked;
 
@@ -3053,7 +3229,6 @@ async function saveInterestToCloud() {
         _pendingInterestWrite = false;
     }
 }
-
 // ==============================================
 // SECTION 9b: QUEST PROGRESS TREE — overlay open/close
 // ==============================================
@@ -3062,11 +3237,14 @@ async function openQuestTree() {
     const overlay = document.getElementById("quest-tree-overlay");
     if (!overlay) return;
 
+    // 1. Show the overlay immediately — feels instant.
+
     overlay.style.display = "block";
         // Always open on the Quest Progress Tree tab
     if (typeof initializeTreeTabs === 'function') {
         initializeTreeTabs();
     }
+
     if (typeof invalidateTreeCompletedCache === 'function') {
         invalidateTreeCompletedCache();    // ← NEW
     }
@@ -3075,14 +3253,18 @@ async function openQuestTree() {
     if (avatarEl && profile && profile.character) {
         avatarEl.src = profile.character;
     }
-
+    // 2. Render trees + required block + free assignments from in-memory data.
+    //    The required block shows "Loading…" and fills in async.
     renderQuestTree();
 
+    // 3. Draw SVG connectors for the trees that are already rendered.
     requestAnimationFrame(() => {
         redrawAllTreeConnectors();
         setTimeout(redrawAllTreeConnectors, 50);
     });
 
+    // 4. Refresh student data in the background.
+    //    When it resolves, re-render so the freshest state wins.
     if (typeof loadStudentDataFromCloud === 'function') {
         loadStudentDataFromCloud()
             .then(() => {
@@ -3168,6 +3350,9 @@ function renderQuestTree() {
     renderFreeAssignments();
 }
 
+// ---------------------------------------------------------------
+// Main grid: one tree per interested summative
+// ---------------------------------------------------------------
 function renderTreeGrid() {
     const grid = document.getElementById("tree-grid");
     if (!grid) return;
@@ -3175,6 +3360,8 @@ function renderTreeGrid() {
     const interests = window.interestState || {};
     const interestedIds = Object.keys(interests).filter(id => interests[id] === true);
 
+    // Only keep ones that actually exist in the loaded quests
+    // (protects against stale interest IDs for deleted quests)
     const validIds = interestedIds.filter(id => quests[id]);
 
     if (validIds.length === 0) {
@@ -3187,6 +3374,7 @@ function renderTreeGrid() {
 
     grid.innerHTML = "";
 
+    // Sort by numeric quest id so trees are ordered predictably
     validIds.sort((a, b) => {
         const na = parseInt(a.replace(/\D/g, ""), 10) || 0;
         const nb = parseInt(b.replace(/\D/g, ""), 10) || 0;
@@ -3199,6 +3387,9 @@ function renderTreeGrid() {
     }
 }
 
+// ---------------------------------------------------------------
+// Build one tree block for a summative
+// ---------------------------------------------------------------
 function buildTreeBlock(summativeId) {
     const summative = quests[summativeId];
     if (!summative) return null;
@@ -3206,6 +3397,7 @@ function buildTreeBlock(summativeId) {
     const block = document.createElement("div");
     block.className = "tree-block";
 
+    // ---- Summative node (top) ----
     const summativeNode = document.createElement("div");
     summativeNode.className = "tree-node-summative";
     summativeNode.dataset.treeRole = "summative";
@@ -3216,16 +3408,18 @@ function buildTreeBlock(summativeId) {
     });
     block.appendChild(summativeNode);
 
+    // ---- "Completed" stamp (top-right corner) ----
     if (completedQuests[summativeId] === true) {
         const badge = document.createElement("div");
         badge.className = "tree-completed-badge";
         const img = document.createElement("img");
-        img.src = "completed.png";
+        img.src = "completed.png";   // adjust the path if it lives elsewhere
         img.alt = "Completed";
         badge.appendChild(img);
         block.appendChild(badge);
-    }
+}
 
+    // ---- Prerequisites ----
     const prereqIds = Array.isArray(summative.prerequisites)
         ? summative.prerequisites.filter(id => quests[id])
         : [];
@@ -3238,6 +3432,7 @@ function buildTreeBlock(summativeId) {
         return block;
     }
 
+    // ---- Row of formatives ----
     const row = document.createElement("div");
     row.className = "tree-formatives-row";
 
@@ -3263,6 +3458,7 @@ function buildTreeBlock(summativeId) {
 
     block.appendChild(row);
 
+    // ---- SVG overlay (empty for now; filled by drawTreeConnectors) ----
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.classList.add("tree-svg");
     block.appendChild(svg);
@@ -3270,10 +3466,14 @@ function buildTreeBlock(summativeId) {
     return block;
 }
 
+// ---------------------------------------------------------------
+// Required block — inserted into the same grid as the trees
+// ---------------------------------------------------------------
 function renderRequiredBlock() {
     const grid = document.getElementById("tree-grid");
     if (!grid) return;
 
+    // Build the block as a grid cell
     const block = document.createElement("div");
     block.className = "tree-required-block";
 
@@ -3289,8 +3489,12 @@ function renderRequiredBlock() {
 
     grid.appendChild(block);
 
+    // Fill the list asynchronously — do NOT await here.
+    // The block exists immediately with a "Loading…" placeholder;
+    // the list swaps in when the query resolves.
     renderRequiredQuestList();
 
+    // Position the block in the grid (existing layout logic)
     requestAnimationFrame(() => {
         applyRequiredBlockSpan(grid, block);
     });
@@ -3300,10 +3504,12 @@ async function renderRequiredQuestList() {
     const list = document.getElementById("tree-required-list");
     if (!list) return;
 
+    // Synchronous placeholder — visible before the await below.
     list.innerHTML = `<div class="tree-required-empty">Loading…</div>`;
 
     const questIds = await getRequiredQuestIds();
 
+    // Filter out quests that no longer exist
     const validIds = questIds.filter(id => quests[id]);
 
     if (validIds.length === 0) {
@@ -3313,6 +3519,7 @@ async function renderRequiredQuestList() {
         return;
     }
 
+    // Sort by numeric ID for stable ordering
     validIds.sort((a, b) => {
         const na = parseInt(a.replace(/\D/g, ""), 10) || 0;
         const nb = parseInt(b.replace(/\D/g, ""), 10) || 0;
@@ -3337,7 +3544,10 @@ async function renderRequiredQuestList() {
         list.appendChild(item);
     }
 }
-
+/**
+ * Draws the connector lines for one tree block.
+ * Must be called AFTER the block is in the DOM.
+ */
 function drawTreeConnectors(block) {
     const svg = block.querySelector(".tree-svg");
     const summativeNode = block.querySelector('[data-tree-role="summative"]');
@@ -3348,18 +3558,23 @@ function drawTreeConnectors(block) {
 
     const blockRect = block.getBoundingClientRect();
 
+    // Match the SVG to the block's current pixel size
     const svgWidth = blockRect.width;
     const svgHeight = blockRect.height;
     svg.setAttribute("width", svgWidth);
     svg.setAttribute("height", svgHeight);
     svg.setAttribute("viewBox", `0 0 ${svgWidth} ${svgHeight}`);
 
+    // Clear previous drawing
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
+    // Summative bottom-center
     const summRect = summativeNode.getBoundingClientRect();
     const startX = summRect.left - blockRect.left + summRect.width / 2;
     const startY = summRect.bottom - blockRect.top;
 
+    // Pick a bar Y halfway between the summative bottom and the
+    // top of the FIRST formative row (whichever formative is topmost).
     let topmostFormativeY = Infinity;
     for (const node of formativeNodes) {
         const r = node.getBoundingClientRect();
@@ -3369,6 +3584,7 @@ function drawTreeConnectors(block) {
     const gap = Math.max(10, topmostFormativeY - startY);
     const barY = startY + gap * 0.5;
 
+    // Shared vertical stub: summative bottom → bar
     const topStub = document.createElementNS("http://www.w3.org/2000/svg", "line");
     topStub.setAttribute("x1", startX);
     topStub.setAttribute("y1", startY);
@@ -3378,6 +3594,7 @@ function drawTreeConnectors(block) {
     topStub.setAttribute("stroke-width", "2");
     svg.appendChild(topStub);
 
+    // One L-shaped path per formative
     for (const node of formativeNodes) {
         const r = node.getBoundingClientRect();
         const targetX = r.left - blockRect.left + r.width / 2;
@@ -3387,6 +3604,8 @@ function drawTreeConnectors(block) {
         const strokeColor = isLit ? "#4a90d9" : "#cccccc";
 
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        // From the bar at the summative's x, go horizontally to the
+        // formative's x, then vertically down to its top.
         path.setAttribute(
             "d",
             `M ${startX} ${barY} L ${targetX} ${barY} L ${targetX} ${targetY}`
@@ -3399,17 +3618,23 @@ function drawTreeConnectors(block) {
     }
 }
 
+/**
+ * Redraw connectors for every tree block currently in the tree grid.
+ */
 function redrawAllTreeConnectors() {
     const blocks = document.querySelectorAll("#tree-grid .tree-block");
     for (const block of blocks) drawTreeConnectors(block);
 }
 
+// ---------------------------------------------------------------
+// Required block (stub for now — real data in step 9)
+// ---------------------------------------------------------------
 function applyRequiredBlockSpan(grid, block) {
     if (!grid || !block) return;
 
     const gridStyle = window.getComputedStyle(grid);
     const columnGap = parseFloat(gridStyle.columnGap) || 0;
-    const minColumnWidth = 360;
+    const minColumnWidth = 360;   // matches grid-template minmax
 
     const gridWidth = grid.clientWidth;
     const columnCount = Math.max(
@@ -3420,6 +3645,7 @@ function applyRequiredBlockSpan(grid, block) {
     const treeCount = grid.querySelectorAll(".tree-block").length;
 
     if (treeCount === 0) {
+        // No trees — required block spans the full grid width
         block.style.gridColumn = `1 / -1`;
         return;
     }
@@ -3427,12 +3653,18 @@ function applyRequiredBlockSpan(grid, block) {
     const treesInLastRow = treeCount % columnCount;
 
     if (treesInLastRow === 0) {
+        // Last tree row is full → required block starts a new row, spans all columns
         block.style.gridColumn = `1 / -1`;
     } else {
+        // Last tree row has a free last column → put the required block there.
+        // Any columns between the last tree and the last column stay empty.
         block.style.gridColumn = `${columnCount}`;
     }
 }
 
+// ---------------------------------------------------------------
+// Free assignments strip
+// ---------------------------------------------------------------
 function renderFreeAssignments() {
     const list = document.getElementById("tree-free-list");
     if (!list) return;
@@ -3440,6 +3672,7 @@ function renderFreeAssignments() {
     const interests = window.interestState || {};
     const interestedSummativeIds = Object.keys(interests).filter(id => interests[id] === true);
 
+    // --- Step 1: collect every formative that is a prerequisite of an interested summative ---
     const claimedFormatives = new Set();
     for (const summativeId of interestedSummativeIds) {
         const summative = quests[summativeId];
@@ -3449,6 +3682,9 @@ function renderFreeAssignments() {
         }
     }
 
+    // --- Step 2: gather candidates = every formative the student has accepted OR completed ---
+    //     Using a Set to dedupe (a quest can be both accepted and completed in
+    //     some edge cases when data hasn't been synced).
     const candidateIds = new Set();
     for (const [questId, isAccepted] of Object.entries(questAccepted || {})) {
         if (isAccepted === true) candidateIds.add(questId);
@@ -3457,15 +3693,17 @@ function renderFreeAssignments() {
         if (isCompleted === true) candidateIds.add(questId);
     }
 
+    // --- Step 3: filter out quests that don't exist, are summatives, or are claimed by a tree ---
     const freeIds = [];
     for (const questId of candidateIds) {
         const quest = quests[questId];
-        if (!quest) continue;
-        if (quest.style === "mvp") continue;
-        if (claimedFormatives.has(questId)) continue;
+        if (!quest) continue;                          // not loaded / deleted
+        if (quest.style === "mvp") continue;           // MVP quests aren't "free assignments"
+        if (claimedFormatives.has(questId)) continue;  // already shown in an interested tree
         freeIds.push(questId);
     }
 
+    // --- Step 4: render, sorted by quest number for stability ---
     freeIds.sort((a, b) => {
         const na = parseInt(a.replace(/\D/g, ""), 10) || 0;
         const nb = parseInt(b.replace(/\D/g, ""), 10) || 0;
@@ -3495,11 +3733,14 @@ function renderFreeAssignments() {
 // SECTION 9c: REQUIRED QUESTS (student side)
 // ==============================================================
 
+/* for the student's class. */
 async function getRequiredQuestIds() {
+    // ---- Cache hit ----
     if (AppState.teacherData.requiredQuestsLoaded) {
         return AppState.teacherData.requiredQuests || [];
     }
 
+    // ---- Ensure we know who the teacher is ----
     if (!TeacherCache.teacherId) {
         TeacherCache.framework = null;
         TeacherCache.loaded = false;
@@ -3510,10 +3751,13 @@ async function getRequiredQuestIds() {
         return [];
     }
 
+    // ---- Resolve the student's class ----
     const profile = loadStudentProfile();
     const classId = profile?.class_id || null;
 
     if (!classId) {
+        // No class → no per-class requirements apply (we don't support
+        // teacher-wide / NULL class_id requirements).
         AppState.teacherData.requiredQuests = [];
         AppState.teacherData.requiredQuestsLoaded = true;
         return [];
@@ -3527,6 +3771,7 @@ async function getRequiredQuestIds() {
 
     if (error) {
 
+        // Don't cache on error — allow a retry next open.
         return [];
     }
 
@@ -3537,6 +3782,9 @@ async function getRequiredQuestIds() {
     return questIds;
 }
 
+/**
+ * Clears the required-quests cache so the next call re-queries.
+ */
 function invalidateRequiredQuestsCache() {
     AppState.teacherData.requiredQuestsLoaded = false;
     AppState.teacherData.requiredQuests = [];
@@ -3605,7 +3853,7 @@ function buildTreeCompletedModel() {
         const baseBucket = categoryToBucket[baseCategory] || 'artStudy';
 
         // Group this quest's standards by target bucket
-        // (a quest can touch multiple buckets if it has CN)
+        // (a quest can touch multiple buckets if it has CN.10.1.IA)
         const standardsByBucket = {};
 
         // Preserve rubric order using the quest's rubric definition
@@ -4016,15 +4264,17 @@ async function handleLoginSubmit() {
         if (messageEl) messageEl.textContent = 'Error checking student profile';
         return;
     }
-    if (profile?.grade_level === 'hs') {
-        messageEl.textContent = 'This is the Middle School portal. Please use the High School portal.';
+    if (profile?.grade_level === 'ms') {
+        messageEl.textContent = 'This is the High School portal. Please use the Middle School portal.';
         await window.supabase.auth.signOut();
         setTimeout(() => {
-            window.location.href = 'index.html';
+            window.location.href = 'ms-index.html';
         }, 1500);
         return;
     }
     currentUserId = data.user.id;
+    _lastSyncedLevel = null;
+    _lastLevelSyncCheck = 0;
     document.getElementById("welcome-overlay").style.display = "none";
     await checkQuestCacheValidity();
     if (!quests || Object.keys(quests).length === 0) {
@@ -4039,34 +4289,37 @@ async function handleLoginSubmit() {
         });
     }
     messageEl.textContent = "Loading your data...";
-    await loadStudentDataFromCloud(true, true);
-    TeacherCache.selectedStandards = {};
-    invalidateRequiredQuestsCache();
-    updateProfileUI();
-    startActiveQuestTimerUpdates();
+await loadStudentDataFromCloud(true, true); // Force fresh load on login
+TeacherCache.selectedStandards = {};
+invalidateRequiredQuestsCache();
+updateProfileUI();
+startActiveQuestTimerUpdates();
 
-    try {
-        const freshQuests = await getAllQuestsForStudent(true);
-        quests = freshQuests;
-        cachedQuests = freshQuests;
-        cachedQuestsIncludeCustom = true;
+// ─── FIX: reload quests now that we know the teacher, then re-add hotspots ───
+try {
+    const freshQuests = await getAllQuestsForStudent(true);
+    quests = freshQuests;
+    cachedQuests = freshQuests;
+    cachedQuestsIncludeCustom = true;
 
-        AppState.relationshipsBuilt = false;
-        buildQuestRelationships();
-        buildPathQuests(true);
+    // Rebuild relationships and the MVP dropdown
+    AppState.relationshipsBuilt = false;
+    buildQuestRelationships();
+    buildPathQuests(true);
 
-        document.querySelectorAll('.hotspot.custom-quest-hotspot').forEach(h => h.remove());
-        await addCustomQuestHotspots();
-        bindHotspots();
-    } catch (e) {
+    // Remove old hotspots and re-add (this now includes custom quests)
+    document.querySelectorAll('.hotspot.custom-quest-hotspot').forEach(h => h.remove());
+    await addCustomQuestHotspots();
+    bindHotspots();
+} catch (e) {
 
-    }
-
-    setTimeout(() => {
-        setupRealtimeRefresh();
-    }, 1000);
 }
+// ─────────────────────────────────────────────────────────────────────────────
 
+setTimeout(() => {
+    setupRealtimeRefresh();
+}, 1000);
+}
 function initializeLoginEnterKey() {
     const emailInput = document.getElementById("login-email");
     const passwordInput = document.getElementById("login-password");
@@ -4078,6 +4331,7 @@ function initializeLoginEnterKey() {
         handleLoginSubmit();
     };
 
+    // Clone to avoid stacking listeners if this ever runs twice
     [emailInput, passwordInput].forEach(input => {
         const fresh = input.cloneNode(true);
         input.parentNode.replaceChild(fresh, input);
@@ -4104,6 +4358,7 @@ async function logout() {
         questAccepted = {};
         questStartTimes = {};
         earnedBadges = {};
+        earnedBadges = {};
         expTotal = 0;
         expLog = {};
         localStorage.removeItem("expTotal");
@@ -4111,12 +4366,12 @@ async function logout() {
         _celebratedKeys.clear();
         _lastRenderedLevel = null;
         _lastRenderedLevel = null;
-        window.selfAssessments = {};
-        window.interestState = {};
         invalidateFeaturedQuestsCache();
         invalidateMysteryGiftCache();
         invalidateFeaturedWeekCache();
         invalidateAllCaches();
+        _lastSyncedLevel = null;
+        _lastLevelSyncCheck = 0;
 
         setTimeout(() => {
             window.location.reload();
@@ -4130,6 +4385,7 @@ async function logout() {
 // SECTION 12: MAP CONFIG & HELPERS
 // ==============================================
 
+// Single map — no map switching
 function getMapForQuest(questId) {
     return "map1";
 }
@@ -4138,6 +4394,8 @@ function getMapForQuest(questId) {
 // SECTION 13: SUMMATIVE PATH MENU (AUTO-BUILT)
 // ==============================================
 
+// Maps the dropdown's camelCase values to the human-readable
+// path names stored inside each quest's `path` array.
 const PATH_KEY_TO_NAME = {
     paintersPath:     "Painter Path",
     sketcherPath:     "Sketcher Path",
@@ -4145,11 +4403,14 @@ const PATH_KEY_TO_NAME = {
     "3DPath":         "3D Path"
 };
 
+// Auto-built from `quests`. Populated once by buildPathQuests().
+// Shape: { paintersPath: [ {id, title, style}, ... ], ... }
 let _pathQuestsQuestCount = -1;
 
 function buildPathQuests(force = false) {
     const currentCount = Object.keys(quests).length;
 
+    // Skip if nothing changed and caller didn't force it
     if (!force && currentCount === _pathQuestsQuestCount) {
         return;
     }
@@ -4164,7 +4425,7 @@ function buildPathQuests(force = false) {
 
         const questPaths = Array.isArray(quest.path)
             ? quest.path
-            : (quest.path ? [quest.path] : []);
+            : (quest.path ? [quest.path] : []);   // ← tolerate string shape too
 
         if (questPaths.length === 0) continue;
 
@@ -4234,31 +4495,30 @@ function calculateHotspotPositions() {
         };
     });
 }
+    function updateHotspotPositions() {
+        const mapImage = document.getElementById("map-image");
+        const mapContainer = document.getElementById("map-container");
+        const floatingNav = document.getElementById("floating-nav");
 
-function updateHotspotPositions() {
-    const mapImage = document.getElementById("map-image");
-    const mapContainer = document.getElementById("map-container");
-    const floatingNav = document.getElementById("floating-nav");
+        if (!mapImage || !mapContainer) return;
 
-    if (!mapImage || !mapContainer) return;
+        const mapRect = mapImage.getBoundingClientRect();
+        const containerRect = mapContainer.getBoundingClientRect();
 
-    const mapRect = mapImage.getBoundingClientRect();
-    const containerRect = mapContainer.getBoundingClientRect();
+        document.querySelectorAll(".hotspot").forEach(hotspot => {
+            const id = hotspot.dataset.city;
+            const position = hotspotPositions[id];
 
-    document.querySelectorAll(".hotspot").forEach(hotspot => {
-        const id = hotspot.dataset.city;
-        const position = hotspotPositions[id];
-
-        if (position) {
-            hotspot.style.left = position.left;
-            hotspot.style.top = position.top;
-            hotspot.style.transform = "translate(-50%, -50%)";
-            hotspot.style.display = "block";
-            hotspot.style.zIndex = "1000";
-        }
-    });
-}
-
+            if (position) {
+                hotspot.style.left = position.left;
+                hotspot.style.top = position.top;
+                hotspot.style.transform = "translate(-50%, -50%)";
+                // MS: All hotspots always visible
+                hotspot.style.display = "block";
+                hotspot.style.zIndex = "1000";
+            }
+        });
+    }
 // ==============================================
 // SECTION 15: FLOATING NAVIGATION
 // ==============================================
@@ -4280,14 +4540,18 @@ function bindHotspots() {
     document.querySelectorAll(".hotspot").forEach(hotspot => {
         const cityId = hotspot.dataset.city;
 
+        // Prevent duplicate listeners by cloning the element
+        // (cloneNode strips all existing event listeners)
         const freshHotspot = hotspot.cloneNode(true);
         hotspot.parentNode.replaceChild(freshHotspot, hotspot);
 
+        // Accessibility: announce the quest name to screen readers
         const questForLabel = quests[cityId];
         if (questForLabel?.title) {
             freshHotspot.setAttribute("aria-label", `Quest: ${questForLabel.title}`);
-        }
+}
 
+        // Now attach exactly ONE listener to the fresh element
         if (cityId.startsWith('custom_')) {
 
             freshHotspot.addEventListener("click", () => {
@@ -4314,6 +4578,7 @@ function bindHotspots() {
 // ==============================================
 
 function initializeHotspotTooltips() {
+    // Skip entirely on touch-only devices
     const isTouchDevice = window.matchMedia("(hover: none)").matches;
     if (isTouchDevice) return;
 
@@ -4339,7 +4604,11 @@ function initializeHotspotTooltips() {
     let mouseX = 0;
     let mouseY = 0;
 
+    // ----------------------------------------------------------------
+    // Position the tooltip near the cursor, flipping at viewport edges
+    // ----------------------------------------------------------------
     function positionTooltip() {
+        // Reset to measure
         tooltip.style.left = "0px";
         tooltip.style.top  = "0px";
 
@@ -4350,12 +4619,15 @@ function initializeHotspotTooltips() {
         let left = mouseX + OFFSET_X;
         let top  = mouseY + OFFSET_Y;
 
+        // Flip horizontally if it would overflow the right edge
         if (left + rect.width + EDGE_PADDING > vw) {
             left = mouseX - rect.width - OFFSET_X;
         }
+        // Flip vertically if it would overflow the top edge
         if (top < EDGE_PADDING) {
             top = mouseY + 20;
         }
+        // Clamp to viewport
         left = Math.max(EDGE_PADDING, Math.min(left, vw - rect.width - EDGE_PADDING));
         top  = Math.max(EDGE_PADDING, Math.min(top,  vh - rect.height - EDGE_PADDING));
 
@@ -4363,6 +4635,9 @@ function initializeHotspotTooltips() {
         tooltip.style.top  = top + "px";
     }
 
+    // ----------------------------------------------------------------
+    // Fill the tooltip contents from a hotspot's quest data
+    // ----------------------------------------------------------------
     function populateTooltip(hotspot) {
         const questId = hotspot.dataset.city;
         const quest = quests[questId];
@@ -4371,14 +4646,19 @@ function initializeHotspotTooltips() {
         const isMVP = quest.style === "mvp";
         const isCompleted = completedQuests[questId] === true;
 
+        // Title
         titleTextEl.textContent = quest.title || questId;
+
+        // Green check — real element, shown only when completed
         checkEl.style.display = isCompleted ? "inline-block" : "none";
 
+        // Path subtitle
         const paths = Array.isArray(quest.path)
             ? quest.path.join(", ")
             : (quest.path || "");
         pathEl.textContent = paths;
 
+        // Color classes — completed wins over mvp (CSS declares it last)
         tooltip.classList.remove("mvp", "completed");
         if (isCompleted) {
             tooltip.classList.add("completed");
@@ -4389,6 +4669,9 @@ function initializeHotspotTooltips() {
         return true;
     }
 
+    // ----------------------------------------------------------------
+    // Show / hide
+    // ----------------------------------------------------------------
     function showTooltip(hotspot) {
         if (!populateTooltip(hotspot)) return;
         currentHotspot = hotspot;
@@ -4396,6 +4679,7 @@ function initializeHotspotTooltips() {
         tooltip.style.display = "block";
         tooltip.setAttribute("aria-hidden", "false");
         positionTooltip();
+        // Force reflow so the opacity transition fires
         void tooltip.offsetWidth;
         tooltip.classList.add("visible");
     }
@@ -4405,23 +4689,30 @@ function initializeHotspotTooltips() {
         currentHotspot = null;
         tooltip.classList.remove("visible");
         tooltip.setAttribute("aria-hidden", "true");
+        // Wait for the fade-out, then actually hide
         setTimeout(() => {
             if (!isVisible) tooltip.style.display = "none";
         }, 130);
     }
 
+    // ----------------------------------------------------------------
+    // Mouse handlers (delegated on map-container)
+    // ----------------------------------------------------------------
     mapContainer.addEventListener("mouseover", (e) => {
         const hotspot = e.target.closest(".hotspot");
         if (!hotspot) return;
 
+        // Already showing for this same hotspot? Nothing to do.
         if (currentHotspot === hotspot) return;
 
+        // Switched hotspots while a tooltip was visible → swap instantly
         if (isVisible && currentHotspot) {
             clearTimeout(showTimer);
             showTooltip(hotspot);
             return;
         }
 
+        // Fresh hover → delay before showing
         clearTimeout(showTimer);
         showTimer = setTimeout(() => {
             showTooltip(hotspot);
@@ -4438,6 +4729,7 @@ function initializeHotspotTooltips() {
         const hotspot = e.target.closest(".hotspot");
         if (!hotspot) return;
 
+        // Only hide if we're actually leaving the hotspot we care about
         const related = e.relatedTarget;
         if (related && hotspot.contains(related)) return;
 
@@ -4445,36 +4737,40 @@ function initializeHotspotTooltips() {
         hideTooltip();
     });
 
+    // Hide on scroll (map can be scrolled/panned) and on window blur
     window.addEventListener("blur", () => {
         clearTimeout(showTimer);
         if (isVisible) hideTooltip();
     });
 }
-
 // ==============================================
 // SECTION 17: HOTSPOT VISIBILITY
 // ==============================================
 
-function updateHotspotVisibility() {
+    function updateHotspotVisibility() {
 
 
-    updateHotspotPositions();
+        updateHotspotPositions();
 
-    document.querySelectorAll(".hotspot").forEach(hotspot => {
-        hotspot.style.display = "block";
-    });
+        // All hotspots always visible on the single map
+        document.querySelectorAll(".hotspot").forEach(hotspot => {
+            hotspot.style.display = "block";
+        });
 
-    const floatingNav = document.getElementById("floating-nav");
-    if (floatingNav) {
-        floatingNav.style.display = "flex";
+        // Floating nav - always visible
+        const floatingNav = document.getElementById("floating-nav");
+        if (floatingNav) {
+            floatingNav.style.display = "flex";
+        }
     }
-}
+
 
 // ==============================================
 // SECTION 18: OPEN QUEST (OPTIMIZED - INSTANT)
 // ==============================================
 
 async function openQuest(cityId) {
+    // Build quest relationships once (synchronous, cheap after first call)
     buildQuestRelationships();
 
     if (cityId === "gallery") {
@@ -4496,9 +4792,10 @@ async function openQuest(cityId) {
     if (quest.style) questBox.classList.add(quest.style);
     if (completedQuests[cityId]) questBox.classList.add("completed");
 
+    // ===== RENDER EVERYTHING SYNCHRONOUSLY FROM MEMORY (instant) =====
     document.getElementById("quest-title").innerText = quest.title || "";
     renderInterestToggle(cityId, quest);
-    document.getElementById("quest-rationale").textContent = "Rationale";
+    document.getElementById("quest-rationale").textContent = "Rationale";  
     document.getElementById("quest-text").innerText = quest.description || "";
     document.getElementById("quest-character").src = quest.character || "";
     document.getElementById("quest-rubric").textContent = "Rubric";
@@ -4511,6 +4808,7 @@ async function openQuest(cityId) {
         pathContainer.innerHTML = Array.isArray(quest.path) && quest.path.length ? quest.path.join(", ") : "No path assigned";
     }
 
+    // Prerequisites (from pre-built cache)
     const prereqContainer = document.getElementById("quest-prereq-leads-prereq");
     if (prereqContainer) {
         const prereqIds = AppState.questRelationships.prerequisites[cityId] || [];
@@ -4525,6 +4823,7 @@ async function openQuest(cityId) {
         }
     }
 
+    // Timer controls (SYNCHRONOUS — uses cached values only)
     setupTimerControlsSync(cityId);
 
     const reqBox = document.getElementById("quest-requirements");
@@ -4556,6 +4855,7 @@ async function openQuest(cityId) {
         }
     }
 
+        // --- Rationale cell click ---
     const rationaleCell = document.getElementById("quest-rationale-cell");
     if (rationaleCell) {
         const fresh = rationaleCell.cloneNode(true);
@@ -4563,6 +4863,7 @@ async function openQuest(cityId) {
         fresh.addEventListener("click", () => openRationalePopup(cityId));
     }
 
+    // --- Rubric cell click ---
     const rubricCell = document.getElementById("quest-rubric-cell");
     if (rubricCell) {
         const fresh = rubricCell.cloneNode(true);
@@ -4570,6 +4871,7 @@ async function openQuest(cityId) {
         fresh.addEventListener("click", () => openRubricPopup(cityId));
     }
 
+    // --- Finished Work cell click ---
     const workCell = document.getElementById("open-work-overlay");
     if (workCell) {
         const fresh = workCell.cloneNode(true);
@@ -4592,6 +4894,8 @@ async function openQuest(cityId) {
         });
     }
 
+    // --- Cancel Quest cell (wire click once per open) ---
+    // Note: enabled/disabled state is handled by updateRestrictedElementsVisibilitySync().
     const cancelCell = document.getElementById("cancel-quest-cell");
     if (cancelCell) {
         const fresh = cancelCell.cloneNode(true);
@@ -4602,6 +4906,7 @@ async function openQuest(cityId) {
         });
     }
 
+    // "Leads to" (from pre-built cache)
     const leadsContainer = document.getElementById("quest-prereq-leads-to");
     if (leadsContainer) {
         const leads = AppState.questRelationships.leadsTo[cityId] || [];
@@ -4616,25 +4921,31 @@ async function openQuest(cityId) {
         }
     }
 
+    // Restricted elements (SYNCHRONOUS)
     updateRestrictedElementsVisibilitySync(cityId);
 
+    // ===== SHOW OVERLAY IMMEDIATELY =====
     document.getElementById("quest-overlay").style.display = "block";
 
+    // ===== BACKGROUND WORK (doesn't block UI) =====
     const isDataFresh = AppState.studentData.loaded &&
                         (Date.now() - AppState.studentData.lastLoadTime < 5000);
 
     if (!isDataFresh) {
         loadStudentDataFromCloud(false)
             .then(() => {
+                // Refresh restricted elements in case accepted status changed
                 updateRestrictedElementsVisibilitySync(cityId);
                 setupTimerControlsSync(cityId);
             })
             .catch(err => console.error("Background student data load error:", err));
     }
 
+    // Only fetch timer values if not cached
     if (cachedTimerQuestId !== cityId || cachedClassDuration === null) {
         cacheTimerValuesForQuest(cityId)
             .then(() => {
+                // Update timer once data is ready
                 if (currentQuestId === cityId) {
                     setupTimerControlsSync(cityId);
                     updateTimerDisplay(cityId);
@@ -4642,6 +4953,7 @@ async function openQuest(cityId) {
             })
             .catch(err => console.error("Background timer cache error:", err));
     } else {
+        // Already cached - just make sure display is fresh
         updateTimerDisplay(cityId);
     }
 }
@@ -4682,16 +4994,17 @@ function markQuestCompleteFromWork(questId) {
         questAccepted[questId] = false;
         saveQuestAccepted();
     }
+    // Invalidate cache after completion
     invalidateStudentDataCache();
 }
 
-function saveQuestData() {
-    localStorage.setItem("completedQuests", JSON.stringify(completedQuests));
+function saveQuestData() { 
+    localStorage.setItem("completedQuests", JSON.stringify(completedQuests)); 
 }
 
-function loadQuestData() {
-    const saved = localStorage.getItem("completedQuests");
-    return saved ? JSON.parse(saved) : {};
+function loadQuestData() { 
+    const saved = localStorage.getItem("completedQuests"); 
+    return saved ? JSON.parse(saved) : {}; 
 }
 
 function saveQuestGrades() {
@@ -4865,6 +5178,7 @@ function getQuestExpBreakdown(questId) {
     const total = entries.reduce((s, e) => s + e.amount, 0);
     return { entries, total };
 }
+
 /**
  * Wire the hover tooltip onto the quest reward field.
  * Uses a single shared tooltip element for all quests.
@@ -4954,6 +5268,7 @@ async function cancelQuest(questId) {
         if (session) {
             const userId = session.user.id;
 
+            // --- Delete storage files (best-effort) ---
             await window.supabase.storage
                 .from('student-works')
                 .remove([`${userId}/${questId}.jpg`]);
@@ -4961,12 +5276,14 @@ async function cancelQuest(questId) {
                 .from('student-research')
                 .remove([`${userId}/${questId}.pdf`]);
 
+            // --- Delete the work DB row ---
             await window.supabase
                 .from('student_works')
                 .delete()
                 .eq('user_id', userId)
                 .eq('quest_id', questId);
 
+            // --- Clear self-assessment (local + cloud) ---
             if (window.selfAssessments && window.selfAssessments[questId]) {
                 delete window.selfAssessments[questId];
                 localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
@@ -4993,23 +5310,28 @@ async function cancelQuest(questId) {
 
     }
 
+    // --- Stop any running timer ---
     if (questTimers[questId]) {
         clearInterval(questTimers[questId]);
         delete questTimers[questId];
     }
 
+    // --- Clear local work cache ---
     if (studentWorks[questId]) {
         delete studentWorks[questId];
         saveStudentWorks();
     }
 
+    // --- Clear accepted / start time ---
     delete questAccepted[questId];
     delete questStartTimes[questId];
     saveQuestAccepted();
     saveQuestStartTimes();
 
+    // --- Invalidate cache so next open is fresh ---
     invalidateStudentDataCache();
 
+    // --- Refresh UI ---
     closeQuest();
     updateActiveQuestButton();
     checkAllQuestWarnings();
@@ -5156,7 +5478,7 @@ function showStudentSetupOverlay() {
 
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-
+    
     newSubmitBtn.addEventListener("click", async () => {
         const name = nameInput.value.trim();
         const email = emailInput.value.trim();
@@ -5164,7 +5486,7 @@ function showStudentSetupOverlay() {
         const confirmPassword = confirmPasswordInput.value;
         const teacherCode = teacherCodeInput.value.trim();
         const messageEl = document.getElementById("setup-message");
-
+        
         if (!name || !email || !password || !confirmPassword) {
             if (messageEl) messageEl.textContent = "Please fill in all fields";
             return;
@@ -5410,9 +5732,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                 expLog = {};
                 localStorage.removeItem("expTotal");
                 localStorage.removeItem("expLog");
-                if (runReconcile) {
                 try { await reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
-}
             } else {
 
             }
@@ -5423,48 +5743,48 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                             (!data.quest_start_times || Object.keys(data.quest_start_times).length === 0) &&
                             (!data.is_interested || Object.keys(data.is_interested).length === 0);
 
-            if (isEmpty) {
+                    if (isEmpty) {
 
-                            completedQuests = {};
-                            questGrades = {};
-                            earnedBadges = {};
-                            questAccepted = {};
-                            questStartTimes = {};
-                            window.selfAssessments = {};
+                    completedQuests = {};
+                    questGrades = {};
+                    earnedBadges = {};
+                    questAccepted = {};
+                    questStartTimes = {};
+                    window.selfAssessments = {};
 
-                            // PRESERVE local interest state — it may be newer than what's in the cloud
-                            const localInterest = (window.interestState && Object.keys(window.interestState).length > 0)
-                                ? window.interestState
-                                : {};
-                            window.interestState = localInterest;
+                    // PRESERVE local interest state — it may be newer than what's in the cloud
+                    const localInterest = (window.interestState && Object.keys(window.interestState).length > 0)
+                        ? window.interestState
+                        : {};
+                    window.interestState = localInterest;
 
-                            for (const questId in questTimers) {
-                                clearInterval(questTimers[questId]);
-                                delete questTimers[questId];
-                            }
-                            saveQuestData();
-                            saveQuestGrades();
-                            saveEarnedBadges();
-                            saveQuestAccepted();
-                            saveQuestStartTimes();
-                            localStorage.removeItem('selfAssessments');
-                            expTotal = 0;
-                            expLog = {};
-                            localStorage.removeItem("expTotal");
-                            localStorage.removeItem("expLog");
-                            try { await reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
-                            checkAllQuestWarnings();
-                            if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
-                            if (typeof renderRadarChart === 'function') renderRadarChart();
+                    for (const questId in questTimers) {
+                        clearInterval(questTimers[questId]);
+                        delete questTimers[questId];
+                    }
+                    saveQuestData();
+                    saveQuestGrades();
+                    saveEarnedBadges();
+                    saveQuestAccepted();
+                    saveQuestStartTimes();
+                    localStorage.removeItem('selfAssessments');
+                    expTotal = 0;
+                    expLog = {};
+                    localStorage.removeItem("expTotal");
+                    localStorage.removeItem("expLog");
+                    try { await reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
+                    checkAllQuestWarnings();
+                    if (typeof updateProfileStandardsTable === 'function') updateProfileStandardsTable();
+                    if (typeof renderRadarChart === 'function') renderRadarChart();
 
-                            // If we still have local interest, push it back up so it persists
-                            if (Object.keys(localInterest).length > 0) {
-                                try { await saveInterestToCloud(); } catch (e) { console.warn("Re-save interest failed:", e); }
-                            }
+                    // If we still have local interest, push it back up so it persists
+                    if (Object.keys(localInterest).length > 0) {
+                        try { await saveInterestToCloud(); } catch (e) { console.warn("Re-save interest failed:", e); }
+                    }
 
 
-                        }
-            else {
+                }
+                else {
 
 
 
@@ -5687,6 +6007,10 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
 
         let error;
 
+        // Resolve PDF fields:
+        // - pdfMeta provided  → new upload, use it
+        // - pdfMeta is null AND no input file selected → keep whatever's there
+        // We only overwrite PDF fields when pdfMeta is provided.
         if (existingData) {
             const updateData = {
                 image_url: imageUrl,
@@ -5782,6 +6106,7 @@ function handlePathChange() {
     const mvpSelector = document.getElementById("mvp-quests");
     if (!mvpSelector) return;
 
+    // Rebuild if `quests` has grown since last build (safety net)
     buildPathQuests();
 
     if (path && pathQuests[path] && pathQuests[path].length) {
@@ -6227,7 +6552,7 @@ function renderPathfinderResults(topQuests) {
         }
     } else {
         const topQuestIds = topQuests.map(q => q.id);
-        let bestMessage = pathfinderQuestions.resultMessages.find(msg =>
+        let bestMessage = pathfinderQuestions.resultMessages.find(msg => 
             msg.keywords.some(keyword => topQuestIds.includes(keyword))
         );
         if (!bestMessage) {
@@ -6350,10 +6675,13 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
 
     const isSelfAssessmentMode = isSelfAssessment || window._selfAssessmentPending;
 
+    // --- Show overlay IMMEDIATELY with a spinner so the student gets instant feedback ---
     content.innerHTML = `<div style="padding:40px; text-align:center; color:#f0e6d2; font-size:16px;">⏳ Loading rubric…</div>`;
     overlay.style.display = "flex";
     if (closeBtn) closeBtn.style.display = 'none';
 
+    // --- Fire teacher/framework lookup and student_works fetch in PARALLEL ---
+    // If we were given a known image URL (post-save path), skip the works fetch entirely.
     const frameworkPromise = detectTeacherFramework();
 
     const imagePromise = (knownImageUrl !== undefined)
@@ -6373,12 +6701,14 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
     const isIB = framework === 'ib-myp';
     const isNCAS = framework === 'ncas';
 
+    // This will hit the cache if we already fetched it in this session,
+    // or reuse TeacherCache.teacherId (populated above) for a single query.
     const selectedStandards = await getTeacherStandardsForQuest(cityId);
-
+    
     const isNCASFormat = quest.rubric.standards && Array.isArray(quest.rubric.standards);
     const isIBFormat = quest.rubric.criteria && Array.isArray(quest.rubric.criteria);
     const isIGCSEFormat = quest.rubric.assessment_objectives && Array.isArray(quest.rubric.assessment_objectives);
-
+    
     let itemsToShow = [];
     let gradeLevels = [];
     let headerLabel = '';
@@ -6386,7 +6716,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
     let gradeOptions = [];
     let gradeMapping = {};
     let column = isMVP ? "mvpGrade" : "grade";
-
+    
     if (isNCASFormat) {
         itemsToShow = quest.rubric.standards;
         gradeLevels = ['4', '3', '2', '1'];
@@ -6436,11 +6766,11 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
             'D': 4, 'E': 3, 'F': 2, 'G': 1
         };
     }
-    if (selectedStandards && selectedStandards.length > 0) {
-        itemsToShow = itemsToShow.filter(item => selectedStandards.includes(item.code));
-    }
-
-    if (itemsToShow.length === 0) {
+        if (selectedStandards && selectedStandards.length > 0) {
+            itemsToShow = itemsToShow.filter(item => selectedStandards.includes(item.code));
+        }
+    
+        if (itemsToShow.length === 0) {
         content.innerHTML = `<div class="rubric-empty-message">
             <p>📋 No ${headerLabel}s Selected</p>
             <p>Your teacher has not selected any ${headerLabel}s for this quest yet.</p>
@@ -6456,15 +6786,17 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
         }
         return;
     }
+    // workImageUrl is already resolved above (from Promise.all or knownImageUrl).
+    // No duplicate fetch needed here.
+    // Get existing self-assessment for this quest
+    let selfAssessment = {};
 
-        let selfAssessment = {};
-
-        if (window.selfAssessments && window.selfAssessments[cityId]) {
-            selfAssessment = window.selfAssessments[cityId];
-        }
-
+    if (window.selfAssessments && window.selfAssessments[cityId]) {
+        selfAssessment = window.selfAssessments[cityId];
+    }
+    
     let html = '';
-
+    
     if (workImageUrl) {
         html += `
             <div class="self-assessment-header" style="display: flex; gap: 20px; align-items: center; margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
@@ -6490,7 +6822,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
             </div>
         `;
     }
-
+    
     html += `
         <div class="rubric-display-note" style="background: #2d2a94; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
             ${isSelfAssessmentMode ? '📋 Select the grade you believe you deserve for each standard. Be honest!' : '📋 This rubric shows how your teacher will evaluate your work. Grades will appear here after your teacher reviews your submission.'}
@@ -6510,16 +6842,17 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
             </thead>
             <tbody>
     `;
-
+    
     let allSelected = true;
     const columnType = isMVP ? "mvpGrade" : "grade";
-
+    
     itemsToShow.forEach(item => {
         const teacherGrade = questGrades[cityId]?.[columnType]?.[item.code] ?? "";
         const selfGrade = selfAssessment[item.code] || "";
         const hasTeacherGrade = teacherGrade !== "";
         const hasSelfGrade = selfGrade !== "";
-
+        
+        // Determine which level to highlight for teacher (yellow)
         let teacherHighlightLevel = null;
         if (hasTeacherGrade) {
             let gradeNum = parseFloat(teacherGrade);
@@ -6532,33 +6865,40 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 else if (bandNum >= 3) teacherHighlightLevel = 2;
                 else if (bandNum >= 1) teacherHighlightLevel = 1;
             } else {
+                // NCAS: 4, 3.5, 3, 2.5, 2, 1.5, 1
+                // Map to levels 1-4
                 if (gradeNum >= 4) teacherHighlightLevel = 4;
                 else if (gradeNum >= 3) teacherHighlightLevel = 3;
                 else if (gradeNum >= 2) teacherHighlightLevel = 2;
                 else if (gradeNum >= 1) teacherHighlightLevel = 1;
             }
         }
-
+        
+        // Determine which level to highlight for self-assessment (teal)
         let selfHighlightLevel = null;
         if (hasSelfGrade) {
+            // Convert self-grade string to number for comparison
             let selfNum = parseFloat(selfGrade);
             if (isIGCSE) {
+                // IGCSE letter grades
                 const gradeMap = { 'A*': 8, 'A': 7, 'B': 6, 'C': 5, 'D': 4, 'E': 3, 'F': 2, 'G': 1 };
                 selfNum = gradeMap[selfGrade] || 0;
                 selfHighlightLevel = selfNum ? Math.ceil(selfNum / 2) : null;
             } else if (isIB) {
+                // IB bands
                 if (selfGrade === '7-8') selfHighlightLevel = 4;
                 else if (selfGrade === '5-6') selfHighlightLevel = 3;
                 else if (selfGrade === '3-4') selfHighlightLevel = 2;
                 else if (selfGrade === '1-2') selfHighlightLevel = 1;
             } else {
+                // NCAS
                 if (selfNum >= 4) selfHighlightLevel = 4;
                 else if (selfNum >= 3) selfHighlightLevel = 3;
                 else if (selfNum >= 2) selfHighlightLevel = 2;
                 else if (selfNum >= 1) selfHighlightLevel = 1;
             }
         }
-
+        
         let gradeDisplay = "—";
         if (hasTeacherGrade) {
             if (isIGCSE) {
@@ -6574,7 +6914,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 gradeDisplay = teacherGrade;
             }
         }
-
+        
         let dropdownOptions = '';
         if (isSelfAssessmentMode) {
             dropdownOptions += `<option value="">— Select —</option>`;
@@ -6583,30 +6923,41 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 dropdownOptions += `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
             });
         }
-
+        
         if (isSelfAssessmentMode && !selfGrade) {
             allSelected = false;
         }
-
+        
+        // ==========================================
+        // BUILD THE DESCRIPTION CELLS WITH HIGHLIGHTS
+        // ==========================================
+        // Level 4 cell
         let level4Class = '';
         if (teacherHighlightLevel === 4) level4Class = 'teacher-highlight';
         if (selfHighlightLevel === 4) level4Class = level4Class ? level4Class + ' self-highlight' : 'self-highlight';
-
+        
+        // Level 3 cell
         let level3Class = '';
         if (teacherHighlightLevel === 3) level3Class = 'teacher-highlight';
         if (selfHighlightLevel === 3) level3Class = level3Class ? level3Class + ' self-highlight' : 'self-highlight';
-
+        
+        // Level 2 cell
         let level2Class = '';
         if (teacherHighlightLevel === 2) level2Class = 'teacher-highlight';
         if (selfHighlightLevel === 2) level2Class = level2Class ? level2Class + ' self-highlight' : 'self-highlight';
-
+        
+        // Level 1 cell
         let level1Class = '';
         if (teacherHighlightLevel === 1) level1Class = 'teacher-highlight';
         if (selfHighlightLevel === 1) level1Class = level1Class ? level1Class + ' self-highlight' : 'self-highlight';
-
+        
+        // ==========================================
+        // GRADE CELL DISPLAY
+        // ==========================================
         let gradeCellContent = '';
-
+        
         if (isSelfAssessmentMode) {
+            // Self-assessment mode: dropdown + selected grade in teal
             gradeCellContent = `
                 <div class="self-assessment-cell">
                     <select class="self-assessment-dropdown" data-standard="${item.code}" style="width: 100%; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.3); color: #f0e6d2; border: 1px solid rgba(255,215,0,0.3);">
@@ -6616,7 +6967,9 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 </div>
             `;
         } else {
+            // Normal view: Show grades with colored backgrounds
             if (hasTeacherGrade && hasSelfGrade) {
+                // BOTH exist: Teacher in YELLOW, Self in TEAL
                 gradeCellContent = `
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                         <div style="background: rgba(255, 215, 0, 0.3); padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 14px; color: #ffd700;">
@@ -6628,18 +6981,21 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                     </div>
                 `;
             } else if (hasTeacherGrade) {
+                // Only teacher grade - YELLOW
                 gradeCellContent = `
                     <div style="background: rgba(255, 215, 0, 0.3); padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 16px; color: #ffd700;">
                         ${gradeDisplay}
                     </div>
                 `;
             } else if (hasSelfGrade) {
+                // Only self-assessment - TEAL
                 gradeCellContent = `
                     <div style="background: rgba(0, 255, 200, 0.25); padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 16px; color: #b0f0e0;">
                         ${selfGrade}
                     </div>
                 `;
             } else {
+                // No grades yet
                 gradeCellContent = `
                     <div style="font-size: 11px; color: #666; text-align: center; padding: 4px;">
                         ⏳ Awaiting grading
@@ -6647,7 +7003,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 `;
             }
         }
-
+        
         html += `
             <tr>
                 <td><strong>${item.code}</strong>${!isNCAS ? `<br><span style="font-size: 11px; color: #aaa;">${item.name}</span>` : ''}</td>
@@ -6659,12 +7015,12 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
             </tr>
         `;
     });
-
+    
     html += `
             </tbody>
         </table>
     `;
-
+    
     const questGrade = (questGrades && questGrades[cityId]) ? questGrades[cityId] : null;
     const teacherComment = questGrade?.[column]?.teacher_comment || null;
     if (teacherComment && teacherComment.trim() !== '') {
@@ -6675,7 +7031,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
             </div>
         `;
     }
-
+    
     if (isSelfAssessmentMode) {
         html += `
             <div class="self-assessment-footer" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,215,0,0.2);">
@@ -6691,14 +7047,14 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
             </div>
         `;
     }
-
+    
     content.innerHTML = html;
     overlay.style.display = "flex";
-
+    
     if (isSelfAssessmentMode) {
         const dropdowns = overlay.querySelectorAll('.self-assessment-dropdown');
         const submitBtn = document.getElementById('submit-self-assessment-btn');
-
+        
         dropdowns.forEach(dropdown => {
             dropdown.addEventListener('change', function() {
                 const tempAssessment = {};
@@ -6710,12 +7066,12 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 });
                 localStorage.setItem('pendingSelfAssessment_' + cityId, JSON.stringify(tempAssessment));
                 localStorage.setItem('pendingSelfAssessmentQuest', cityId);
-
+                
                 let allFilled = true;
                 allDropdowns.forEach(d => {
                     if (!d.value) allFilled = false;
                 });
-
+                
                 if (allFilled) {
                     submitBtn.disabled = false;
                     submitBtn.style.opacity = '1';
@@ -6729,7 +7085,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 }
             });
         });
-
+        
         if (submitBtn) {
             submitBtn.addEventListener('click', function() {
                 const assessment = {};
@@ -6742,7 +7098,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 saveSelfAssessment(cityId, assessment);
             });
         }
-
+        
         const pendingData = localStorage.getItem('pendingSelfAssessment_' + cityId);
         if (pendingData) {
             try {
@@ -6754,13 +7110,15 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                         d.dispatchEvent(new Event('change'));
                     }
                 });
+                // Do NOT remove the pending key here — keep it until the student
+                // actually submits, so an interrupted session can still be recovered.
                 localStorage.setItem('pendingSelfAssessmentQuest', cityId);
             } catch (e) {
 
             }
         }
     }
-
+    
     if (!isSelfAssessmentMode) {
         if (closeBtn) {
             closeBtn.style.display = 'block';
@@ -6786,13 +7144,15 @@ async function saveSelfAssessment(questId, assessment) {
         alert("Please log in to save your self-assessment.");
         return;
     }
-
+    
+    // Validate all standards have selections
     const quest = quests[questId];
     if (!quest || !quest.rubric) {
         alert("Quest not found.");
         return;
     }
-
+    
+    // Check which standards are selected (teacher-selected)
     const selectedStandards = await getTeacherStandardsForQuest(questId);
     let itemsToCheck = [];
     if (quest.rubric.standards) {
@@ -6802,81 +7162,84 @@ async function saveSelfAssessment(questId, assessment) {
     } else if (quest.rubric.assessment_objectives) {
         itemsToCheck = quest.rubric.assessment_objectives;
     }
-
+    
     if (selectedStandards && selectedStandards.length > 0) {
         itemsToCheck = itemsToCheck.filter(item => selectedStandards.includes(item.code));
     }
-
+    
+    // Check if all standards have a selection
     for (const item of itemsToCheck) {
         if (!assessment[item.code]) {
             alert(`Please select a grade for ${item.code}`);
             return;
         }
     }
-
+    
+    // Save to database
     const userId = session.user.id;
-
+    
+    // Get existing progress
     const { data: progress, error: fetchError } = await window.supabase
         .from('student_progress')
         .select('self_assessments')
         .eq('user_id', userId)
         .maybeSingle();
-
-    let selfAssessmentsCloud = {};
+    
+    let selfAssessments = {};
     if (progress?.self_assessments) {
-        selfAssessmentsCloud = progress.self_assessments;
+        selfAssessments = progress.self_assessments;
     }
-
-    selfAssessmentsCloud[questId] = assessment;
-
+    
+    // Update with new assessment
+    selfAssessments[questId] = assessment;
+    
+    // Save back to database
     const { error: saveError } = await window.supabase
         .from('student_progress')
         .update({
-            self_assessments: selfAssessmentsCloud,
+            self_assessments: selfAssessments,
             updated_at: new Date().toISOString()
         })
         .eq('user_id', userId);
-
+    
     if (saveError) {
 
         alert("Error saving your self-assessment. Please try again.");
         return;
     }
-
+    
+    // Also save locally
     if (!window.selfAssessments) window.selfAssessments = {};
     window.selfAssessments[questId] = assessment;
     localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
-
-    AppState.studentData.selfAssessments = { ...window.selfAssessments };
-
+    
+    // Clear pending auto-save
     localStorage.removeItem('pendingSelfAssessment_' + questId);
     localStorage.removeItem('pendingSelfAssessmentQuest');
-
+    
+    // Close the rubric overlay (self-assessment mode)
     const overlay = document.getElementById("rubric-overlay");
     if (overlay) {
         overlay.style.display = "none";
     }
     document.getElementById("quest-overlay").style.display = "flex";
-
+    
+    // Show success message
     alert("✅ Self-assessment submitted successfully! You can now continue your journey.");
-
+    
+    // Clear the self-assessment pending flag
     window._selfAssessmentPending = false;
-
+    
+    // Update profile if open
     const profileOverlay = document.getElementById("profile-overlay");
     if (profileOverlay && profileOverlay.style.display === "flex") {
         if (typeof renderBadges === 'function') renderBadges();
     }
 }
 
-function initiateSelfAssessment(questId) {
-    window._selfAssessmentPending = true;
-    openRubricPopup(questId, true);
-}
-
 // ==============================================
 // SECTION 34: REWARD OVERLAY
 // ==============================================
-
 function closeRewardsOverlay() {
     const overlay = document.getElementById("rewards-overlay");
     if (overlay) overlay.style.display = "none";
@@ -7203,15 +7566,21 @@ function wireProfileExpOpener() {
 // ==============================================
 
 async function getTeacherStandardsForQuest(questId) {
+    // --- CACHE HIT: only trust POSITIVE results ---
     if (Object.prototype.hasOwnProperty.call(TeacherCache.selectedStandards, questId)) {
         const cached = TeacherCache.selectedStandards[questId];
         if (Array.isArray(cached) && cached.length > 0) {
             return cached;
         }
+        // Cached value was null/empty — fall through and re-fetch,
+        // in case the teacher has since updated it.
         delete TeacherCache.selectedStandards[questId];
     }
 
+    // --- Resolve teacher id (retry if the previous attempt failed) ---
     if (!TeacherCache.teacherId) {
+        // Force a fresh lookup, ignoring the framework cache,
+        // because a stale 'ncas' fallback can hide the real teacher.
         TeacherCache.framework = null;
         TeacherCache.loaded = false;
         await detectTeacherFramework();
@@ -7219,6 +7588,7 @@ async function getTeacherStandardsForQuest(questId) {
 
     if (!TeacherCache.teacherId) {
 
+        // Do NOT cache the null here — allow a retry next open.
         return null;
     }
 
@@ -7233,13 +7603,16 @@ async function getTeacherStandardsForQuest(questId) {
         if (error.code !== 'PGRST116') {
 
         }
+        // Don't cache on error — allow a retry next open.
         return null;
     }
 
     const result = data?.selected_standards || null;
 
+    // Log the resolution so you can verify in the console.
 
 
+    // Cache only when we actually got codes back.
     if (Array.isArray(result) && result.length > 0) {
         TeacherCache.selectedStandards[questId] = result;
     }
@@ -7285,7 +7658,6 @@ async function loadTeacherNameForProfile() {
 // ==============================================
 // SECTION 36: 
 // ==============================================
-
 
 // ==============================================
 // SECTION 37: PROFILE BUTTON HANDLER
@@ -7341,12 +7713,23 @@ function showAvatarChangeUI() {
             const confirmInput = document.getElementById("student-confirm-password-input");
             const createBtn = document.getElementById("student-create-account-btn");
             const backLink = document.getElementById("back-to-login-link");
+            const teacherCode = document.getElementById("student-teacher-code");
+
+            // Hide account-creation fields (already there)
             if (nameInput) nameInput.style.display = "none";
             if (emailInput) emailInput.style.display = "none";
             if (passwordInput) passwordInput.style.display = "none";
             if (confirmInput) confirmInput.style.display = "none";
             if (createBtn) createBtn.style.display = "none";
             if (backLink) backLink.style.display = "none";
+
+            // NEW: hide the heading, subtitle, and teacher code
+            const headingEl = setupOverlay.querySelector(".scroll-body > h1");
+            const subtitleEl = setupOverlay.querySelector(".scroll-body > p");
+            if (headingEl) headingEl.style.display = "none";
+            if (subtitleEl) subtitleEl.style.display = "none";
+            if (teacherCode) teacherCode.style.display = "none";
+
             const characterDiv = document.getElementById("character-selection");
             if (characterDiv) characterDiv.style.display = "block";
             const charactersList = document.getElementById("characters-list");
@@ -7393,6 +7776,23 @@ function loadCharacterSelectionForProfile(container) {
             });
         })
         .catch(err => console.error("Failed to load characters.json:", err));
+}
+
+function resetSetupOverlayVisibility() {
+    const overlay = document.getElementById("student-setup-overlay");
+    if (!overlay) return;
+    ["student-name-input","student-email-input","student-password-input",
+     "student-confirm-password-input","student-create-account-btn",
+     "back-to-login-link","student-teacher-code"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = "";
+    });
+    const heading = overlay.querySelector(".scroll-body > h1");
+    const subtitle = overlay.querySelector(".scroll-body > p");
+    if (heading) heading.style.display = "";
+    if (subtitle) subtitle.style.display = "";
+    const characterDiv = document.getElementById("character-selection");
+    if (characterDiv) characterDiv.style.display = "none";
 }
 
 // ==============================================
@@ -7500,12 +7900,14 @@ async function renderNCASStandardsTable(tbody) {
         }
     }
     const standards = [
-        { code: "VA:Cr1.2.7a", name: "Goal Setting" },
-        { code: "VA:Cr2.1.7a", name: "Skill Development" },
-        { code: "VA:Cr2.3.8a", name: "Visual Communication" },
-        { code: "VA:Cr3.1.7a", name: "Reflection" },
-        { code: "VA:Re8.1.8a", name: "Interpretation" },
-        { code: "VA:Cn11.1.8a", name: "Cultural Context" }
+        { code: "Art.FA.CR.1.1.IA", name: "Generate" },
+        { code: "Art.FA.CR.1.2.IA", name: "Practice" },
+        { code: "Art.FA.CR.2.1.IA", name: "Explore" },
+        { code: "Art.FA.CR.2.3.IA", name: "Transform" },
+        { code: "Art.FA.CR.3.1.IA", name: "Reflect" },
+        { code: "Art.FA.PR.6.1.IA", name: "Analyze" },
+        { code: "Art.FA.RE.8.1.8A", name: "Interpret" },
+        { code: "Art.FA.CN.10.1.IA", name: "Document" }
     ];
     tbody.innerHTML = '';
     for (const standard of standards) {
@@ -7737,13 +8139,15 @@ async function computeDomainGrades() {
 function computeNCASDomainGrades() {
     const ncasDomains = {
         creating: [
-            "VA:Cr1.2.7a",
-            "VA:Cr2.1.7a",
-            "VA:Cr2.3.8a"
+            "Art.FA.CR.1.1.IA",
+            "Art.FA.CR.1.2.IA",
+            "Art.FA.CR.2.1.IA",
+            "Art.FA.CR.2.3.IA",
+            "Art.FA.CR.3.1.IA"
         ],
-        reflecting: ["VA:Cr3.1.7a"],
-        responding: ["VA:Re8.1.8a"],
-        connecting: ["VA:Cn11.1.8a"]
+        presenting: ["Art.FA.PR.6.1.IA"],
+        responding: ["Art.FA.RE.8.1.8A"],
+        connecting: ["Art.FA.CN.10.1.IA"]
     };
     const domainGrades = {};
     for (const domain in ncasDomains) {
@@ -7788,7 +8192,7 @@ async function computeIBDomainGrades() {
     const { data: progress } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', window.currentUserId || (await getCurrentUserId()))
+        .eq('user_id', currentUserId || (await getCurrentUserId()))
         .maybeSingle();
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -7827,7 +8231,7 @@ async function computeIGCSEDomainGrades() {
     const { data: progress } = await window.supabase
         .from('student_progress')
         .select('quest_grades, completed_quests')
-        .eq('user_id', window.currentUserId || (await getCurrentUserId()))
+        .eq('user_id', currentUserId || (await getCurrentUserId()))
         .maybeSingle();
     const questGrades = progress?.quest_grades || {};
     const completedQuests = progress?.completed_quests || {};
@@ -7859,7 +8263,6 @@ async function computeIGCSEDomainGrades() {
     };
     return domainGrades;
 }
-
 // ---------------------------------------------------------------
 // NCAS weighted-radar colors.
 // Key order here matches the axis order used in renderRadarChart:
@@ -7908,7 +8311,7 @@ async function renderRadarChart() {
             "AO3: Develop": "Develop ideas through investigations, demonstrating critical understanding of sources.",
             "AO4: Present": "Present a personal and meaningful response that realises intentions."
         };
-    } else if (isNCAS) {
+        } else if (isNCAS) {
         radarData = computeNCASWeightedDomainGrades();
         labels = [
             "resolvedArtworks",
@@ -7925,15 +8328,15 @@ async function renderRadarChart() {
             materialCare:        "Art Material & Resources Care (10% weight): Responsible use of materials and tools."
         };
     } else {
-        radarData = { creating: 0, reflecting: 0, responding: 0, connecting: 0 };
-        labels = ["creating", "reflecting", "responding", "connecting"];
+        radarData = { creating: 0, presenting: 0, responding: 0, connecting: 0 };
+        labels = ["creating", "presenting", "responding", "connecting"];
         descriptions = {
-            creating: "Creating", reflecting: "Reflecting", responding: "Responding", connecting: "Connecting"
+            creating: "Creating", presenting: "Presenting", responding: "Responding", connecting: "Connecting"
         };
     }
     const values = labels.map(l => radarData[l] || 0);
     const isNCASChart = (framework === 'ncas');
-    const chartMax = isNCASChart ? 100 : 4;   // NCAS plots 0–100, others stay 0–4
+    const chartMax = isNCASChart ? 100 : 4;   // NCAS plots 0–100, others stay 0–4    
     const ctx = canvas.getContext("2d");
     const size = 350;
     canvas.width = size;
@@ -7977,21 +8380,21 @@ async function renderRadarChart() {
         const x = centerX + (maxRadius + 22) * Math.cos(angle);
         const y = centerY + (maxRadius + 22) * Math.sin(angle);
         let displayLabel = labels[i];
-    if (isIB) {
-        displayLabel = labels[i].charAt(0);
-    } else if (isIGCSE) {
-        displayLabel = labels[i].split(':')[0];
-    } else if (isNCAS) {
-        // Short axis labels for the 5-axis weighted chart
-        const shortLabels = {
-            resolvedArtworks:    "Resol. Art.",
-            artStudy:            "Art Std.",
-            independentResearch: "Ind. Art Res.",
-            collaboration:       "Art Com. Colab.",
-            materialCare:        "Mat. & Reso."
-        };
-        displayLabel = shortLabels[labels[i]] || labels[i];
-    }
+        if (isIB) {
+            displayLabel = labels[i].charAt(0);
+        } else if (isIGCSE) {
+            displayLabel = labels[i].split(':')[0];
+        } else if (isNCAS) {
+            // Short axis labels for the 5-axis weighted chart
+            const shortLabels = {
+                resolvedArtworks:    "Resol. Art.",
+                artStudy:            "Art Std.",
+                independentResearch: "Ind. Art Res.",
+                collaboration:       "Art Com. Colab.",
+                materialCare:        "Mat. & Reso."
+            };
+            displayLabel = shortLabels[labels[i]] || labels[i];
+     }
     ctx.fillText(displayLabel, x, y);
     }
         // ----- Polygon fill + stroke (NCAS = colored gradient, others = original) -----
@@ -8118,6 +8521,7 @@ async function renderRadarChart() {
     } else {
         ctx.fill();
         ctx.stroke();
+    
     }
     ctx.fillStyle = "#fff";
     const pointPositions = [];
@@ -8341,7 +8745,7 @@ function updateTimerDisplay(questId) {
 // SECTION 44: START ACTIVE QUEST TIMER UPDATES
 // ==============================================
 
-function startActiveQuestTimerUpdatesRAF() {
+function startActiveQuestTimerUpdates() {
     if (window._activeQuestTimerInterval) {
         clearInterval(window._activeQuestTimerInterval);
         window._activeQuestTimerInterval = null;
@@ -8352,8 +8756,143 @@ function startActiveQuestTimerUpdatesRAF() {
     }, 1000);
 }
 
+function acceptQuest(questId) {
+    const quest = quests[questId];
+    if (!quest || !quest.timer) return;
+    const check = canAcceptQuest(questId);
+    if (!check.allowed) {
+        if (check.reason === "active_quest") {
+            showRestrictionPopup(check.activeQuestId);
+        } else if (check.reason === "prerequisites") {
+            let message = "";
+            if (check.required === 2) {
+                message = `This MVP quest requires at least 2 completed formative quests. You have completed ${check.completed} of the required ${check.required}.`;
+            } else {
+                message = `This MVP quest requires completing its formative quest first.`;
+            }
+            showPrerequisitePopup(message, check.prerequisites);
+        }
+        return;
+    }
+    if (confirm(`Accept "${quest.title}"?\n\nYou will have ${formatTime(quest.timer.allottedMinutes, true)} to complete this quest.`)) {
+        if (activeQuestId && activeQuestId !== questId) {
+            questAccepted[activeQuestId] = false;
+            stopQuestTimer(activeQuestId);
+        }
+        questAccepted[questId] = true;
+        questStartTimes[questId] = new Date().toISOString();
+        saveQuestAccepted();
+        saveQuestStartTimes();
+        const acceptBtn = document.getElementById("quest-accept");
+        if (acceptBtn) {
+            acceptBtn.disabled = true;
+            acceptBtn.textContent = "Accepted";
+        }
+        const timerDisplay = document.getElementById("timer-display");
+        if (timerDisplay) timerDisplay.style.display = "block";
+        startQuestTimer(questId);
+        saveQuestData();
+        updateActiveQuestButton();
+        startActiveQuestTimerUpdates();
+        const finishedWorkBtn = document.getElementById("finished-work-btn");
+        const linksContainer = document.getElementById("quest-links");
+        if (finishedWorkBtn) {
+            finishedWorkBtn.style.opacity = "1";
+            finishedWorkBtn.style.cursor = "pointer";
+            finishedWorkBtn.removeAttribute('disabled');
+            finishedWorkBtn.title = "Upload your finished work";
+            const newBtn = finishedWorkBtn.cloneNode(true);
+            finishedWorkBtn.parentNode.replaceChild(newBtn, finishedWorkBtn);
+            newBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                if (!currentQuestId) {
+                    alert("Please open a quest first to add your work.");
+                    return;
+                }
+                openWorkOverlay(currentQuestId);
+            });
+        }
+        if (linksContainer) {
+            linksContainer.style.opacity = "1";
+            linksContainer.style.pointerEvents = "auto";
+            linksContainer.title = "";
+        }
+        updateTimerDisplay(questId);
+        // Invalidate cache after accepting
+        invalidateStudentDataCache();
+    }
+}
+
+function resetQuestTimer(questId) {
+    delete questStartTimes[questId];
+    delete questAccepted[questId];
+    saveQuestStartTimes();
+    saveQuestAccepted();
+    stopQuestTimer(questId);
+    const questBox = document.getElementById("quest-box");
+    if (questBox && currentQuestId === questId) {
+        questBox.classList.remove("warning", "times-up");
+    }
+    const timerDisplay = document.getElementById("timer-display");
+    if (timerDisplay && currentQuestId === questId) {
+        timerDisplay.textContent = "";
+        timerDisplay.style.display = "none";
+    }
+    const acceptBtn = document.getElementById("quest-accept");
+    if (acceptBtn && currentQuestId === questId) {
+        acceptBtn.disabled = false;
+        acceptBtn.textContent = "Accept Quest";
+    }
+    const questCheck = document.getElementById("quest-check");
+    if (questCheck && currentQuestId === questId) {
+        questCheck.disabled = false;
+        questCheck.title = "";
+    }
+    // Invalidate cache after reset
+    invalidateStudentDataCache();
+}
+
+function setupTimerControls(questId) {
+    const quest = quests[questId];
+    const acceptBtn = document.getElementById("quest-accept");
+    const timerDisplay = document.getElementById("timer-display");
+    if (!quest || !acceptBtn || !timerDisplay) return;
+    const customTimer = getCustomTimerForQuest(questId);
+    if (customTimer !== null || quest.timer) {
+        acceptBtn.style.display = "block";
+        if (questAccepted[questId]) {
+            acceptBtn.disabled = true;
+            acceptBtn.textContent = "Accepted";
+            timerDisplay.style.display = "block";
+            if (!questTimers[questId] && questStartTimes[questId]) {
+                startQuestTimer(questId);
+            }
+        } else {
+            acceptBtn.disabled = false;
+            acceptBtn.textContent = "Accept Quest";
+            timerDisplay.style.display = "none";
+        }
+        const newAcceptBtn = acceptBtn.cloneNode(true);
+        acceptBtn.parentNode.replaceChild(newAcceptBtn, acceptBtn);
+        newAcceptBtn.addEventListener("click", () => {
+            if (!questAccepted[questId]) {
+                acceptQuestWithCustomTimer(questId);
+            }
+        });
+    } else {
+        acceptBtn.style.display = "none";
+        timerDisplay.style.display = "none";
+        document.getElementById("quest-box").classList.add("no-timer");
+    }
+    const questCheck = document.getElementById("quest-check");
+    if (questCheck) {
+        questCheck.disabled = false;
+        questCheck.title = "";
+    }
+}
+
 // ==============================================
-// SECTION 44b: SYNCHRONOUS TIMER CONTROLS
+// SECTION 44b: SYNCHRONOUS TIMER CONTROLS (for instant quest open)
 // ==============================================
 
 function setupTimerControlsSync(questId) {
@@ -8362,10 +8901,12 @@ function setupTimerControlsSync(questId) {
 
     if (!quest || !acceptCell) return;
 
+    // Clone the cell to drop any previously-attached listeners
     const freshCell = acceptCell.cloneNode(true);
     acceptCell.parentNode.replaceChild(freshCell, acceptCell);
     acceptCell = freshCell;
 
+    // Grab children from the LIVE cell (after cloning)
     const acceptText = acceptCell.querySelector("#quest-accept");
     const timerDisplay = acceptCell.querySelector("#timer-display");
 
@@ -8402,16 +8943,16 @@ function setupTimerControlsSync(questId) {
     }
 }
 
-
 // ==============================================
 // SECTION 45: CUSTOM TIMER FUNCTIONS (OPTIMIZED)
 // ==============================================
 
 async function getCustomTimerForQuest(questId) {
+    // --- OPTIMIZATION: Check cache first ---
     if (AppState.teacherData.loaded && AppState.teacherData.customTimers[questId] !== undefined) {
         return AppState.teacherData.customTimers[questId];
     }
-
+    
     const profile = loadStudentProfile();
     if (!profile || !profile.teacher_code) return null;
     const { data: teacher } = await window.supabase
@@ -8529,9 +9070,11 @@ async function acceptQuestWithCustomTimer(questId) {
 }
 
 function getCustomTimerForQuestSync(questId) {
+    // Check per-quest cache first
     if (cachedTimerQuestId === questId && cachedCustomTimer !== null) {
         return cachedCustomTimer;
     }
+    // Fall back to AppState cache (populated by preCacheAllTimerValues)
     if (AppState.teacherData.loaded && AppState.teacherData.customTimers[questId] !== undefined) {
         return AppState.teacherData.customTimers[questId];
     }
@@ -8543,6 +9086,7 @@ function getClassDurationSync() {
 }
 
 async function cacheTimerValuesForQuest(questId) {
+    // --- OPTIMIZATION: Check cache first ---
     if (AppState.teacherData.loaded && AppState.teacherData.customTimers[questId] !== undefined) {
         cachedCustomTimer = AppState.teacherData.customTimers[questId];
         cachedClassDuration = AppState.teacherData.classDuration;
@@ -8552,6 +9096,7 @@ async function cacheTimerValuesForQuest(questId) {
     cachedTimerQuestId = questId;
     cachedCustomTimer = await getCustomTimerForQuest(questId);
     cachedClassDuration = await getClassDuration();
+    // Store in cache
     AppState.teacherData.customTimers[questId] = cachedCustomTimer;
     AppState.teacherData.classDuration = cachedClassDuration;
     AppState.teacherData.loaded = true;
@@ -8621,69 +9166,77 @@ function ensureScheduleLoaded() {
 
     return _scheduleLoadPromise;
 }
+
 async function loadScheduleForStudent() {
     const profile = loadStudentProfile();
     if (!profile || !profile.teacher_code) {
 
         return;
     }
+    
 
-
-
+    
+    // First, get the teacher's ID and class code from the teacher_code
     const { data: teacher, error: teacherError } = await window.supabase
         .from('teachers')
         .select('id, class_code')
         .eq('class_code', profile.teacher_code)
         .single();
-
+    
     if (teacherError || !teacher) {
 
         return;
     }
-
+    
     const teacherId = teacher.id;
     const teacherClassCode = teacher.class_code;
 
-
+    
+    // Try multiple approaches to find schedule data
+    
+    // APPROACH 1: Try class-specific schedule (if student has class_id)
     let classId = profile.class_id;
     let noClassDays = [];
     let weekendSettings = { saturday_is_class: false, sunday_is_class: false };
     let frequencyDays = [];
-
+    
     if (classId) {
 
-
+        
+        // Load no-class days for this class
         const { data: classNoClassDays, error: classNoError } = await window.supabase
             .from('class_schedule_overrides')
             .select('date, reason, notes, is_class_day')
             .eq('class_id', classId);
-
+        
         if (!classNoError && classNoClassDays && classNoClassDays.length > 0) {
             noClassDays = classNoClassDays;
 
         } else {
 
         }
-
+        
+        // Load weekend settings for this class
         const { data: classWeekendSettings, error: weekendError } = await window.supabase
             .from('class_weekend_settings')
             .select('saturday_is_class, sunday_is_class')
             .eq('class_id', classId)
             .maybeSingle();
-
+        
         if (!weekendError && classWeekendSettings) {
             weekendSettings = classWeekendSettings;
 
         } else {
 
         }
-
+        
+        // Load frequency rules for this class
         const { data: classFrequencyRules, error: freqError } = await window.supabase
             .from('class_schedule_rules')
             .select('type, days')
             .eq('class_id', classId)
             .maybeSingle();
-
+        
         if (!freqError && classFrequencyRules && classFrequencyRules.type === 'custom') {
             frequencyDays = classFrequencyRules.days || [];
 
@@ -8691,24 +9244,28 @@ async function loadScheduleForStudent() {
 
         }
     }
-
+    
+    // APPROACH 2: If no class-specific data, try using the teacher's class_code
     if (noClassDays.length === 0) {
 
-
+        
+        // Find all classes with this teacher_code
         const { data: classes, error: classesError } = await window.supabase
             .from('classes')
             .select('id')
             .eq('teacher_id', teacherId);
-
+        
         if (!classesError && classes && classes.length > 0) {
+            // Try each class to find schedule data
             for (const cls of classes) {
 
-
+                
+                // Try to load no-class days
                 const { data: classNoClassDays } = await window.supabase
                     .from('class_schedule_overrides')
                     .select('date, reason, notes, is_class_day')
                     .eq('class_id', cls.id);
-
+                
                 if (classNoClassDays && classNoClassDays.length > 0) {
                     noClassDays = classNoClassDays;
 
@@ -8717,32 +9274,38 @@ async function loadScheduleForStudent() {
             }
         }
     }
-
+    
+    // APPROACH 3: If still no data, try to find ANY schedule data (for display purposes)
     if (noClassDays.length === 0) {
 
-
+        
+        // Try to get ANY schedule overrides (ignoring class_id filter)
         const { data: anyOverrides, error: anyError } = await window.supabase
             .from('class_schedule_overrides')
             .select('date, reason, notes, is_class_day')
             .limit(10);
-
+        
         if (!anyError && anyOverrides && anyOverrides.length > 0) {
 
+            // We found data, but it might be for other classes
+            // Let's filter by teacher_id if possible
             noClassDays = anyOverrides;
         }
     }
-
+    
+    // Store the loaded data
     cachedScheduleData.noClassDaysDetails = noClassDays;
     cachedScheduleData.noClassDays = noClassDays.map(d => d.date);
     cachedScheduleData.weekendSettings = weekendSettings;
     cachedScheduleData.frequencyDays = frequencyDays;
-
+    
     console.log("Schedule loaded successfully:", {
         noClassDays: cachedScheduleData.noClassDays.length,
         weekendSettings: cachedScheduleData.weekendSettings,
         frequencyDays: cachedScheduleData.frequencyDays
     });
-
+    
+    // Log the actual dates for debugging
     if (cachedScheduleData.noClassDays.length > 0) {
 
     }
@@ -8919,7 +9482,7 @@ function calculateDueDate(startDate, totalMinutes, classDuration) {
 function renderStudentCalendar() {
     const year = currentCalendarDate.getFullYear();
     const month = currentCalendarDate.getMonth();
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
                         'July', 'August', 'September', 'October', 'November', 'December'];
     document.getElementById('calendar-month-year').textContent = `${monthNames[month]} ${year}`;
     let firstDay = new Date(year, month, 1).getDay();
@@ -9017,14 +9580,14 @@ function renderStudentCalendar() {
             if (uniqueStatuses.length === 1) {
                 cell.style.background = uniqueStatuses[0].color;
             } else if (uniqueStatuses.length === 2) {
-                cell.style.background = `linear-gradient(to bottom,
-                    ${uniqueStatuses[0].color} 0%,
+                cell.style.background = `linear-gradient(to bottom, 
+                    ${uniqueStatuses[0].color} 0%, 
                     ${uniqueStatuses[0].color} 35%,
                     ${uniqueStatuses[1].color} 65%,
                     ${uniqueStatuses[1].color} 100%)`;
             } else if (uniqueStatuses.length === 3) {
-                cell.style.background = `linear-gradient(to bottom,
-                    ${uniqueStatuses[0].color} 0%,
+                cell.style.background = `linear-gradient(to bottom, 
+                    ${uniqueStatuses[0].color} 0%, 
                     ${uniqueStatuses[0].color} 25%,
                     ${uniqueStatuses[1].color} 40%,
                     ${uniqueStatuses[1].color} 60%,
@@ -9197,7 +9760,7 @@ function updateRestrictedElementsVisibility(questId) {
 }
 
 // ==============================================
-// SECTION 48b: SYNCHRONOUS RESTRICTED ELEMENTS
+// SECTION 48b: SYNCHRONOUS RESTRICTED ELEMENTS (for instant quest open)
 // ==============================================
 
 function updateRestrictedElementsVisibilitySync(questId) {
@@ -9206,6 +9769,7 @@ function updateRestrictedElementsVisibilitySync(questId) {
     const hasTimer = quests[questId]?.timer !== undefined;
     const canAccess = !hasTimer || isAccepted || isCompleted;
 
+    // --- Finished Work cell ---
     const workCell = document.getElementById("open-work-overlay");
     if (workCell) {
         if (!canAccess) {
@@ -9217,6 +9781,7 @@ function updateRestrictedElementsVisibilitySync(questId) {
         }
     }
 
+    // --- Sample links container ---
     const linksContainer = document.getElementById("quest-links");
     if (linksContainer) {
         if (!canAccess) {
@@ -9230,6 +9795,7 @@ function updateRestrictedElementsVisibilitySync(questId) {
         }
     }
 
+    // --- Cancel Quest cell ---
     const cancelCell = document.getElementById("cancel-quest-cell");
     if (cancelCell) {
         const cancelEnabled = isAccepted && !isCompleted;
@@ -9278,18 +9844,23 @@ async function openWorkOverlay(questId) {
     overlay.style.display = "flex";
     overlay.dataset.questId = targetQuestId;
 
+    // Reset file inputs
     const imageInput = document.getElementById("work-image");
     const pdfInput = document.getElementById("work-research-pdf");
     if (imageInput) imageInput.value = "";
     if (pdfInput) pdfInput.value = "";
 
+    // Prefill text fields from saved work (or blank)
     const saved = studentWorks[targetQuestId] || {};
     document.getElementById("work-title").value = saved.title || "";
     document.getElementById("work-size").value = saved.size || "";
     document.getElementById("work-media").value = saved.media || "";
     document.getElementById("work-description").value = saved.description || "";
 
+    // Update buttons, preview, PDF status
     updateWorkOverlayUI();
+
+    // Snapshot for dirty-check (Rule Y)
     snapshotWorkOverlay();
 }
 
@@ -9303,23 +9874,22 @@ function collectStudentData() {
         character: document.getElementById('student-avatar')?.src || 'profile.png'
     };
     const studentData = {
-    name: studentProfile.name,
-    character: studentProfile.character,
-    studentProfile: studentProfile,
-    timestamp: new Date().toISOString(),
-    completedQuests: completedQuests,
-    questGrades: questGrades,
-    rubricLocked: rubricLocked,
-    questAccepted: questAccepted,
-    questStartTimes: questStartTimes,
-    works: studentWorks,
-    earnedBadges: earnedBadges,
-    selfAssessments: window.selfAssessments || {},
-    standards: {},
-    appName: "Artheim",
-    version: "1.0",
-    exportDate: new Date().toLocaleString()
-};
+        name: studentProfile.name,
+        character: studentProfile.character,
+        studentProfile: studentProfile,
+        timestamp: new Date().toISOString(),
+        completedQuests: completedQuests,
+        questGrades: questGrades,
+        rubricLocked: rubricLocked,
+        questAccepted: questAccepted,
+        questStartTimes: questStartTimes,
+        works: studentWorks,
+        earnedBadges: earnedBadges,
+        standards: {},
+        appName: "Artheim",
+        version: "1.0",
+        exportDate: new Date().toLocaleString()
+    };
     document.querySelectorAll('#standards-table tbody tr').forEach(row => {
         const standard = row.getAttribute('data-standard');
         const gradeCell = row.children[1];
@@ -9390,7 +9960,6 @@ function loadStudentData(data) {
         rubricLocked = {};
         questAccepted = {};
         questStartTimes = {};
-        window.selfAssessments = {};
         saveEarnedBadges();
         saveQuestData();
         saveQuestGrades();
@@ -9461,10 +10030,6 @@ function loadStudentData(data) {
         saveStudentWorks();
     }
 
-    if (data.selfAssessments) {
-    window.selfAssessments = data.selfAssessments;
-    localStorage.setItem('selfAssessments', JSON.stringify(window.selfAssessments));
-    }
     if (data.standards) {
         Object.entries(data.standards).forEach(([standard, grades]) => {
             const row = document.querySelector(`tr[data-standard="${standard}"]`);
@@ -9513,7 +10078,6 @@ function loadStudentData(data) {
 
     }
     saveEarnedBadges();
-    invalidateAllCaches();
     updateProfileUI();
     updateProfileStandardsTable();
     renderRadarChart();
@@ -9579,8 +10143,8 @@ function canAcceptQuest(questId) {
     const quest = quests[questId];
     if (!quest) return { allowed: false, reason: "Quest not found" };
     if (activeQuestId && activeQuestId !== questId) {
-        return {
-            allowed: false,
+        return { 
+            allowed: false, 
             reason: "active_quest",
             activeQuestId: activeQuestId
         };
@@ -9621,7 +10185,7 @@ function renderQuestList(filter = 'all') {
     let filteredQuests = [];
     switch(filter) {
         case 'active':
-            filteredQuests = Object.entries(quests).filter(([id, quest]) =>
+            filteredQuests = Object.entries(quests).filter(([id, quest]) => 
                 questAccepted[id] && quest.timer
             );
             break;
@@ -9631,7 +10195,7 @@ function renderQuestList(filter = 'all') {
         case '3DPath':
             const pathMap = {
                 'paintersPath': 'Painter Path',
-                'sketcherPath': 'Sketcher Path',
+                'sketcherPath': 'Sketcher Path', 
                 'watercoloursPath': 'Watercolor Path',
                 '3DPath': '3D Path'
             };
@@ -9709,7 +10273,7 @@ function renderQuestList(filter = 'all') {
             } else {
 
             }
-        });
+        });    
         container.appendChild(questElement);
     });
 }
@@ -9732,7 +10296,7 @@ async function loadTeacherCustomQuests() {
     if (!profile || !profile.teacher_code) {
         return [];
     }
-    const studentGrade = profile.grade_level || 'ms';
+    const studentGrade = profile.grade_level || 'hs';
     const { data: teacher, error: teacherError } = await window.supabase
         .from('teachers')
         .select('id')
@@ -9840,6 +10404,7 @@ async function addCustomQuestHotspots() {
         const existingHotspots = document.querySelectorAll('.hotspot.custom-quest-hotspot');
         existingHotspots.forEach(hotspot => hotspot.remove());
 
+        // MS: All custom quests on single map
         const customPositions = [
             { top: "53.4%", left: "73.2%" },
             { top: "53.8%", left: "81.6%" },
@@ -9888,7 +10453,6 @@ async function addCustomQuestHotspots() {
         isAddingHotspots = false;
     }
 }
-
 // ==============================================
 // SECTION 56: RESPONSIVE HELPER FUNCTIONS
 // ==============================================
@@ -9911,7 +10475,7 @@ function handleOrientationChange() {
 
 function initializeTouchEvents() {
     document.addEventListener('touchstart', function(e) {
-        if (e.target.tagName === 'BUTTON' ||
+        if (e.target.tagName === 'BUTTON' || 
             e.target.tagName === 'SELECT' ||
             e.target.classList.contains('hotspot') ||
             e.target.classList.contains('tab-button')) {
@@ -9922,7 +10486,7 @@ function initializeTouchEvents() {
     }, { passive: false });
     document.addEventListener('touchstart', function(e) {
         const target = e.target;
-        if (target.tagName === 'BUTTON' ||
+        if (target.tagName === 'BUTTON' || 
             target.classList.contains('tab-button') ||
             target.classList.contains('profile-btn-small') ||
             target.classList.contains('hotspot')) {
@@ -10116,6 +10680,7 @@ async function renderGalleryItems() {
         galleryItem.appendChild(thumbnailWrapper);
         galleryItem.appendChild(title);
         if (info.textContent) galleryItem.appendChild(info);
+                // NEW: research badge
         if (work.research_pdf_url) {
             const researchBadge = document.createElement("a");
             researchBadge.href = work.research_pdf_url;
@@ -10273,6 +10838,8 @@ function closePrerequisitePopup() {
 // SECTION 61: QUEST CACHING (BANDWIDTH OPTIMIZATION)
 // ==============================================
 
+let cachedQuestsIncludeCustom = false;
+
 async function getQuests() {
     if (cachedQuests) {
 
@@ -10292,11 +10859,6 @@ async function getQuests() {
     cachedQuests = filteredQuests;
 
     return cachedQuests;
-}
-
-function getQuestsSync() {
-    if (cachedQuests) return cachedQuests;
-    return quests;
 }
 
 function refreshQuestsCache() {
@@ -10407,41 +10969,64 @@ async function checkQuestCacheValidity() {
 // SECTION 62: IMAGE COMPRESSION
 // ==============================================
 
-async function compressImage(file, maxWidth = 1024, quality = 0.85) {
+async function compressImage(file, maxWidth = 800, quality = 0.8) {
     return new Promise((resolve, reject) => {
+        // Check if it's an image
         if (!file.type.startsWith('image/')) {
             resolve(file);
             return;
         }
+        
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
+            
+            // More aggressive resizing
             if (width > maxWidth) {
                 height = (height * maxWidth) / width;
                 width = maxWidth;
             }
+            
+            // If image is very large, scale down even more
+            if (width > 1200) {
+                const scale = 1200 / width;
+                width = 1200;
+                height = height * scale;
+            }
+            
             canvas.width = width;
             canvas.height = height;
+            
             const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convert to JPEG with quality
             canvas.toBlob((blob) => {
                 if (!blob) {
                     reject(new Error('Image compression failed'));
                     return;
                 }
+                
+                // Create a new file from blob
                 const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
                     type: 'image/jpeg',
                     lastModified: Date.now()
                 });
+                
 
+                
                 resolve(compressedFile);
             }, 'image/jpeg', quality);
         };
+        
         img.onerror = () => {
             reject(new Error('Failed to load image'));
         };
+        
         img.src = URL.createObjectURL(file);
     });
 }
@@ -10450,8 +11035,12 @@ async function compressImage(file, maxWidth = 1024, quality = 0.85) {
 // SECTION 62B: RESEARCH PDF HELPERS
 // ==============================================
 
-const RESEARCH_PDF_MAX_BYTES = 5 * 1024 * 1024;
+const RESEARCH_PDF_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
+/**
+ * Upload a research PDF to the student-research bucket.
+ * Returns { url, name } on success, or null on failure.
+ */
 async function uploadResearchPdf(questId, file) {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) return null;
@@ -10492,6 +11081,9 @@ async function uploadResearchPdf(questId, file) {
     };
 }
 
+/**
+ * Delete the research PDF for a quest from storage.
+ */
 async function deleteResearchPdfFromStorage(questId) {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) return;
@@ -10501,7 +11093,6 @@ async function deleteResearchPdfFromStorage(questId) {
         .from('student-research')
         .remove([fileName]);
 }
-
 // ==============================================
 // SECTION 63: BADGE SYSTEM
 // ==============================================
@@ -10843,11 +11434,9 @@ function showBadgeNotification(badgeName) {
 async function manualRefreshBadges() {
 
     await loadStudentDataFromCloud();
-        const profileOverlay = document.getElementById("profile-overlay");
+    const profileOverlay = document.getElementById("profile-overlay");
     if (profileOverlay && profileOverlay.style.display === "flex") {
         renderBadges();
-        if (typeof renderWeightedCategories === 'function') renderWeightedCategories();
-        if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
     }
     const localBadges = loadEarnedBadges();
 
@@ -10856,7 +11445,7 @@ async function manualRefreshBadges() {
 }
 
 // ==============================================
-// SECTION 66: WEIGHTED CATEGORIES (NCAS only — MS)
+// SECTION 66: WEIGHTED CATEGORIES (NCAS only)
 // ==============================================
 //
 // Splits all graded standards into 5 weighted categories:
@@ -10867,7 +11456,7 @@ async function manualRefreshBadges() {
 //   Art Material and Resources Care  10%
 //
 // Routing rules:
-//   1. VA:Cn11.1.8a  → always "Independent Art Research"
+//   1. Art.FA.CN.10.1.IA  → always "Independent Art Research"
 //      (severed from the quest's other standards, regardless of category)
 //   2. All other standards → the quest's `category` field
 //   3. Missing category   → fallback: mvp → "Resolved Artworks",
@@ -10885,43 +11474,42 @@ async function manualRefreshBadges() {
 const WEIGHTED_CATEGORY_CONFIG = {
     resolvedArtworks: {
         key: 'resolvedArtworks',
-        label: 'Resol. Art.',
+        label: 'Resolved Artworks',
         fullLabel: 'Resolved Artworks',
         weight: 45,
         dbCategory: 'Resolved Artworks'
     },
     artStudy: {
         key: 'artStudy',
-        label: 'Art Std.',
+        label: 'Art Study',
         fullLabel: 'Art Study',
         weight: 20,
         dbCategory: 'Art Study'
     },
     independentResearch: {
         key: 'independentResearch',
-        label: 'Ind. Art Res.',
+        label: 'Independent Art Research',
         fullLabel: 'Independent Art Research',
         weight: 15,
-        dbCategory: null   // derived from VA:Cn11.1.8a, not from `category`
+        dbCategory: null   // derived from CN.10.1.IA, not from `category`
     },
     collaboration: {
         key: 'collaboration',
-        label: 'Art Com. Colab.',
+        label: 'Art Community Collaboration',
         fullLabel: 'Art Community Collaboration',
         weight: 10,
         dbCategory: 'Art Community Collaboration'
     },
     materialCare: {
         key: 'materialCare',
-        label: 'Mat. & Reso.',
+        label: 'Art Material and Resources Care.',
         fullLabel: 'Art Material and Resources Care',
         weight: 10,
         dbCategory: 'Art Material and Resources Care'
     }
 };
 
-// MS: the severed standard is Cultural Context
-const INDEPENDENT_RESEARCH_STANDARD = 'VA:Cn11.1.8a';
+const INDEPENDENT_RESEARCH_STANDARD = 'Art.FA.CN.10.1.IA';
 
 // ----------------------------------------------------------------
 // Resolve which category a quest's *non-research* standards belong to.
@@ -11086,6 +11674,7 @@ function _bindWeightedCatTooltips(rootEl) {
             tip.classList.add('show');
         });
         h.addEventListener('mousemove', (e) => {
+            // Position tooltip near cursor, flip at edges
             const rect = tip.getBoundingClientRect();
             let left = e.clientX + 14;
             let top  = e.clientY + 14;
@@ -11105,6 +11694,10 @@ function _bindWeightedCatTooltips(rootEl) {
     });
 }
 
+// ----------------------------------------------------------------
+// Render the Weighted Categories row into the profile grid.
+// Called from the profile-open handler and after data refreshes.
+// ----------------------------------------------------------------
 // ----------------------------------------------------------------
 // Render the Weighted Categories row into the profile grid.
 // Collapsible: header bar always visible, table behind a toggle.
@@ -11217,6 +11810,8 @@ function renderWeightedCategories() {
     if (headerEl && !headerEl.dataset.wired) {
         headerEl.dataset.wired = '1';
         headerEl.addEventListener('click', (e) => {
+            // Don't toggle when clicking a header cell with a tooltip
+            // (they don't bubble up here anyway, but being safe)
             e.stopPropagation();
             rowEl.classList.toggle('expanded');
         });
@@ -11227,21 +11822,9 @@ function renderWeightedCategories() {
 }
 
 // ==============================================
-// SECTION 67: SAFETY NET FUNCTIONS
+// SECTION 67: 
 // ==============================================
 
-function loadStandardDeductions() {
-
-    return {};
-}
-
-function saveStandardDeductions() {
-
-}
-
-function initializeDeductionSystem() {
-
-}
 
 // ==============================================
 // SECTION 68: REFRESH STUDENT DATA
@@ -11264,9 +11847,11 @@ async function refreshStudentData() {
     if (currentQuestId && document.getElementById("rubric-overlay").style.display === "flex") {
         openRubricPopup(currentQuestId);
     }
-    const profileOverlay = document.getElementById("profile-overlay");
+        const profileOverlay = document.getElementById("profile-overlay");
     if (profileOverlay && profileOverlay.style.display === "flex") {
         renderBadges();
+        if (typeof renderWeightedCategories === 'function') renderWeightedCategories();
+        if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
     }
     if (typeof renderQuestList === 'function') {
         const filterSelect = document.getElementById("questlist-filter");
@@ -11410,7 +11995,7 @@ async function voteForSubmission(contestId, submissionId) {
         alert("Error voting. Please try again.");
         return;
     }
-     await window.supabase.rpc('increment_vote_count', { submission_id: submissionId });
+    await window.supabase.rpc('increment_vote_count', { submission_id: submissionId });
 
     // --- EXP: vote in art battle (once per submission) ---
     addExp(EXP_RULES.VOTE, `vote:${contestId}:${submissionId}`, `Voted in art battle`);
@@ -11816,8 +12401,8 @@ async function openArtBattleContest(contestId, status) {
                 </div>
             `;
         } else if (hasSubmitted) {
-            const mySub = allSubmissions?.find(s => s.student_id === user?.id);
-            const isPending = mySub?.status === 'pending';
+            const mySubmission = allSubmissions?.find(s => s.student_id === user?.id);
+            const isPending = mySubmission?.status === 'pending';
             actionButtons = `
                 <div class="contest-action-buttons" style="margin-top: 20px;">
                     <div class="already-submitted">✅ You have already submitted artwork for this contest!</div>
@@ -12234,13 +12819,19 @@ document.addEventListener("DOMContentLoaded", () => {
     renderExpBar();
     getQuestsWithLocalCache().then(questsData => {
         quests = questsData;
-        cachedQuests = questsData;
-        cachedQuestsIncludeCustom = true;
+        cachedQuests = questsData;          // ← Mark in-memory cache as set
+        cachedQuestsIncludeCustom = true;   // ← Mark as fully loaded (skip re-fetch)
 
-
+        
+        // Build quest relationships once on load
         buildQuestRelationships();
+        // Build the summative path menu from the loaded quests
         buildPathQuests();
 
+        // ==============================================
+        // Pre-cache all teacher timer values in background
+        // (defined here so it has access to `quests`)
+        // ==============================================
         async function preCacheAllTimerValues() {
             if (!quests || Object.keys(quests).length === 0) return;
             const profile = loadStudentProfile();
@@ -12252,12 +12843,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     .eq('class_code', profile.teacher_code)
                     .maybeSingle();
                 if (!teacher) return;
-
+                
                 const { data: timers } = await window.supabase
                     .from('teacher_quest_standards')
                     .select('quest_id, timer_classes')
                     .eq('teacher_id', teacher.id);
-
+                
                 if (timers) {
                     timers.forEach(t => {
                         AppState.teacherData.customTimers[t.quest_id] = t.timer_classes;
@@ -12270,8 +12861,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             }
         }
+        // Fire and forget (don't await — runs in background)
         preCacheAllTimerValues();
-
+        
+        // Initialize everything that needs quests
         initializeWorkOverlay();
         initializeGallery();
         updateProfileUI();
@@ -12296,12 +12889,13 @@ document.addEventListener("DOMContentLoaded", () => {
         initializeFloatingNavigation();
         initializeFullscreenViewer();
         bindHotspots();
-        initializeHotspotTooltips();
+        initializeHotspotTooltips()
         updateProfileStandardsTable();
         renderRadarChart();
         initializeQuestTimers();
         initializeQuestList();
         initializeRationaleOverlay();
+        initializeAchievementsSystem();
         initializeProfileSystem();
         initializeResponsiveBehaviors();
         initializeHelpModal();
@@ -12312,7 +12906,8 @@ document.addEventListener("DOMContentLoaded", () => {
         setupActiveQuestButton();
         updateActiveQuestButton();
         initializeQuestTree();
-
+        
+        // Hotspot positioning
         const mapImage = document.getElementById("map-image");
         if (mapImage) {
             if (mapImage.complete) {
@@ -12329,11 +12924,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 };
             }
         }
-
+        
         loadBadgesFromJSON().then(() => {
             initializeBadgeSystem();
         });
-
+        
+        // UI event listeners
         document.getElementById("path-selector")?.addEventListener("change", handlePathChange);
         document.getElementById("mvp-quests")?.addEventListener("change", function() {
             if (this.value) openQuest(this.value);
@@ -12357,7 +12953,7 @@ document.addEventListener("DOMContentLoaded", () => {
         function isVisible(el) {
             return el && getComputedStyle(el).display !== "none";
         }
-
+        
         const workImageInput = document.getElementById("work-image-input");
         if (workImageInput) {
             workImageInput.addEventListener("change", function(e) {
@@ -12374,6 +12970,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         initializeStudentSetup();
 
+        // Load self-assessments from localStorage
         const savedSelfAssessments = localStorage.getItem('selfAssessments');
         if (savedSelfAssessments) {
             try {
@@ -12386,8 +12983,7 @@ document.addEventListener("DOMContentLoaded", () => {
             window.selfAssessments = {};
         }
 
-        if (!window.interestState) window.interestState = {};
-
+        // Check if there's a pending self-assessment (in case of page refresh)
         const pendingQuest = localStorage.getItem('pendingSelfAssessmentQuest');
         if (pendingQuest) {
 
@@ -12400,6 +12996,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 2000);
         }
 
+        // Create New Profile and Back to Login links
         const createProfileLink = document.getElementById("create-profile-link");
         if (createProfileLink) {
             createProfileLink.addEventListener("click", (e) => {
@@ -12420,6 +13017,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
 
+        // ESC key handler
         window.addEventListener("keydown", (e) => {
             if (e.key !== "Escape") return;
 
@@ -12427,7 +13025,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const rationaleOverlay = document.getElementById("rationale-overlay");
             const questOverlay = document.getElementById("quest-overlay");
             const rubricOverlay = document.getElementById("rubric-overlay");
-            const workOverlay = document.getElementById("work-overlay");
+            const workOverlay = document.getElementById("work-overlay"); 
             const galleryOverlay = document.getElementById("gallery-overlay");
             const modal = document.getElementById("helpModal");
             const restrictionPopup = document.getElementById("accept-quest-restriction-popup");
@@ -12469,10 +13067,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
             if (isVisible(rubricOverlay)) {
-                if (!window._selfAssessmentPending) {
-                    rubricOverlay.style.display = "none";
-                    questOverlay.style.display = "block";
-                }
+                rubricOverlay.style.display = "none";
+                questOverlay.style.display = "block";
                 return;
             }
                 if (isVisible(questOverlay)) {
@@ -12486,6 +13082,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (profileOverlay && profileOverlay.style.display === "flex") {
                 profileOverlay.style.display = "none";
                 return;
+            
             }
             if (restrictionPopup && restrictionPopup.style.display === "flex") {
                 closeAcceptQuestRestrictionPopup();
@@ -12520,13 +13117,15 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
+                // Redraw tree connectors when the window resizes while the tree is open.
         window.addEventListener("resize", () => {
             const overlay = document.getElementById("quest-tree-overlay");
             if (overlay && overlay.style.display === "block") {
                 redrawAllTreeConnectors();
             }
         });
-
+        
+        // Tab buttons
         document.querySelectorAll(".tab-button").forEach(button => {
             button.addEventListener("click", () => {
                 const tab = button.dataset.tab;
@@ -12535,7 +13134,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const tabEl = document.getElementById("tab-" + tab);
                 if (tabEl) tabEl.style.display = "block";
                 button.classList.add("active");
-
+                
                 if (tab === "questlist") {
                     const filterSelect = document.getElementById("questlist-filter");
                     if (filterSelect && typeof renderQuestList === 'function') {
@@ -12554,39 +13153,44 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         initializeStudentSetup();
 
+        // Login/Logout listeners
         const loginBtn = document.getElementById("login-submit-btn");
         if (loginBtn) {
             loginBtn.addEventListener("click", handleLoginSubmit);
-        }
-        initializeLoginEnterKey();
 
+        }
+        initializeLoginEnterKey();        
+        
         const logoutBtn = document.getElementById("logout-profile-btn");
         if (logoutBtn) {
             logoutBtn.addEventListener("click", logout);
         }
-
+        
+        // Calendar button
         const calendarBtn = document.getElementById('calendar-btn');
         if (calendarBtn) {
             calendarBtn.addEventListener('click', openStudentCalendar);
         }
-
+        
+        // Close calendar
         const closeCalendar = document.getElementById('close-calendar');
         if (closeCalendar) {
             closeCalendar.addEventListener('click', () => {
                 document.getElementById('calendar-modal').style.display = 'none';
             });
         }
-
+        
+        // Calendar navigation
         const prevBtn = document.getElementById('calendar-prev-month');
         if (prevBtn) {
             prevBtn.addEventListener('click', calendarPrevMonth);
         }
-
+        
         const nextBtn = document.getElementById('calendar-next-month');
         if (nextBtn) {
             nextBtn.addEventListener('click', calendarNextMonth);
         }
-
+        
         const calendarModal = document.getElementById('calendar-modal');
         if (calendarModal) {
             calendarModal.addEventListener('click', (e) => {
@@ -12595,7 +13199,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             });
         }
-
+        
+        // Real-time refresh (after login)
         setTimeout(() => {
             setupRealtimeRefresh();
         }, 3000);
@@ -12604,8 +13209,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* ==========================================================
    FLOATING ACTION CLUSTER  —  wiring
+   Handles the 5 cluster buttons + the search toggle.
+   Reuses existing openGallery / openAchievementsOverlay /
+   openStudentCalendar / openQuestTree and fuzzySearchQuests.
    ========================================================== */
 (function initFloatingCluster() {
+
+    // ---------- 1. Simple buttons ----------
     const buttonMap = [
         { id: 'cluster-gallery',      handler: () => { if (typeof openGallery === 'function') openGallery(); } },
         { id: 'cluster-achievements', handler: () => { if (typeof openAchievementsOverlay === 'function') openAchievementsOverlay(); } },
@@ -12616,6 +13226,7 @@ document.addEventListener("DOMContentLoaded", () => {
     buttonMap.forEach(({ id, handler }) => {
         const btn = document.getElementById(id);
         if (!btn) return;
+        // Clone to drop any listeners if this ever runs twice
         const fresh = btn.cloneNode(true);
         btn.parentNode.replaceChild(fresh, btn);
         fresh.addEventListener('click', (e) => {
@@ -12624,6 +13235,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // ---------- 2. Search toggle ----------
     const searchBtn     = document.getElementById('cluster-search');
     const searchWrapper = document.getElementById('cluster-search-wrapper');
     const searchPanel   = document.getElementById('cluster-search-panel');
@@ -12635,12 +13247,14 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
     }
 
+    // Clone to strip stale listeners
     const freshSearchBtn = searchBtn.cloneNode(true);
     searchBtn.parentNode.replaceChild(freshSearchBtn, searchBtn);
 
     function openSearchPanel() {
         searchPanel.classList.add('open');
         searchPanel.setAttribute('aria-hidden', 'false');
+        // Let the browser paint the panel before focusing
         setTimeout(() => searchInput.focus(), 30);
     }
 
@@ -12655,6 +13269,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return searchPanel.classList.contains('open');
     }
 
+    // Toggle on click
     freshSearchBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -12662,20 +13277,29 @@ document.addEventListener("DOMContentLoaded", () => {
         else openSearchPanel();
     });
 
+    // Prevent clicks inside the panel from bubbling to the document handler
     searchPanel.addEventListener('click', (e) => e.stopPropagation());
 
+    // Click outside → close
     document.addEventListener('click', (e) => {
         if (!isOpen()) return;
         if (searchWrapper.contains(e.target)) return;
         closeSearchPanel();
     });
 
+    // ESC closes the search panel first
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && isOpen()) {
+            // stopPropagation is not possible on document-level;
+            // instead, we close here and let other ESC handlers run their thing.
+            // To avoid double-close weirdness, we rely on the user pressing ESC
+            // once for search, once more for the overlay underneath.
             closeSearchPanel();
         }
     });
 
+    // ---------- 3. Live search ----------
+    // Reuses the existing fuzzySearchQuests() and quests object from script.js.
     let debounceTimer = null;
 
     searchInput.addEventListener('input', () => {
@@ -12712,6 +13336,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 `;
 
                 div.addEventListener('click', () => {
+                    // Reset zoom when jumping via search
                     scale = 1;
                     const container = document.getElementById('map-container');
                     if (container) container.style.transform = 'scale(1)';
@@ -12726,6 +13351,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 120);
     });
 
+    // Enter key on the input → open the first result
     searchInput.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
         const first = searchResults.querySelector('.search-result');
@@ -12734,7 +13360,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 })();
-
 /* ==========================================================
    Hide MVP dropdown when clicking outside #dropdown-container
    ========================================================== */
@@ -12743,16 +13368,20 @@ document.addEventListener('click', (e) => {
     const mvpSel   = document.getElementById('mvp-quests');
     if (!dropdown || !mvpSel) return;
 
+    // If the click was inside the dropdown container → do nothing
     if (dropdown.contains(e.target)) return;
 
+    // Otherwise, hide the MVP select and reset it
     if (mvpSel.style.display !== 'none') {
         mvpSel.style.display = 'none';
         mvpSel.innerHTML = '<option value="">Select MVP Quest</option>';
 
+        // Also reset the path selector visual (optional — remove if you
+        // want to keep the chosen path shown)
         const pathSel = document.getElementById('path-selector');
+        // if (pathSel) pathSel.value = "";   // ← uncomment if you want this
     }
 });
-
 /* ==========================================================
    Prevent clicks inside #dropdown-container from reaching
    the map / hotspots behind it.
@@ -12761,6 +13390,8 @@ document.addEventListener('click', (e) => {
     const dropdown = document.getElementById('dropdown-container');
     if (!dropdown) return;
 
+    // Swallow clicks that land on the dropdown (including its
+    // background padding and the selects inside it).
     ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'pointerdown', 'pointerup']
         .forEach(evt => {
             dropdown.addEventListener(evt, (e) => {
