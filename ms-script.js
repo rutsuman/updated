@@ -4,7 +4,51 @@
 // COMPLETE OPTIMIZED VERSION (Single Scrollable Map)
 // ==============================================
 // ==============================================
+// ---- Force re-login on version bump ----
+// Bump this string to log out every student on their next page load.
+// Format: any unique string; I like "<release-date>-<n>".
+const SESSION_VERSION = "2026-10-22-1";
+(function enforceSessionVersion() {
+    try {
+        const stored = localStorage.getItem("appSessionVersion");
+        if (stored === SESSION_VERSION) return;
 
+        // Version changed → drop the Supabase auth token + local caches.
+        // We do NOT clear unrelated keys (they may hold e.g. UI prefs).
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            // Supabase token key is `sb-<project-ref>-auth-token`
+            // Local app data keys we own:
+            const ownedKeys = [
+                "completedQuests", "questGrades", "questAccepted",
+                "questStartTimes", "studentWorks", "earnedBadges",
+                "selfAssessments", "expTotal", "expLog",
+                "studentProfile", "cachedQuests",
+                "cachedQuestsVersion", "cachedQuestsTimestamp",
+                "rubricLocked", "pendingSelfAssessmentQuest"
+            ];
+            if (k.startsWith("sb-") || ownedKeys.includes(k)) {
+                keysToRemove.push(k);
+            }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        localStorage.setItem("appSessionVersion", SESSION_VERSION);
+
+        // Also drop the in-memory Supabase session (best-effort).
+        // We don't await it — a reload is coming.
+        if (window.supabase?.auth?.signOut) {
+            window.supabase.auth.signOut().catch(() => {});
+        }
+
+        // Reload so every module reinitializes with an empty session.
+        // Use replace() so the back button doesn't skip the reload.
+        location.replace(location.pathname);
+    } catch (e) {
+        console.warn("[session] version enforcement failed:", e);
+    }
+})();
 // ==============================================
 // SECTION 1: GLOBAL STATE & CACHE MANAGEMENT
 // ==============================================
@@ -53,7 +97,7 @@ function invalidateTeacherCache() {
     TeacherCache.classDuration = null;
     TeacherCache.selectedStandards = {};
     TeacherCache.loaded = false;
-    console.log("Teacher cache invalidated");
+
 }
 
 // --- Original Global Variables ---
@@ -92,6 +136,7 @@ let cachedTimerQuestId = null;
 let _lastDisplayedTime = '';
 let _lastActiveQuestId = null;
 let _animationFrameId = null;
+let _pendingInterestWrite = false;
 let isSavingWork = false;
 let _lastUpdateTime = 0;
 const QUEST_CACHE_VERSION = '2026-05-25-v1';
@@ -112,20 +157,20 @@ let expLog = {};              // { "quest:quest42": 50, "badge:master_perspectiv
 let _expSaveDebounce = null;
 
 const EXP_RULES = {
-    FORMATIVE_COMPLETE:    50,
-    SUMMATIVE_COMPLETE:   150,
+    FORMATIVE_COMPLETE:    30,
+    SUMMATIVE_COMPLETE:   120,
     VOTE:                  15,
     SUBMIT_ART_BATTLE:     40,
     COMMENT:                5,
-    BADGE_UNLOCKED:       100,   // first Quest Completer tier
-    BADGE_TIER_2:         150,   // Quest Completer II
+    BADGE_UNLOCKED:       70,   // first Quest Completer tier
+    BADGE_TIER_2:         120,   // Quest Completer II
     BADGE_TIER_3:         200,   // Quest Completer III
-    FIRST_UPLOAD_OF_WEEK:  25,
-    EXTRA_UPLOAD_SAME_WEEK: 5,
+    FIRST_UPLOAD_OF_WEEK:  7,
+    EXTRA_UPLOAD_SAME_WEEK: 3,
     ALL_STANDARDS_HIGH:     5,   // every self-assessed standard ≥ 3.5
     BEFORE_TIME_FORMATIVE:  5,
     BEFORE_TIME_SUMMATIVE: 20,
-    GIFT_FORMATIVE:        20,
+    GIFT_FORMATIVE:        15,
     GIFT_SUMMATIVE:        50
 };
 window.raceJitterInterval = null;
@@ -134,20 +179,20 @@ window.raceJitterInterval = null;
 function invalidateStudentDataCache() {
     AppState.studentData.loaded = false;
     AppState.studentData.lastLoadTime = null;
-    console.log("Student data cache invalidated");
+
 }
 
 function invalidateTeacherDataCache() {
     AppState.teacherData.loaded = false;
     AppState.teacherData.customTimers = {};
-    console.log("Teacher data cache invalidated");
+
 }
 
 function invalidateAllCaches() {
     invalidateStudentDataCache();
     invalidateTeacherDataCache();
     invalidateTeacherCache();
-    console.log("All caches invalidated");
+
 }
 
 // ==============================================
@@ -178,11 +223,11 @@ async function guardAuth(callback) {
 
     if (!isAuthError) return result;
 
-    console.warn('[auth] JWT expired — refreshing session and retrying once...');
+
 
     const { error: refreshError } = await window.supabase.auth.refreshSession();
     if (refreshError) {
-        console.error('[auth] refresh failed:', refreshError.message);
+
         return result; // give up, return the original error
     }
 
@@ -190,9 +235,9 @@ async function guardAuth(callback) {
     result = await callback();
 
     if (result?.error) {
-        console.error('[auth] retry still failed:', result.error.message);
+
     } else {
-        console.log('[auth] retry succeeded after refresh');
+
     }
     return result;
 }
@@ -209,15 +254,15 @@ async function ensureFreshSession() {
 
         if (msUntilExpiry > 60_000) return true; // still fresh
 
-        console.log('[auth] session near expiry — refreshing...');
+
         const { error } = await window.supabase.auth.refreshSession();
         if (error) {
-            console.warn('[auth] proactive refresh failed:', error.message);
+
             return false;
         }
         return true;
     } catch (e) {
-        console.warn('[auth] ensureFreshSession error:', e);
+
         return false;
     }
 }
@@ -230,7 +275,7 @@ function buildQuestRelationships() {
         return;
     }
 
-    console.log("Building quest relationships...");
+
     const questKeys = Object.keys(quests);
 
     AppState.questRelationships.leadsTo = {};
@@ -257,7 +302,7 @@ function buildQuestRelationships() {
     }
 
     AppState.relationshipsBuilt = true;
-    console.log("Quest relationships built successfully");
+
 }
 
 // ==============================================
@@ -460,7 +505,7 @@ function loadStudentWorks() {
         try {
             return JSON.parse(data);
         } catch (e) {
-            console.error("Error parsing studentWorks:", e);
+
             return {};
         }
     }
@@ -609,7 +654,7 @@ function snapshotWorkOverlay() {
 
 async function saveWorkData() {
     if (isSavingWork) {
-        console.log("Save already in progress, ignoring duplicate call");
+
         return;
     }
 
@@ -663,7 +708,7 @@ async function saveWorkData() {
                 }
             }
         } catch (e) {
-            console.warn("Could not clear self-assessment from cloud:", e);
+
         }
     }
 
@@ -775,7 +820,7 @@ async function saveWorkData() {
             saveBtn.disabled = false;
         }
         alert("Error saving work. Please try again.");
-        console.error("Save error:", err);
+
     });
 }
 
@@ -815,7 +860,7 @@ async function handleDeleteImageClick() {
                 .eq('quest_id', questId);
 
             if (error) {
-                console.error("DB image delete error:", error);
+
                 alert("Failed to delete image: " + error.message);
                 return;
             }
@@ -830,7 +875,7 @@ async function handleDeleteImageClick() {
 
             updateWorkOverlayUI();
         } catch (e) {
-            console.error("Error deleting image:", e);
+
             alert("Error deleting image.");
         }
     }
@@ -876,7 +921,7 @@ async function handleDeletePdfClick() {
                 .eq('quest_id', questId);
 
             if (error) {
-                console.error("DB PDF delete error:", error);
+
                 alert("Failed to delete PDF: " + error.message);
                 return;
             }
@@ -891,7 +936,7 @@ async function handleDeletePdfClick() {
 
             updateWorkOverlayUI();
         } catch (e) {
-            console.error("Error deleting PDF:", e);
+
             alert("Error deleting PDF.");
         }
     }
@@ -918,7 +963,7 @@ async function handleDeleteAllClick() {
             .eq('quest_id', questId);
 
         if (error) {
-            console.error("DB delete-all error:", error);
+
             alert("Failed to delete: " + error.message);
             return;
         }
@@ -941,7 +986,7 @@ async function handleDeleteAllClick() {
 
         alert("All work data for this quest has been deleted.");
     } catch (e) {
-        console.error("Error in delete-all:", e);
+
         alert("Error deleting work.");
     }
 }
@@ -1157,7 +1202,7 @@ async function detectTeacherFramework() {
 
     const profile = loadStudentProfile();
     if (!profile || !profile.teacher_code) {
-        console.log("No teacher_code found, using NCAS");
+
         TeacherCache.framework = 'ncas';
         TeacherCache.loaded = true;
         return 'ncas';
@@ -1170,7 +1215,7 @@ async function detectTeacherFramework() {
         .single();
 
     if (error || !teacher) {
-        console.log("Teacher not found or no framework set, using NCAS");
+
         TeacherCache.framework = 'ncas';
         TeacherCache.loaded = true;
         return 'ncas';
@@ -1181,7 +1226,7 @@ async function detectTeacherFramework() {
     TeacherCache.teacherName = teacher.name;
     TeacherCache.loaded = true;
 
-    console.log("Teacher framework detected and cached:", TeacherCache.framework);
+
     return TeacherCache.framework;
 }
 
@@ -1211,7 +1256,7 @@ function loadExpFromLocal() {
         expTotal = total ? parseInt(total, 10) || 0 : 0;
         expLog = log ? JSON.parse(log) : {};
     } catch (e) {
-        console.warn("Failed to load EXP from localStorage:", e);
+
         expTotal = 0;
         expLog = {};
     }
@@ -1294,10 +1339,10 @@ function addExp(amount, sourceKey = null, reason = "", opts = {}) {
 
     const afterLevel = getLevelInfo(expTotal).level;
 
-    console.log(`[EXP] +${amount} (${reason || sourceKey || "bonus"}) → total ${expTotal}`);
+
 
     if (afterLevel > beforeLevel && isNewCelebration) {
-        console.log(`[EXP] Level up! ${beforeLevel} → ${afterLevel}`);
+
         showLevelUpNotification(beforeLevel, afterLevel);
     }
     return amount;
@@ -1318,7 +1363,7 @@ function revokeExpPrefix(prefix) {
         }
     }
     if (removed > 0) {
-        console.log(`[EXP] revoked ${removed} for prefix "${prefix}"`);
+
         recomputeExpTotal();
     }
     return removed;
@@ -1493,7 +1538,7 @@ function reconcileBadgeAndAchievementExp() {
             const stillComplete = ach.questsNeeded.every(qid => completedQuests[qid]);
             if (!stillComplete) {
                 delete expLog[key];
-                console.log(`[EXP] revoked achievement: ${ach.title}`);
+
             }
         }
     }
@@ -1509,7 +1554,7 @@ function reconcileBadgeAndAchievementExp() {
             for (const key of Object.keys(expLog)) {
                 if (key === prefix || key.startsWith(prefix + ":")) {
                     delete expLog[key];
-                    console.log(`[EXP] revoked badge key: ${key}`);
+
                 }
             }
         }
@@ -1587,7 +1632,7 @@ function recomputeEarnedBadges() {
         saveBadgesToCloud().catch(e => console.warn("[badges] cloud save failed:", e));
     }
 
-    console.log("[badges] recomputed:", Object.keys(earnedBadges).length, "earned");
+
 
     // Refresh the profile badge grid if it's currently open
     if (typeof renderBadges === "function") {
@@ -1780,7 +1825,7 @@ async function _wasQuestFeaturedInWeek(questId, weekKey) {
         .maybeSingle();
 
     if (error) {
-        console.warn("[gift] featured check failed:", error.message);
+
         _featuredWeekCache.set(cacheKey, false);
         return false;
     }
@@ -1811,7 +1856,7 @@ async function syncArtBattleSubmissionExp() {
         .eq('status', 'approved');
 
     if (error) {
-        console.warn("[EXP] art battle sync failed:", error.message);
+
         return;
     }
 
@@ -1843,7 +1888,7 @@ function reconcileGiftExpForQuest(questId) {
         // We have a gift award for this quest; check if it still qualifies.
         if (!meetsGiftThreshold(questId)) {
             delete expLog[key];
-            console.log(`[EXP] revoked gift bonus for ${questId} (threshold no longer met)`);
+
         }
     }
 }
@@ -1859,7 +1904,7 @@ function reconcileAllGiftExp() {
         if (!questId) continue;
         if (!meetsGiftThreshold(questId)) {
             delete expLog[key];
-            console.log(`[EXP] revoked gift bonus for ${questId} (threshold no longer met)`);
+
         }
     }
 }
@@ -1945,7 +1990,7 @@ function reconcileQuestExp() {
     }
 
     if (revoked > 0) {
-        console.log(`[EXP] revoked ${revoked} EXP from invalid quests`);
+
     }
     return revoked;
 }
@@ -1968,7 +2013,7 @@ function purgeDebugExpKeys() {
         }
     }
     if (removed > 0) {
-        console.log(`[EXP] purged ${removed} EXP from debug/test keys`);
+
     }
     return removed;
 }
@@ -2209,7 +2254,7 @@ async function loadFeaturedQuestsForStudent(forceRefresh = false) {
     const { data, error } = await query;
 
     if (error) {
-        console.warn("[featured] load failed:", error.message);
+
         _featuredQuestsCache = [];
         _featuredQuestsCacheTime = Date.now();
         return [];
@@ -2441,7 +2486,7 @@ async function loadGiftClaimsForWeek(weekKey) {
         .eq('week_key', weekKey);
 
     if (error) {
-        console.warn("[gift] load claims failed:", error.message);
+
         return map;
     }
 
@@ -2588,7 +2633,7 @@ function openGiftRevealModal(questId, giftName, giftImageUrl, claimId) {
                     .update({ revealed_at: new Date().toISOString() })
                     .eq("id", _giftRevealState.claimId);
             } catch (e) {
-                console.warn("[gift] could not persist revealed_at:", e);
+
             }
         }
 
@@ -2649,14 +2694,14 @@ function playGiftRevealSound() {
         if (p && p.catch) {
             p.catch(() => {
                 if (!_giftSoundWarned) {
-                    console.log("[gift] Sound file not found or blocked. Add sounds/gift-reveal.mp3 to enable it.");
+
                     _giftSoundWarned = true;
                 }
             });
         }
     } catch (e) {
         if (!_giftSoundWarned) {
-            console.log("[gift] Sound unavailable:", e.message);
+
             _giftSoundWarned = true;
         }
     }
@@ -2716,7 +2761,7 @@ async function loadAllMysteryGiftsForStudent(forceRefresh = false) {
         .order('week_key', { ascending: true });   // older first
 
     if (featuredErr) {
-        console.warn('[mysterygift] featured load failed:', featuredErr.message);
+
         _mysteryGiftCache = [];
         _mysteryGiftCacheTime = Date.now();
         return [];
@@ -2743,7 +2788,7 @@ async function loadAllMysteryGiftsForStudent(forceRefresh = false) {
         .eq('teacher_id', TeacherCache.teacherId);
 
     if (claimsErr) {
-        console.warn('[mysterygift] claims load failed:', claimsErr.message);
+
     }
 
     const claimMap = new Map();
@@ -2953,16 +2998,18 @@ function renderInterestToggle(questId, quest) {
 
     label.style.display = "inline-flex";
 
-    checkbox.onchange = async () => {
+        checkbox.onchange = () => {
         const interested = checkbox.checked;
 
+        // Update in-memory state
         if (interested) {
             window.interestState[questId] = true;
         } else {
             delete window.interestState[questId];
         }
 
-        await saveInterestToCloud();
+        // Fire-and-forget — no need to block the UI on the DB write.
+        saveInterestToCloud().catch(e => console.warn("Interest save failed:", e));
     };
 }
 
@@ -2970,34 +3017,40 @@ async function saveInterestToCloud() {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) return;
 
-    const userId = session.user.id;
+    _pendingInterestWrite = true;
 
-    const { data: existing } = await window.supabase
-        .from('student_progress')
-        .select('completed_quests, quest_grades, quest_accepted, quest_start_times, earned_badges, self_assessments')
-        .eq('user_id', userId)
-        .maybeSingle();
+    try {
+        const userId = session.user.id;
 
-    const row = {
-        user_id: userId,
-        is_interested: window.interestState || {},
-        updated_at: new Date().toISOString(),
-        completed_quests: existing?.completed_quests || {},
-        quest_grades: existing?.quest_grades || {},
-        quest_accepted: existing?.quest_accepted || {},
-        quest_start_times: existing?.quest_start_times || {},
-        earned_badges: existing?.earned_badges || {},
-        self_assessments: existing?.self_assessments || {}
-    };
+        const { data: existing } = await window.supabase
+            .from('student_progress')
+            .select('completed_quests, quest_grades, quest_accepted, quest_start_times, earned_badges, self_assessments')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-    const { error } = await window.supabase
-        .from('student_progress')
-        .upsert(row, { onConflict: 'user_id' });
+        const row = {
+            user_id: userId,
+            is_interested: window.interestState || {},
+            updated_at: new Date().toISOString(),
+            completed_quests: existing?.completed_quests || {},
+            quest_grades: existing?.quest_grades || {},
+            quest_accepted: existing?.quest_accepted || {},
+            quest_start_times: existing?.quest_start_times || {},
+            earned_badges: existing?.earned_badges || {},
+            self_assessments: existing?.self_assessments || {}
+        };
 
-    if (error) {
-        console.error("Error saving interest:", error);
-    } else {
-        console.log("Interest saved:", window.interestState);
+        const { error } = await window.supabase
+            .from('student_progress')
+            .upsert(row, { onConflict: 'user_id' });
+
+        if (error) {
+
+        } else {
+
+        }
+    } finally {
+        _pendingInterestWrite = false;
     }
 }
 
@@ -3453,7 +3506,7 @@ async function getRequiredQuestIds() {
         await detectTeacherFramework();
     }
     if (!TeacherCache.teacherId) {
-        console.warn("[required] No teacher_id resolved.");
+
         return [];
     }
 
@@ -3473,7 +3526,7 @@ async function getRequiredQuestIds() {
         .eq('class_id', classId);
 
     if (error) {
-        console.warn("[required] Error fetching requirements:", error.message);
+
         return [];
     }
 
@@ -3926,11 +3979,11 @@ function updateProfileUI() {
 
 function debugStudentProfile() {
     const profile = loadStudentProfile();
-    console.log("=== STUDENT PROFILE DEBUG ===");
-    console.log("Full profile:", profile);
-    console.log("teacher_code:", profile?.teacher_code);
-    console.log("name:", profile?.name);
-    console.log("==============================");
+
+
+
+
+
 }
 
 // ==============================================
@@ -4006,7 +4059,7 @@ async function handleLoginSubmit() {
         await addCustomQuestHotspots();
         bindHotspots();
     } catch (e) {
-        console.warn("Could not refresh custom quest hotspots after login:", e);
+
     }
 
     setTimeout(() => {
@@ -4033,12 +4086,12 @@ function initializeLoginEnterKey() {
 }
 
 async function logout() {
-    console.log("Logout started...");
+
     stopActiveQuestTimerUpdates();
     try {
         const { error } = await window.supabase.auth.signOut();
         if (error) {
-            console.error("Logout error:", error);
+
             alert("Logout failed: " + error.message);
             return;
         }
@@ -4064,12 +4117,12 @@ async function logout() {
         invalidateMysteryGiftCache();
         invalidateFeaturedWeekCache();
         invalidateAllCaches();
-        console.log("Logged out successfully - all data cleared");
+
         setTimeout(() => {
             window.location.reload();
         }, 500);
     } catch (err) {
-        console.error("Unexpected error during logout:", err);
+
     }
 }
 
@@ -4236,9 +4289,9 @@ function bindHotspots() {
         }
 
         if (cityId.startsWith('custom_')) {
-            console.log("FOUND CUSTOM QUEST HOTSPOT:", cityId);
+
             freshHotspot.addEventListener("click", () => {
-                console.log("Custom quest clicked:", cityId);
+
                 openQuest(cityId);
             });
         }
@@ -4267,7 +4320,7 @@ function initializeHotspotTooltips() {
     const mapContainer = document.getElementById("map-container");
     const tooltip = document.getElementById("hotspot-tooltip");
     if (!mapContainer || !tooltip) {
-        console.warn("Hotspot tooltip: missing container or tooltip element");
+
         return;
     }
 
@@ -4403,7 +4456,7 @@ function initializeHotspotTooltips() {
 // ==============================================
 
 function updateHotspotVisibility() {
-    console.log("updateHotspotVisibility called - MS version");
+
 
     updateHotspotPositions();
 
@@ -4937,7 +4990,7 @@ async function cancelQuest(questId) {
             }
         }
     } catch (e) {
-        console.warn("Cancel quest — cloud cleanup error (continuing):", e);
+
     }
 
     if (questTimers[questId]) {
@@ -5029,11 +5082,11 @@ async function checkForInvitation() {
         .eq('used', false)
         .single();
     if (error || !invitation) {
-        console.log("Invalid or expired invitation token");
+
         return null;
     }
     if (new Date(invitation.expires_at) < new Date()) {
-        console.log("Invitation has expired");
+
         return null;
     }
     return invitation;
@@ -5144,7 +5197,7 @@ function showStudentSetupOverlay() {
             .rpc('can_add_student', { teacher_code_param: teacherCode });
 
         if (canAddError) {
-            console.error("Error checking student capacity:", canAddError);
+
         } else if (!canAdd) {
             const maxStudents = teacherData.max_students || 50;
             if (messageEl) {
@@ -5262,13 +5315,13 @@ async function selectCharacter(character) {
 
 async function saveStudentDataToCloud() {
     if (isLoadingFromCloud) {
-        console.log("Skipping save - currently loading from cloud");
+
         return false;
     }
     await ensureFreshSession();
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
-        console.log("Not logged in, skipping cloud save");
+
         return false;
     }
     const userId = session.user.id;
@@ -5289,10 +5342,10 @@ async function saveStudentDataToCloud() {
             .upsert(studentData, { onConflict: 'user_id' })
     );
     if (error) {
-        console.error("Error saving to cloud:", error);
+
         return false;
     }
-    console.log("Timer data saved to cloud successfully");
+
     return true;
 }
 
@@ -5300,7 +5353,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
     if (!forceRefresh && AppState.studentData.loaded && AppState.studentData.lastLoadTime) {
         const cacheAge = Date.now() - AppState.studentData.lastLoadTime;
         if (cacheAge < 5000) {
-            console.log("Using cached student data (age: " + cacheAge + "ms)");
+
             completedQuests = AppState.studentData.completedQuests || {};
             questGrades = AppState.studentData.questGrades || {};
             questAccepted = AppState.studentData.questAccepted || {};
@@ -5317,16 +5370,16 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
     }
 
     isLoadingFromCloud = true;
-    console.log("Starting to load from cloud...");
+
 
     try {
         const { data: { session } } = await window.supabase.auth.getSession();
         if (!session) {
-            console.log("Not logged in, cannot load from cloud");
+
             return false;
         }
         const userId = session.user.id;
-        console.log("Loading data for user:", userId);
+
         const { data, error } = await window.supabase
             .from('student_progress')
             .select('*')
@@ -5335,7 +5388,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
 
         if (error) {
             if (error.code === 'PGRST116') {
-                console.log("No existing progress data found for this student - clearing local data");
+
                 completedQuests = {};
                 questGrades = {};
                 earnedBadges = {};
@@ -5361,7 +5414,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                 try { await reconcileExp(); } catch (e) { console.warn("[EXP] reconcile failed:", e); }
 }
             } else {
-                console.error("Error loading from cloud:", error);
+
             }
         } else if (data) {
             const isEmpty = (!data.completed_quests || Object.keys(data.completed_quests).length === 0) &&
@@ -5371,7 +5424,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                             (!data.is_interested || Object.keys(data.is_interested).length === 0);
 
             if (isEmpty) {
-                            console.log("Progress data is effectively empty - clearing local data");
+
                             completedQuests = {};
                             questGrades = {};
                             earnedBadges = {};
@@ -5409,13 +5462,13 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                                 try { await saveInterestToCloud(); } catch (e) { console.warn("Re-save interest failed:", e); }
                             }
 
-                            console.log("Local data cleared due to empty cloud data");
+
                         }
             else {
-                console.log("Progress data loaded successfully!");
-                console.log("  - completed_quests:", data.completed_quests);
-                console.log("  - quest_grades:", data.quest_grades);
-                console.log("  - earned_badges:", data.earned_badges);
+
+
+
+
 
                 if (data.completed_quests) completedQuests = data.completed_quests;
                 if (data.quest_grades) questGrades = data.quest_grades;
@@ -5440,13 +5493,13 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                 if (data.self_assessments) {
                     window.selfAssessments = data.self_assessments;
                     localStorage.setItem('selfAssessments', JSON.stringify(data.self_assessments));
-                    console.log("  - self_assessments:", Object.keys(data.self_assessments).length);
+
                 } else {
                     const localData = localStorage.getItem('selfAssessments');
                     if (localData) {
                         try {
                             window.selfAssessments = JSON.parse(localData);
-                            console.log("  - self_assessments loaded from localStorage:", Object.keys(window.selfAssessments).length);
+
                         } catch (e) {
                             window.selfAssessments = {};
                         }
@@ -5455,9 +5508,14 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                     }
                 }
 
-                if (data.is_interested && typeof data.is_interested === 'object') {
+                // Guard: don't clobber local interest state if a write is still in flight.
+                // Otherwise, a stale server value could overwrite a fresh local toggle.
+                if (_pendingInterestWrite) {
+                    // Keep local state as-is; the write will settle soon.
+                    if (!window.interestState) window.interestState = {};
+                } else if (data.is_interested && typeof data.is_interested === 'object') {
                     window.interestState = data.is_interested;
-                    console.log("  - is_interested:", Object.keys(window.interestState).length);
+
                 } else {
                     window.interestState = {};
                 }
@@ -5473,7 +5531,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                 saveEarnedBadges();
 
                 if (currentQuestId && document.getElementById("quest-overlay").style.display === "block") {
-                    console.log("Refreshing current quest UI for:", currentQuestId);
+
                     setupTimerControlsSync(currentQuestId);
                     const acceptBtn = document.getElementById("quest-accept");
                     if (acceptBtn) {
@@ -5496,7 +5554,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                 if (typeof renderRadarChart === 'function') renderRadarChart();
 
                 if (currentQuestId && document.getElementById("rubric-overlay").style.display === "flex") {
-                    console.log("Refreshing open rubric for quest:", currentQuestId);
+
                     openRubricPopup(currentQuestId);
                 }
 
@@ -5504,7 +5562,7 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
                     if (typeof renderBadges === 'function') renderBadges();
                 }
 
-                                console.log("All displays updated with cloud data");
+
                 // NOTE: reconcileExp() is intentionally NOT called here.
                 // It runs after `isLoadingFromCloud` flips to false, so its
                 // cloud writes (saveBadgesToCloud / saveExpToCloud) actually fire.
@@ -5528,8 +5586,8 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
             };
             saveStudentProfile(profile);
             updateProfileUI();
-            console.log("Profile loaded from cloud:", profile.name);
-            console.log("Class ID saved:", profileData.class_id);
+
+
         }
 
         AppState.studentData.completedQuests = { ...completedQuests };
@@ -5543,24 +5601,24 @@ async function loadStudentDataFromCloud(forceRefresh = false, runReconcile = fal
         AppState.studentData.lastLoadTime = Date.now();
 
     } catch (err) {
-        console.error("Error in loadStudentDataFromCloud:", err);
+
     } finally {
         isLoadingFromCloud = false;
-        console.log("Finished loading from cloud");
+
     }
         // Run the reconciler AFTER isLoadingFromCloud is false,
     // otherwise every cloud save it triggers is silently skipped.
     try {
         await reconcileExp();
     } catch (e) {
-        console.warn("[EXP] reconcile failed:", e);
+
     }
 
     return true;
 }
 
 async function manualRefreshGrades() {
-    console.log("Manually refreshing grades...");
+
     invalidateStudentDataCache();
     await loadStudentDataFromCloud(true);
     alert("Data refreshed! Check your rubric and profile.");
@@ -5573,7 +5631,7 @@ async function manualRefreshGrades() {
 async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pdfMeta = null, expFacts = null) {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
-        console.log("Not logged in");
+
         return false;
     }
 
@@ -5581,7 +5639,7 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
     let imageUrl = null;
 
     if (uploadId && window._activeUploads && window._activeUploads[uploadId]) {
-        console.log("Upload already in progress for:", uploadId);
+
         return false;
     }
 
@@ -5595,7 +5653,7 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
                 try {
                     fileToUpload = await compressImage(imageFile, 800, 0.8);
                 } catch (error) {
-                    console.error("Error compressing image:", error);
+
                 }
             }
 
@@ -5610,7 +5668,7 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
                 });
 
             if (error) {
-                console.error("Upload error:", error);
+
                 throw error;
             }
 
@@ -5683,15 +5741,15 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
         }
 
         if (error) {
-            console.error("Error saving work metadata:", error);
+
             return false;
         }
 
-        console.log("Work saved to cloud successfully!");
+
         return true;
 
     } catch (err) {
-        console.error("Error in saveWorkToCloud:", err);
+
         return false;
     } finally {
         if (uploadId && window._activeUploads) {
@@ -5702,16 +5760,16 @@ async function saveWorkToCloud(questId, workData, imageFile, uploadId = null, pd
 
 function autoSaveToCloud() {
     if (isLoadingFromCloud) {
-        console.log("Skipping auto-save - currently loading from cloud");
+
         return;
     }
     window.supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-            console.log("Auto-saving timer data to cloud...");
+
             saveStudentDataToCloud();
         }
     }).catch(err => {
-        console.error("Auto-save error:", err);
+
     });
 }
 
@@ -6026,14 +6084,14 @@ async function loadPathfinderQuestions() {
         pathfinderQuestions = await response.json();
         return pathfinderQuestions;
     } catch (error) {
-        console.error('Failed to load pathfinder questions:', error);
+
         return null;
     }
 }
 
 function loadMVPQuests() {
     if (!quests || Object.keys(quests).length === 0) {
-        console.warn('Quests not loaded yet');
+
         return [];
     }
     allMVPQuests = Object.entries(quests)
@@ -6053,11 +6111,11 @@ function renderPathfinderQuestions() {
     const resultsContainer = document.getElementById('pathfinder-results-container');
     const submitContainer = document.getElementById('pathfinder-submit-container');
     if (!container) {
-        console.error("Questions container not found!");
+
         return;
     }
     if (!pathfinderQuestions) {
-        console.error("No pathfinder questions loaded!");
+
         return;
     }
     if (resultsContainer) resultsContainer.style.display = 'none';
@@ -6160,7 +6218,7 @@ function renderPathfinderResults(topQuests) {
     const resultMessageDiv = document.getElementById('pathfinder-result-message');
     const questListDiv = document.getElementById('pathfinder-quest-list');
     if (!resultsContainer || !questListDiv) {
-        console.error("Required result elements not found!");
+
         return;
     }
     if (!topQuests || topQuests.length === 0) {
@@ -6270,7 +6328,7 @@ function initializeAchievementsSystem() {
 async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl = undefined) {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
-        console.log("User not logged in - cannot load rubric");
+
         return;
     }
 
@@ -6283,7 +6341,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
 
     const quest = quests[cityId];
     if (!quest || !quest.rubric) {
-        console.error("Quest or rubric not found");
+
         return;
     }
 
@@ -6698,7 +6756,7 @@ async function openRubricPopup(cityId, isSelfAssessment = false, knownImageUrl =
                 });
                 localStorage.setItem('pendingSelfAssessmentQuest', cityId);
             } catch (e) {
-                console.error("Error loading pending self-assessment:", e);
+
             }
         }
     }
@@ -6780,7 +6838,7 @@ async function saveSelfAssessment(questId, assessment) {
         .eq('user_id', userId);
 
     if (saveError) {
-        console.error("Error saving self-assessment:", saveError);
+
         alert("Error saving your self-assessment. Please try again.");
         return;
     }
@@ -7053,7 +7111,7 @@ function _labelForExpKey(key) {
 async function openRewardsOverlay() {
     const overlay = document.getElementById("rewards-overlay");
     if (!overlay) {
-        console.warn("[rewards] #rewards-overlay not in DOM");
+
         return;
     }
 
@@ -7080,7 +7138,7 @@ async function openRewardsOverlay() {
 
     const contentEl = document.getElementById("rewards-content");
     if (!contentEl) {
-        console.warn("[rewards] Could not create #rewards-content");
+
         return;
     }
 
@@ -7160,7 +7218,7 @@ async function getTeacherStandardsForQuest(questId) {
     }
 
     if (!TeacherCache.teacherId) {
-        console.warn("[rubric] No teacher_id resolved; cannot fetch selected_standards.");
+
         return null;
     }
 
@@ -7173,14 +7231,14 @@ async function getTeacherStandardsForQuest(questId) {
 
     if (error) {
         if (error.code !== 'PGRST116') {
-            console.warn("[rubric] Error fetching selected_standards:", error.message);
+
         }
         return null;
     }
 
     const result = data?.selected_standards || null;
 
-    console.log("[rubric] selected_standards for", questId, "=", result);
+
 
     if (Array.isArray(result) && result.length > 0) {
         TeacherCache.selectedStandards[questId] = result;
@@ -7395,7 +7453,7 @@ async function renderNCASStandardsTable(tbody) {
     }
     const userId = window.currentUserId || (await getCurrentUserId());
     if (!userId) {
-        console.log("No user ID found, cannot render NCAS standards table");
+
         tbody.innerHTML = '<tr><td colspan="3">Please log in to view standards</td></tr>';
         return;
     }
@@ -7405,7 +7463,7 @@ async function renderNCASStandardsTable(tbody) {
         .eq('user_id', userId)
         .maybeSingle();
     if (error) {
-        console.error("Error loading progress:", error);
+
         tbody.innerHTML = '<tr><td colspan="3">Error loading standards</td></tr>';
         return;
     }
@@ -7479,7 +7537,7 @@ async function renderIBStandardsTable(tbody) {
     }
     const userId = window.currentUserId || (await getCurrentUserId());
     if (!userId) {
-        console.log("No user ID found, cannot render IB standards table");
+
         tbody.innerHTML = '<tr><td colspan="3">Please log in to view standards</td></tr>';
         return;
     }
@@ -7566,7 +7624,7 @@ async function renderIGCSESTandardsTable(tbody) {
     }
     const userId = window.currentUserId || (await getCurrentUserId());
     if (!userId) {
-        console.log("No user ID found, cannot render IGCSE standards table");
+
         tbody.innerHTML = '<tr><td colspan="3">Please log in to view standards</td></tr>';
         return;
     }
@@ -7703,6 +7761,29 @@ function computeNCASDomainGrades() {
     return domainGrades;
 }
 
+// ---------------------------------------------------------------
+// NCAS weighted-grades radar model.
+// Returns the SAME SHAPE as computeNCASDomainGrades (an object of
+// key → number), but the keys are the 5 weighted categories and the
+// values are percentages (0–100), not 0–4 averages.
+//
+// We deliberately DON'T include overallPercent — the chart is the
+// five axes only, no sixth "overall" node.
+// ---------------------------------------------------------------
+function computeNCASWeightedDomainGrades() {
+    const cats = calculateWeightedCategories();
+
+    // Keys match WEIGHTED_CATEGORY_CONFIG, so the radar labels and
+    // the profile's Weighted Grades panel stay in sync.
+    return {
+        resolvedArtworks:    cats.resolvedArtworks.percent,
+        artStudy:            cats.artStudy.percent,
+        independentResearch: cats.independentResearch.percent,
+        collaboration:       cats.collaboration.percent,
+        materialCare:        cats.materialCare.percent
+    };
+}
+
 async function computeIBDomainGrades() {
     const { data: progress } = await window.supabase
         .from('student_progress')
@@ -7779,13 +7860,27 @@ async function computeIGCSEDomainGrades() {
     return domainGrades;
 }
 
+// ---------------------------------------------------------------
+// NCAS weighted-radar colors.
+// Key order here matches the axis order used in renderRadarChart:
+//   resolvedArtworks → artStudy → independentResearch → collaboration → materialCare
+// The polygon fill uses a linear gradient between each adjacent pair.
+// ---------------------------------------------------------------
+const RADAR_AXIS_COLORS = {
+    resolvedArtworks:    { hex: "#3fbf5f", rgb: [ 63, 191,  95] },  // green
+    artStudy:            { hex: "#3f8fdf", rgb: [ 63, 143, 223] },  // blue
+    independentResearch: { hex: "#9b6bd6", rgb: [155, 107, 214] },  // purple
+    collaboration:       { hex: "#e05252", rgb: [224,  82,  82] },  // red
+    materialCare:        { hex: "#e6c341", rgb: [230, 195,  65] }   // yellow
+};
+
 async function renderRadarChart() {
     const canvas = document.getElementById("radar-chart");
     const tooltip = document.getElementById("radar-tooltip");
     if (!canvas) return;
     const userId = window.currentUserId || (await getCurrentUserId());
     if (!userId) {
-        console.log("No user ID found, cannot render radar chart");
+
         return;
     }
     const framework = await detectTeacherFramework();
@@ -7814,13 +7909,20 @@ async function renderRadarChart() {
             "AO4: Present": "Present a personal and meaningful response that realises intentions."
         };
     } else if (isNCAS) {
-        radarData = computeNCASDomainGrades();
-        labels = ["creating", "reflecting", "responding", "connecting"];
+        radarData = computeNCASWeightedDomainGrades();
+        labels = [
+            "resolvedArtworks",
+            "artStudy",
+            "independentResearch",
+            "collaboration",
+            "materialCare"
+        ];
         descriptions = {
-            creating: "Creating: Generating ideas, developing skills, and communicating visually through art.",
-            reflecting: "Reflecting: Reflecting on artistic process and creating artist statements.",
-            responding: "Responding: Interpreting and analyzing art with reasoning and evidence.",
-            connecting: "Connecting: Making connections between art, culture, and personal experiences."
+            resolvedArtworks:    "Resolved Artworks (45% weight): Final, completed artworks that realise your intentions.",
+            artStudy:            "Art Study (20% weight): Exercises, studies, and skill-building investigations.",
+            independentResearch: "Independent Art Research (15% weight): Your own investigation and documentation (CN.10.1.IA).",
+            collaboration:       "Art Community Collaboration (10% weight): Work engaging with the artistic community.",
+            materialCare:        "Art Material & Resources Care (10% weight): Responsible use of materials and tools."
         };
     } else {
         radarData = { creating: 0, reflecting: 0, responding: 0, connecting: 0 };
@@ -7830,6 +7932,8 @@ async function renderRadarChart() {
         };
     }
     const values = labels.map(l => radarData[l] || 0);
+    const isNCASChart = (framework === 'ncas');
+    const chartMax = isNCASChart ? 100 : 4;   // NCAS plots 0–100, others stay 0–4
     const ctx = canvas.getContext("2d");
     const size = 350;
     canvas.width = size;
@@ -7873,49 +7977,179 @@ async function renderRadarChart() {
         const x = centerX + (maxRadius + 22) * Math.cos(angle);
         const y = centerY + (maxRadius + 22) * Math.sin(angle);
         let displayLabel = labels[i];
-        if (isIB) {
-            displayLabel = labels[i].charAt(0);
-            ctx.fillText(displayLabel, x, y);
-        } else if (isIGCSE) {
-            displayLabel = labels[i].split(':')[0];
-            ctx.fillText(displayLabel, x, y);
-        } else {
-            ctx.fillText(displayLabel, x, y);
-        }
-        labelPositions.push({ x, y, label: labels[i] });
+    if (isIB) {
+        displayLabel = labels[i].charAt(0);
+    } else if (isIGCSE) {
+        displayLabel = labels[i].split(':')[0];
+    } else if (isNCAS) {
+        // Short axis labels for the 5-axis weighted chart
+        const shortLabels = {
+            resolvedArtworks:    "Resol. Art.",
+            artStudy:            "Art Std.",
+            independentResearch: "Ind. Art Res.",
+            collaboration:       "Art Com. Colab.",
+            materialCare:        "Mat. & Reso."
+        };
+        displayLabel = shortLabels[labels[i]] || labels[i];
     }
-    ctx.beginPath();
+    ctx.fillText(displayLabel, x, y);
+    }
+        // ----- Polygon fill + stroke (NCAS = colored gradient, others = original) -----
+    const ptPositions = [];
     for (let i = 0; i < values.length; i++) {
         const angle = (Math.PI * 2 / labels.length) * i - Math.PI / 2;
         let scaledValue = values[i];
-        if (isIGCSE) {
-            scaledValue = values[i] / 2;
-        }
-        const r = (scaledValue / 4) * maxRadius;
-        const x = centerX + r * Math.cos(angle);
-        const y = centerY + r * Math.sin(angle);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (isIGCSE) scaledValue = values[i] / 2;
+        const r = (scaledValue / chartMax) * maxRadius;
+        ptPositions.push({
+            x: centerX + r * Math.cos(angle),
+            y: centerY + r * Math.sin(angle)
+        });
     }
+
+    ctx.beginPath();
+    ptPositions.forEach((p, i) => {
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+    });
     ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+
+        if (isNCASChart) {
+        // ------------------------------------------------------------
+        // Angular color wheel: sample a color at every angle around
+        // the centroid, blending between the two nearest axis colors.
+        //
+        // Technique:
+        //   1. Clip to the polygon (so we only paint inside the shape).
+        //   2. Build N=360 thin wedge paths, one per degree.
+        //   3. For each wedge, compute the blended color from the two
+        //      axis colors straddling that angle, then fill the wedge.
+        //
+        // Result: green near the Resolved Artworks edge, smoothly
+        // blending through blue in the sector between it and Art Study,
+        // continuing around the wheel. The center is a perfect blend
+        // of all five because every wedge converges there, giving a
+        // soft multi-color hub instead of a single dominant color.
+        // ------------------------------------------------------------
+
+        const axisKeys = labels;   // same 5 keys, same order as the polygon points
+        const colorsForAxis = axisKeys.map(k => RADAR_AXIS_COLORS[k]);
+
+        // Angle for each axis vertex, measured from -π/2 (top), same
+        // convention as the polygon drawing above.
+        const axisAngles = axisKeys.map((_, i) =>
+            (Math.PI * 2 / axisKeys.length) * i - Math.PI / 2
+        );
+
+        // Sample a blended color for an arbitrary angle around the circle.
+        // Finds the two axis angles this angle lies between, and lerps.
+        function colorAtAngle(theta) {
+            // Normalize theta to the range of the first axis so we can
+            // search between consecutive axis angles.
+            const twoPi = Math.PI * 2;
+            let t = ((theta - axisAngles[0]) % twoPi + twoPi) % twoPi;
+
+            // Find the pair (i, i+1) whose angles straddle t.
+            for (let i = 0; i < axisKeys.length; i++) {
+                const a0 = ((axisAngles[i] - axisAngles[0]) % twoPi + twoPi) % twoPi;
+                const a1raw = (axisAngles[(i + 1) % axisKeys.length] - axisAngles[0]) % twoPi;
+                const a1 = (a1raw + twoPi) % twoPi;
+
+                const end = (i === axisKeys.length - 1) ? twoPi : a1;
+                if (t >= a0 && t <= end) {
+                    const span = end - a0 || 1;
+                    const f = (t - a0) / span;
+                    const cA = colorsForAxis[i].rgb;
+                    const cB = colorsForAxis[(i + 1) % axisKeys.length].rgb;
+                    return [
+                        Math.round(cA[0] + (cB[0] - cA[0]) * f),
+                        Math.round(cA[1] + (cB[1] - cA[1]) * f),
+                        Math.round(cA[2] + (cB[2] - cA[2]) * f)
+                    ];
+                }
+            }
+            return colorsForAxis[0].rgb;
+        }
+
+        // 1) Clip to polygon
+        ctx.save();
+        ctx.clip();
+
+        // 2) Soft base so empty areas still read a bit
+        ctx.fillStyle = "rgba(255,255,255,0.05)";
+        ctx.fillRect(0, 0, size, size);
+
+        // 3) Paint 360 wedges, each a sliver of one degree
+        const SEGMENTS = 360;
+        const outerR = maxRadius * 1.2;   // safely past any data point
+        for (let s = 0; s < SEGMENTS; s++) {
+            const a0 = (s / SEGMENTS) * Math.PI * 2 - Math.PI / 2;
+            const a1 = ((s + 1) / SEGMENTS) * Math.PI * 2 - Math.PI / 2;
+            const mid = (a0 + a1) / 2;
+            const [r, g, b] = colorAtAngle(mid);
+
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(centerX + outerR * Math.cos(a0), centerY + outerR * Math.sin(a0));
+            ctx.lineTo(centerX + outerR * Math.cos(a1), centerY + outerR * Math.sin(a1));
+            ctx.closePath();
+            ctx.fillStyle = `rgba(${r},${g},${b},0.42)`;
+            ctx.fill();
+        }
+        ctx.restore();
+
+        // 4) Outline: per-edge average color (as before, unchanged)
+        ctx.lineWidth = 2.5;
+        for (let i = 0; i < labels.length; i++) {
+            const a = ptPositions[i];
+            const b = ptPositions[(i + 1) % ptPositions.length];
+            const keyA = labels[i];
+            const keyB = labels[(i + 1) % labels.length];
+            const cA = RADAR_AXIS_COLORS[keyA];
+            const cB = RADAR_AXIS_COLORS[keyB];
+            if (!cA || !cB) continue;
+            const mix = cA.rgb.map((v, k) => Math.round((v + cB.rgb[k]) / 2));
+            ctx.strokeStyle = `rgb(${mix.join(",")})`;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+        }
+    } else {
+        ctx.fill();
+        ctx.stroke();
+    }
     ctx.fillStyle = "#fff";
     const pointPositions = [];
-    values.forEach((val, i) => {
+        values.forEach((val, i) => {
         const angle = (Math.PI * 2 / labels.length) * i - Math.PI / 2;
         let scaledValue = val;
-        if (isIGCSE) {
-            scaledValue = val / 2;
-        }
-        const r = (scaledValue / 4) * maxRadius;
+        if (isIGCSE) scaledValue = val / 2;
+        const r = (scaledValue / chartMax) * maxRadius;
         const x = centerX + r * Math.cos(angle);
         const y = centerY + r * Math.sin(angle);
+
+        // NCAS: per-axis colored dots. Others: original white dots.
+        let dotColor = "#fff";
+        if (isNCASChart) {
+            const c = RADAR_AXIS_COLORS[labels[i]];
+            if (c) dotColor = c.hex;
+        }
+        ctx.fillStyle = dotColor;
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, isNCASChart ? 5 : 4, 0, Math.PI * 2);
         ctx.fill();
+
+        // Thin dark halo so bright dots pop against bright gradients
+        if (isNCASChart) {
+            ctx.strokeStyle = "rgba(0,0,0,0.55)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
         pointPositions.push({ x, y, label: labels[i] });
     });
+    ctx.fillStyle = "#fff";
     canvas.onmousemove = (e) => {
         const container = document.getElementById("radar-chart-container");
         const rect = container.getBoundingClientRect();
@@ -8349,10 +8583,10 @@ function checkAllQuestWarnings() {
     overlay.classList.remove("warning", "times-up");
     if (hasTimeUp) {
         overlay.classList.add("times-up");
-        console.log("⏰ TIME'S UP - Map overlay turned red");
+
     } else if (hasWarning) {
         overlay.classList.add("warning");
-        console.log("⚠️ WARNING - Map overlay pulsing red");
+
     }
 }
 
@@ -8380,7 +8614,7 @@ function ensureScheduleLoaded() {
             }
         })
         .catch(err => {
-            console.warn("ensureScheduleLoaded failed:", err);
+
             // Allow a retry on the next call
             _scheduleLoadPromise = null;
         });
@@ -8390,11 +8624,11 @@ function ensureScheduleLoaded() {
 async function loadScheduleForStudent() {
     const profile = loadStudentProfile();
     if (!profile || !profile.teacher_code) {
-        console.log("No teacher_code found, using default schedule (weekends off)");
+
         return;
     }
 
-    console.log("Loading schedule for teacher_code:", profile.teacher_code);
+
 
     const { data: teacher, error: teacherError } = await window.supabase
         .from('teachers')
@@ -8403,13 +8637,13 @@ async function loadScheduleForStudent() {
         .single();
 
     if (teacherError || !teacher) {
-        console.log("Teacher not found for code:", profile.teacher_code);
+
         return;
     }
 
     const teacherId = teacher.id;
     const teacherClassCode = teacher.class_code;
-    console.log("Teacher found:", teacherId, "Class code:", teacherClassCode);
+
 
     let classId = profile.class_id;
     let noClassDays = [];
@@ -8417,7 +8651,7 @@ async function loadScheduleForStudent() {
     let frequencyDays = [];
 
     if (classId) {
-        console.log("Trying class-specific schedule for class_id:", classId);
+
 
         const { data: classNoClassDays, error: classNoError } = await window.supabase
             .from('class_schedule_overrides')
@@ -8426,9 +8660,9 @@ async function loadScheduleForStudent() {
 
         if (!classNoError && classNoClassDays && classNoClassDays.length > 0) {
             noClassDays = classNoClassDays;
-            console.log("Found class-specific no-class days:", noClassDays.length);
+
         } else {
-            console.log("No class-specific no-class days found or error:", classNoError?.message);
+
         }
 
         const { data: classWeekendSettings, error: weekendError } = await window.supabase
@@ -8439,9 +8673,9 @@ async function loadScheduleForStudent() {
 
         if (!weekendError && classWeekendSettings) {
             weekendSettings = classWeekendSettings;
-            console.log("Found class-specific weekend settings:", weekendSettings);
+
         } else {
-            console.log("No class-specific weekend settings found:", weekendError?.message);
+
         }
 
         const { data: classFrequencyRules, error: freqError } = await window.supabase
@@ -8452,14 +8686,14 @@ async function loadScheduleForStudent() {
 
         if (!freqError && classFrequencyRules && classFrequencyRules.type === 'custom') {
             frequencyDays = classFrequencyRules.days || [];
-            console.log("Found class-specific frequency rules:", frequencyDays);
+
         } else {
-            console.log("No class-specific frequency rules found:", freqError?.message);
+
         }
     }
 
     if (noClassDays.length === 0) {
-        console.log("No class-specific schedule found, trying to find class by teacher_code...");
+
 
         const { data: classes, error: classesError } = await window.supabase
             .from('classes')
@@ -8468,7 +8702,7 @@ async function loadScheduleForStudent() {
 
         if (!classesError && classes && classes.length > 0) {
             for (const cls of classes) {
-                console.log("Trying class_id:", cls.id);
+
 
                 const { data: classNoClassDays } = await window.supabase
                     .from('class_schedule_overrides')
@@ -8477,7 +8711,7 @@ async function loadScheduleForStudent() {
 
                 if (classNoClassDays && classNoClassDays.length > 0) {
                     noClassDays = classNoClassDays;
-                    console.log("Found no-class days in class:", cls.id);
+
                     break;
                 }
             }
@@ -8485,7 +8719,7 @@ async function loadScheduleForStudent() {
     }
 
     if (noClassDays.length === 0) {
-        console.log("No class-based schedule found, checking for any schedule data...");
+
 
         const { data: anyOverrides, error: anyError } = await window.supabase
             .from('class_schedule_overrides')
@@ -8493,7 +8727,7 @@ async function loadScheduleForStudent() {
             .limit(10);
 
         if (!anyError && anyOverrides && anyOverrides.length > 0) {
-            console.log("Found some schedule overrides in the system (may not be for this class)");
+
             noClassDays = anyOverrides;
         }
     }
@@ -8510,7 +8744,7 @@ async function loadScheduleForStudent() {
     });
 
     if (cachedScheduleData.noClassDays.length > 0) {
-        console.log("No-class dates:", cachedScheduleData.noClassDays);
+
     }
       _scheduleLoaded = true;
 }
@@ -8569,7 +8803,7 @@ async function loadQuestCalendarData() {
     const { data: { session } } = await window.supabase.auth.getSession();
     const userId = session?.user?.id;
     if (!userId) {
-        console.log("No user logged in");
+
         return;
     }
     calendarQuestData = {
@@ -8582,7 +8816,7 @@ async function loadQuestCalendarData() {
         .eq('user_id', userId)
         .maybeSingle();
     if (error) {
-        console.error("Error loading progress:", error);
+
         return;
     }
     if (!progress) return;
@@ -8590,14 +8824,14 @@ async function loadQuestCalendarData() {
     const questGrades = progress.quest_grades || {};
     const questAccepted = progress.quest_accepted || {};
     const questStartTimes = progress.quest_start_times || {};
-    console.log("Raw data - Start times:", questStartTimes);
-    console.log("Raw data - Completed:", completedQuests);
+
+
     for (const [questId, isAccepted] of Object.entries(questAccepted)) {
         if (isAccepted === true && !completedQuests[questId]) {
             const quest = quests[questId];
             const startTime = new Date(questStartTimes[questId]);
             if (isNaN(startTime.getTime())) {
-                console.log(`Invalid start time for ${questId}`);
+
                 continue;
             }
             const classDuration = await getClassDuration();
@@ -8618,7 +8852,7 @@ async function loadQuestCalendarData() {
                 dueDate: dueDate,
                 totalMinutes: totalMinutes
             };
-            console.log(`Active quest: ${questId}, start: ${startTime}, due: ${dueDate}`);
+
             break;
         }
     }
@@ -8626,7 +8860,7 @@ async function loadQuestCalendarData() {
         if (isCompleted === true) {
             const quest = quests[questId];
             if (!quest) {
-                console.log(`Quest ${questId} not found in quests data`);
+
                 continue;
             }
             const startTime = questStartTimes[questId];
@@ -8660,10 +8894,10 @@ async function loadQuestCalendarData() {
                 completedDate: completedDate,
                 dueDate: null
             });
-            console.log(`Added completed quest: ${questId}, start: ${startTime}, completed: ${completedDate}`);
+
         }
     }
-    console.log("Final calendarQuestData:", calendarQuestData);
+
 }
 
 function calculateDueDate(startDate, totalMinutes, classDuration) {
@@ -9031,13 +9265,13 @@ async function openWorkOverlay(questId) {
 
     const overlay = document.getElementById("work-overlay");
     if (!overlay) {
-        console.error("Work overlay element not found!");
+
         return;
     }
 
     const targetQuestId = questId || currentQuestId;
     if (!targetQuestId) {
-        console.error("No quest ID available to open work overlay");
+
         return;
     }
 
@@ -9133,7 +9367,7 @@ function loadProfileFromJSON(file) {
                 loadStudentData(studentData);
             }
         } catch (error) {
-            console.error('Error loading profile:', error);
+
             alert('Error loading profile: ' + error.message);
         }
     };
@@ -9276,7 +9510,7 @@ function loadStudentData(data) {
             }
         });
         const earnedCount = Object.values(earnedBadges).filter(b => b.earned).length;
-        console.log(`After re-validation: ${earnedCount} badges earned`);
+
     }
     saveEarnedBadges();
     invalidateAllCaches();
@@ -9461,19 +9695,19 @@ function renderQuestList(filter = 'all') {
             </div>
         `;
         questElement.addEventListener('click', async () => {
-            console.log("Quest clicked:", id);
+
             const achievementsOverlay = document.getElementById('achievements-overlay');
             if (achievementsOverlay) achievementsOverlay.style.display = 'none';
-            console.log("Loading all quests...");
+
             const allQuests = await getAllQuestsForStudent();
-            console.log("All quests loaded:", Object.keys(allQuests).length);
+
             const quest = allQuests[id];
-            console.log("Found quest:", quest);
+
             if (quest) {
-                console.log("Opening quest:", id);
+
                 openQuest(id);
             } else {
-                console.error("Quest not found:", id);
+
             }
         });
         container.appendChild(questElement);
@@ -9505,7 +9739,7 @@ async function loadTeacherCustomQuests() {
         .eq('class_code', profile.teacher_code)
         .single();
     if (teacherError || !teacher) {
-        console.log("Teacher not found for code:", profile.teacher_code);
+
         return [];
     }
     const { data, error } = await window.supabase
@@ -9515,7 +9749,7 @@ async function loadTeacherCustomQuests() {
         .eq('deleted', false)
         .eq('grade_level', studentGrade);
     if (error) {
-        console.error("Error loading custom quests:", error);
+
         return [];
     }
     return data || [];
@@ -9523,15 +9757,15 @@ async function loadTeacherCustomQuests() {
 
 async function getAllQuestsForStudent(forceRefresh = false) {
     if (forceRefresh) {
-        console.log("Force refresh - bypassing cache");
+
         cachedQuests = null;
         cachedQuestsIncludeCustom = false;
     }
     if (cachedQuests && cachedQuestsIncludeCustom && !forceRefresh) {
-        console.log("Returning cached quests with custom quests included, count:", Object.keys(cachedQuests).length);
+
         return cachedQuests;
     }
-    console.log("Loading quests with custom quests...");
+
     const baseQuests = await getQuests();
     const customQuests = await loadTeacherCustomQuests();
     const allQuests = { ...baseQuests };
@@ -9565,13 +9799,13 @@ async function getAllQuestsForStudent(forceRefresh = false) {
     }
     cachedQuests = allQuests;
     cachedQuestsIncludeCustom = true;
-    console.log("Quests with custom quests cached successfully:", Object.keys(cachedQuests).length, "quests found");
+
     return cachedQuests;
 }
 
 async function addCustomQuestHotspots() {
     if (isAddingHotspots) {
-        console.log("Already adding hotspots, skipping...");
+
         return;
     }
     isAddingHotspots = true;
@@ -9580,7 +9814,7 @@ async function addCustomQuestHotspots() {
         const hasCustomQuests = Object.keys(quests).some(id => id.startsWith('custom_'));
 
         if (!hasCustomQuests) {
-            console.log("Custom quests missing from quests object, refreshing...");
+
             const freshQuests = await getAllQuestsForStudent(true);
             quests = freshQuests;
             cachedQuests = freshQuests;
@@ -9592,13 +9826,13 @@ async function addCustomQuestHotspots() {
         }
 
         if (!quests || Object.keys(quests).length === 0) {
-            console.log("Quests not loaded yet, waiting...");
+
             setTimeout(() => addCustomQuestHotspots(), 500);
             return;
         }
 
         const customQuests = await loadTeacherCustomQuests();
-        console.log("Adding custom quest hotspots, found:", customQuests.length);
+
 
         const mapContainer = document.getElementById('map-container');
         if (!mapContainer) return;
@@ -9619,7 +9853,7 @@ async function addCustomQuestHotspots() {
             const pos = customPositions[i];
 
             if (!quests[quest.quest_id]) {
-                console.log(`Warning: Quest ${quest.quest_id} not found in quests object`);
+
                 continue;
             }
 
@@ -9634,22 +9868,22 @@ async function addCustomQuestHotspots() {
             hotspot.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log("Custom quest clicked:", quest.quest_id);
+
                 if (quests[quest.quest_id]) {
                     openQuest(quest.quest_id);
                 } else {
-                    console.error("Quest not found in quests object!");
+
                 }
             });
 
             mapContainer.appendChild(hotspot);
-            console.log("Added custom quest hotspot for:", quest.title);
+
         }
 
         updateHotspotVisibility();
 
     } catch (error) {
-        console.error("Error adding custom quest hotspots:", error);
+
     } finally {
         isAddingHotspots = false;
     }
@@ -9740,7 +9974,7 @@ function initializeHelpModal() {
     helpBtn = document.getElementById('helpButton');
     closeBtn = document.getElementById('closeModalBtn');
     if (!helpModal || !helpBtn || !closeBtn) {
-        console.warn("Help modal elements not found - check IDs in HTML");
+
         return;
     }
     function openHelpModal(e) {
@@ -9782,7 +10016,7 @@ function closeGallery() {
 async function loadCloudWorksIntoGallery() {
     const { data: { session } } = await window.supabase.auth.getSession();
     if (!session) {
-        console.log("Not logged in, cannot load from cloud");
+
         return;
     }
     const { data, error } = await window.supabase
@@ -9790,7 +10024,7 @@ async function loadCloudWorksIntoGallery() {
         .select('*')
         .eq('user_id', session.user.id);
     if (error) {
-        console.error("Error loading from cloud:", error);
+
         return;
     }
     const cloudQuestIds = new Set();
@@ -10041,12 +10275,12 @@ function closePrerequisitePopup() {
 
 async function getQuests() {
     if (cachedQuests) {
-        console.log("Returning cached quests, count:", Object.keys(cachedQuests).length);
+
         return cachedQuests;
     }
     const framework = await detectTeacherFramework();
     const questsFile = getQuestsFileForFramework(framework);
-    console.log(`Loading quests from ${questsFile} based on teacher's framework...`);
+
     const response = await fetch(questsFile);
     const rawQuests = await response.json();
     const filteredQuests = {};
@@ -10056,7 +10290,7 @@ async function getQuests() {
         }
     }
     cachedQuests = filteredQuests;
-    console.log("Quests cached successfully:", Object.keys(cachedQuests).length, "quests found");
+
     return cachedQuests;
 }
 
@@ -10067,7 +10301,7 @@ function getQuestsSync() {
 
 function refreshQuestsCache() {
     refreshAllQuestCaches();
-    console.log("Quest cache cleared by refreshQuestsCache()");
+
 }
 
 function refreshAllQuestCaches() {
@@ -10076,12 +10310,12 @@ function refreshAllQuestCaches() {
     localStorage.removeItem(QUEST_CACHE_KEY);
     localStorage.removeItem(QUEST_CACHE_VERSION_KEY);
     localStorage.removeItem(QUEST_CACHE_TIMESTAMP_KEY);
-    console.log("All quest caches cleared (memory + localStorage)");
+
 }
 
 async function getQuestsWithLocalCache(forceRefresh = false) {
     if (forceRefresh) {
-        console.log("Force refresh - clearing in-memory cache");
+
         cachedQuests = null;
         cachedQuestsIncludeCustom = false;
     }
@@ -10104,7 +10338,7 @@ async function getQuestsWithLocalCache(forceRefresh = false) {
             }
         }
     } catch(e) {
-        console.log("Could not check teacher timestamp:", e);
+
     }
     const cachedTimestamp = localStorage.getItem(QUEST_CACHE_TIMESTAMP_KEY);
     const cacheAge = cachedTimestamp ? Date.now() - parseInt(cachedTimestamp) : Infinity;
@@ -10127,13 +10361,13 @@ async function getQuestsWithLocalCache(forceRefresh = false) {
     const cached = localStorage.getItem(QUEST_CACHE_KEY);
     const storedVersion = localStorage.getItem(QUEST_CACHE_VERSION_KEY);
     if (cached && storedVersion === QUEST_CACHE_VERSION) {
-        console.log("Using cached quests from localStorage");
+
         const parsedCache = JSON.parse(cached);
         cachedQuests = parsedCache;
         quests = parsedCache;
         return parsedCache;
     }
-    console.log("Fetching fresh quests from server...");
+
     const freshQuests = await getAllQuestsForStudent(true);
     cachedQuests = freshQuests;
     quests = freshQuests;
@@ -10161,11 +10395,11 @@ async function checkQuestCacheValidity() {
     const cachedTimestamp = localStorage.getItem(QUEST_CACHE_TIMESTAMP_KEY);
     const teacherTimestamp = new Date(teacher.quests_updated_at).getTime();
     if (!cachedTimestamp || teacherTimestamp > parseInt(cachedTimestamp)) {
-        console.log("Teacher updated quests, refreshing cache...");
+
         refreshAllQuestCaches();
         return true;
     }
-    console.log("Quest cache is valid (teacher hasn't changed quests)");
+
     return false;
 }
 
@@ -10201,7 +10435,7 @@ async function compressImage(file, maxWidth = 1024, quality = 0.85) {
                     type: 'image/jpeg',
                     lastModified: Date.now()
                 });
-                console.log(`Image compressed: ${(file.size / 1024).toFixed(1)}KB → ${(blob.size / 1024).toFixed(1)}KB (${Math.round((1 - blob.size/file.size) * 100)}% reduction)`);
+
                 resolve(compressedFile);
             }, 'image/jpeg', quality);
         };
@@ -10243,7 +10477,7 @@ async function uploadResearchPdf(questId, file) {
         });
 
     if (error) {
-        console.error("Research PDF upload error:", error);
+
         alert("Failed to upload research PDF: " + error.message);
         return null;
     }
@@ -10280,29 +10514,29 @@ function loadBadgesFromJSON() {
         })
         .then(data => {
             badgesData = data.badges;
-            console.log("Badges loaded:", badgesData);
+
             return badgesData;
         })
         .catch(err => {
-            console.error("Error loading badges:", err);
+
             badgesData = [];
             return badgesData;
         });
 }
 
 function initializeBadgeSystem() {
-    console.log("Initializing badge system...");
-    console.log("Current earned badges before check:", earnedBadges);
+
+
     const existingBadges = { ...earnedBadges };
     checkAllBadges(false);
     for (const [badgeId, badgeData] of Object.entries(existingBadges)) {
         if (badgeData.earned && !earnedBadges[badgeId]) {
-            console.log("Restoring badge that was lost:", badgeId);
+
             earnedBadges[badgeId] = badgeData;
         }
     }
     saveEarnedBadges();
-    console.log("Badge system initialized. Final badges:", earnedBadges);
+
 }
 
 function checkAllBadges(showCelebration = true) {
@@ -10332,7 +10566,7 @@ function checkAllBadges(showCelebration = true) {
         if (earned) {
             if (!previousBadges[badge.id]?.earned) {
                 newBadgesEarned = true;
-                console.log(`New badge earned: ${badge.name}`);
+
                 if (showCelebration) showBadgeNotification(badge.name);
             }
             if (!badge.progression) {
@@ -10345,10 +10579,10 @@ function checkAllBadges(showCelebration = true) {
     });
     saveEarnedBadges();
     if (newBadgesEarned) {
-        console.log("New badges earned, saving to cloud...");
+
         saveBadgesToCloud();
     }
-    console.log("Final earned badges after check:", earnedBadges);
+
 }
 
 function checkProgressionBadge(badge) {
@@ -10364,7 +10598,7 @@ function checkProgressionBadge(badge) {
             }
         }
     }
-    console.log(`Badge ${badge.id}: MVP count = ${mvpCount} (Quests: ${mvpQuestIds.join(', ')})`);
+
     let highestLevel = null;
     if (badge.levels) {
         for (const level of badge.levels) {
@@ -10383,11 +10617,11 @@ function checkProgressionBadge(badge) {
             tooltip: highestLevel.tooltip,
             earnedAt: earnedBadges[badge.id]?.earnedAt || new Date().toISOString()
         };
-        console.log(`✅ Badge ${badge.id} earned at level ${highestLevel.level}`);
+
         return true;
     } else {
         if (earnedBadges[badge.id] && earnedBadges[badge.id].earned) {
-            console.log(`Badge ${badge.id} already earned, keeping`);
+
             return true;
         }
         return false;
@@ -10410,9 +10644,9 @@ async function saveBadgesToCloud() {
             .eq('user_id', userId)
     );
     if (error) {
-        console.error("Error saving badges to cloud:", error);
+
     } else {
-        console.log("Badges saved to cloud successfully");
+
     }
 }
 
@@ -10531,7 +10765,7 @@ function renderBadges() {
 // ==============================================
 
 function updateBadgesAfterQuest() {
-    console.log("Updating badges after quest completion...");
+
     checkAllBadges(true);
     checkBadgeExp();
     checkAchievementExp();
@@ -10547,17 +10781,17 @@ function updateBadgesAfterQuest() {
 
 function setupRealtimeRefresh() {
     if (!window.supabase || !window.supabase.auth) {
-        console.log("Supabase not ready yet, retrying in 1 second...");
+
         setTimeout(setupRealtimeRefresh, 1000);
         return;
     }
     window.supabase.auth.getSession().then(({ data: { session }, error }) => {
         if (error || !session) {
-            console.log("No active session, waiting for login...");
+
             setTimeout(setupRealtimeRefresh, 3000);
             return;
         }
-        console.log("Setting up real-time updates for user:", session.user.id);
+
         if (realtimeSubscription) {
             window.supabase.removeChannel(realtimeSubscription);
         }
@@ -10569,8 +10803,8 @@ function setupRealtimeRefresh() {
                 table: 'student_progress',
                 filter: `user_id=eq.${session.user.id}`
             }, (payload) => {
-                console.log("Real-time update received for student progress:", payload);
-                console.log("Real-time update received, calling refreshStudentData");
+
+
                 refreshStudentData();
             })
             .on('postgres_changes', {
@@ -10579,7 +10813,7 @@ function setupRealtimeRefresh() {
                 table: 'student_works',
                 filter: `user_id=eq.${session.user.id}`
             }, (payload) => {
-                console.log("Real-time update received for student works:", payload);
+
                 const galleryOverlay = document.getElementById("gallery-overlay");
                 if (galleryOverlay && galleryOverlay.style.display === "flex") {
                     renderGalleryItems();
@@ -10587,10 +10821,10 @@ function setupRealtimeRefresh() {
                 refreshStudentData();
             })
             .subscribe((status) => {
-                console.log("Realtime subscription status:", status);
+
             });
     }).catch(error => {
-        console.error("Failed to setup realtime:", error);
+
         setTimeout(setupRealtimeRefresh, 2000);
     });
 }
@@ -10607,7 +10841,7 @@ function showBadgeNotification(badgeName) {
 }
 
 async function manualRefreshBadges() {
-    console.log("Manually refreshing badges...");
+
     await loadStudentDataFromCloud();
         const profileOverlay = document.getElementById("profile-overlay");
     if (profileOverlay && profileOverlay.style.display === "flex") {
@@ -10616,8 +10850,8 @@ async function manualRefreshBadges() {
         if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
     }
     const localBadges = loadEarnedBadges();
-    console.log("Badges in localStorage:", localBadges);
-    console.log("Badges in memory:", earnedBadges);
+
+
     alert("Badges refreshed! Check console for details.");
 }
 
@@ -10917,12 +11151,19 @@ function renderWeightedCategories() {
     let percentCells = `<td class="percent overall">${data.overallPercent.toFixed(2)}%</td>`;
     let rawCells = `<td class="raw-avg overall">—</td>`;
 
-    for (const key of orderedKeys) {
+        for (const key of orderedKeys) {
         const cfg = WEIGHTED_CATEGORY_CONFIG[key];
         const cat = data[key];
         const tip = `<strong>${cfg.fullLabel}</strong><br>Weight: <strong>${cfg.weight}%</strong> of the total grade.`;
 
-        headerCells += `<th data-weight-tip="${tip}">${cfg.label}</th>`;
+        // Color the header label to match the radar axis colors.
+        // Falls back to the existing color if a key isn't in the map.
+        const axisColor = (typeof RADAR_AXIS_COLORS === "object" && RADAR_AXIS_COLORS[key])
+            ? RADAR_AXIS_COLORS[key].hex
+            : null;
+        const colorStyle = axisColor ? ` style="color:${axisColor};"` : "";
+
+        headerCells += `<th data-weight-tip="${tip}"${colorStyle}>${cfg.label}</th>`;
 
         if (cat.count === 0) {
             percentCells += `<td class="percent empty">0.00%</td>`;
@@ -10990,16 +11231,16 @@ function renderWeightedCategories() {
 // ==============================================
 
 function loadStandardDeductions() {
-    console.warn("loadStandardDeductions called but function removed");
+
     return {};
 }
 
 function saveStandardDeductions() {
-    console.warn("saveStandardDeductions called but function removed");
+
 }
 
 function initializeDeductionSystem() {
-    console.warn("initializeDeductionSystem called but function removed");
+
 }
 
 // ==============================================
@@ -11007,7 +11248,7 @@ function initializeDeductionSystem() {
 // ==============================================
 
 async function refreshStudentData() {
-    console.log("Refreshing student data from cloud...");
+
     invalidateStudentDataCache();
     await loadStudentDataFromCloud(true, true);
     await loadScheduleForStudent();
@@ -11033,7 +11274,7 @@ async function refreshStudentData() {
             renderQuestList(filterSelect.value);
         }
     }
-    console.log("Student data refreshed");
+
 }
 
 // ==============================================
@@ -11060,7 +11301,7 @@ async function loadArtBattleContests() {
         .select('*')
         .order('start_date', { ascending: true });
     if (error) {
-        console.error("Error loading contests:", error);
+
         document.getElementById('artbattle-content').innerHTML = `<div class="artbattle-loading">Error: ${error.message}</div>`;
         return;
     }
@@ -11165,7 +11406,7 @@ async function voteForSubmission(contestId, submissionId) {
             submission_id: submissionId
         });
     if (error) {
-        console.error("Error voting:", error);
+
         alert("Error voting. Please try again.");
         return;
     }
@@ -11190,7 +11431,7 @@ async function viewStudentContestSubmission(submissionId) {
         .eq('id', submissionId)
         .single();
     if (error) {
-        console.error("Error loading submission:", error);
+
         return;
     }
     alert(`Title: ${submission.title}\nStudent: ${submission.profiles?.name}\nDescription: ${submission.description || 'No description'}\nVotes: ${submission.votes || 0}`);
@@ -11293,7 +11534,7 @@ async function viewContestSubmissionDetails(submissionId, forStudent = false, co
         .eq('id', submissionId)
         .single();
     if (error) {
-        console.error("Error loading submission:", error);
+
         return;
     }
     let isContestEnded = contestEnded;
@@ -11309,12 +11550,12 @@ async function viewContestSubmissionDetails(submissionId, forStudent = false, co
     }
     const modal = document.getElementById('teacher-work-modal');
     if (!modal) {
-        console.error("Modal not found");
+
         return;
     }
     const content = document.getElementById('teacher-work-content');
     if (!content) {
-        console.error("Content element not found");
+
         return;
     }
     const showStudentName = isContestEnded;
@@ -11434,7 +11675,7 @@ async function submitContestArtwork() {
             openArtBattleContest(currentContestForSubmission, 'active');
         }, 2000);
     } catch (error) {
-        console.error("Submission error:", error);
+
         messageDiv.innerHTML = 'Error submitting artwork. Please try again.';
         messageDiv.style.color = '#ff8888';
     }
@@ -11453,7 +11694,7 @@ function initSubmissionModal() {
     if (modal) modal.onclick = (e) => { if (e.target === modal) closeModal(); };
     if (submit) submit.onclick = submitContestArtwork;
     setupSubmissionImagePreview();
-    console.log("Submission modal initialized");
+
 }
 
 async function deletePendingSubmission(contestId) {
@@ -11504,14 +11745,14 @@ async function replaceSubmission(contestId) {
 }
 
 async function openArtBattleContest(contestId, status) {
-    console.log("Opening contest:", contestId, "Status:", status);
+
     const { data: contest, error } = await window.supabase
         .from('art_battle_contests')
         .select('*')
         .eq('id', contestId)
         .single();
     if (error) {
-        console.error("Error loading contest details:", error);
+
         return;
     }
     const { data: allSubmissions, error: subError } = await window.supabase
@@ -11519,7 +11760,7 @@ async function openArtBattleContest(contestId, status) {
         .select('*, profiles(name, avatar_url)')
         .eq('contest_id', contestId);
     if (subError) {
-        console.error("Error loading submissions:", subError);
+
     }
     const submissions = allSubmissions?.filter(s => s.status === 'approved') || [];
     const startDate = new Date(contest.start_date);
@@ -11658,7 +11899,7 @@ async function openArtBattleContest(contestId, status) {
             if (typeof viewContestSubmissionDetails === 'function') {
                 await viewContestSubmissionDetails(submissionId, true, false);
             } else {
-                console.error("viewContestSubmissionDetails not available");
+
             }
         });
     });
@@ -11685,7 +11926,7 @@ async function openArtBattleContest(contestId, status) {
 }
 
 async function renderRaceTrackView(contestId) {
-    console.log("Rendering race track for contest:", contestId);
+
     if (window.raceJitterInterval) {
         clearInterval(window.raceJitterInterval);
         window.raceJitterInterval = null;
@@ -11696,7 +11937,7 @@ async function renderRaceTrackView(contestId) {
         .eq('id', contestId)
         .single();
     if (error) {
-        console.error("Error loading contest:", error);
+
         return;
     }
     const { data: submissions, error: subError } = await window.supabase
@@ -11705,7 +11946,7 @@ async function renderRaceTrackView(contestId) {
         .eq('contest_id', contestId)
         .eq('status', 'approved');
     if (subError) {
-        console.error("Error loading submissions:", subError);
+
         return;
     }
     if (!submissions || submissions.length === 0) {
@@ -11844,14 +12085,14 @@ function startRaceJitter(contestId) {
 }
 
 async function renderResultsView(contestId) {
-    console.log("Rendering results view for contest:", contestId);
+
     const { data: contest, error } = await window.supabase
         .from('art_battle_contests')
         .select('*')
         .eq('id', contestId)
         .single();
     if (error) {
-        console.error("Error loading contest:", error);
+
         return;
     }
     const { data: submissions, error: subError } = await window.supabase
@@ -11861,7 +12102,7 @@ async function renderResultsView(contestId) {
         .eq('status', 'approved')
         .order('votes', { ascending: false });
     if (subError) {
-        console.error("Error loading submissions:", subError);
+
         return;
     }
     if (!submissions || submissions.length === 0) {
@@ -11995,7 +12236,7 @@ document.addEventListener("DOMContentLoaded", () => {
         quests = questsData;
         cachedQuests = questsData;
         cachedQuestsIncludeCustom = true;
-        console.log("Quests ready, count:", Object.keys(quests).length);
+
 
         buildQuestRelationships();
         buildPathQuests();
@@ -12024,9 +12265,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 AppState.teacherData.classDuration = await getClassDuration();
                 AppState.teacherData.loaded = true;
-                console.log("Timer values pre-cached:", Object.keys(AppState.teacherData.customTimers).length);
+
             } catch (err) {
-                console.error("Error pre-caching timer values:", err);
+
             }
         }
         preCacheAllTimerValues();
@@ -12137,7 +12378,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (savedSelfAssessments) {
             try {
                 window.selfAssessments = JSON.parse(savedSelfAssessments);
-                console.log("Loaded self-assessments from localStorage:", Object.keys(window.selfAssessments).length);
+
             } catch (e) {
                 window.selfAssessments = {};
             }
@@ -12149,7 +12390,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const pendingQuest = localStorage.getItem('pendingSelfAssessmentQuest');
         if (pendingQuest) {
-            console.log("Found pending self-assessment for quest:", pendingQuest);
+
             setTimeout(() => {
                 if (confirm(`You have a pending self-assessment for a quest. Would you like to complete it now?`)) {
                     window._selfAssessmentPending = true;
@@ -12390,7 +12631,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const searchResults = document.getElementById('cluster-search-results');
 
     if (!searchBtn || !searchPanel || !searchInput || !searchResults) {
-        console.warn('[cluster] Search elements missing; skipping search wiring.');
+
         return;
     }
 
@@ -12491,7 +12732,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (first) first.click();
     });
 
-    console.log('[cluster] Floating cluster wired.');
+
 })();
 
 /* ==========================================================
