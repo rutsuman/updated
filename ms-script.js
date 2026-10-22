@@ -4042,6 +4042,12 @@ async function handleLoginSubmit() {
     await loadStudentDataFromCloud(true, true);
     TeacherCache.selectedStandards = {};
     invalidateRequiredQuestsCache();
+    invalidateFeaturedQuestsCache();
+try {
+    await renderFeaturedQuestsPanel();
+} catch (e) {
+    console.warn("[featured] post-login render failed:", e);
+}
     updateProfileUI();
     startActiveQuestTimerUpdates();
 
