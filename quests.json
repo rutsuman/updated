@@ -1558,6 +1558,348 @@
     "acceptedAt": null
   },
 
+    "quest101": {
+    "path": ["Painter Path"],
+    "difficulty": 1,
+    "title": "The Chromatic Council",
+    "rationale": "<h2>The Chromatic Council</h2><p><strong>Why it's important:</strong><br>Color is a language. Before you can speak it fluently in paintings, you must learn its grammar: hue, value, saturation, and the relationships between colors on the wheel. This quest isolates color theory so that every later painting benefits from intentional, informed color choices.</p><p><strong>Skills developed:</strong></p><ul><li>Understanding the color wheel: primary, secondary, tertiary</li><li>Complementary, split-complementary, analogous, and triadic relationships</li><li>Tint, shade, and tone control</li><li>Warm vs. cool temperature shifts</li><li>Mixing discipline and color accuracy</li></ul><p>This is the foundation for all color work in acrylic, watercolor, and mixed media.</p>",
+    "description": "The Chromatic Council has summoned you to prove you understand the laws of color. In the Hall of Prisms, the elders demand a single reference sheet on which every color relationship is demonstrated clearly and deliberately. You must mix, label, and arrange your colors as a scholar would arrange runes—each swatch a word, each relationship a sentence. Only those who can command color on demand may proceed to the higher trials.",
+    "requirements": [
+      "Paint a full color wheel with 12 hues, correctly mixed",
+      "Show at least 3 color schemes (complementary, analogous, triadic, or split-complementary) as labeled swatch groups",
+      "Demonstrate tint, shade, and tone for at least 3 different hues",
+      "Include a warm/cool temperature comparison",
+      "Label every swatch clearly and keep the sheet organized"
+    ],
+    "rubric": {
+      "overall": "The Chromatic Council",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Technique Development",
+          "levels": {
+            "4": "Color wheel is accurate; all relationships are correctly mixed and clearly labeled with excellent control.",
+            "3": "Color wheel and schemes are mostly accurate with minor mixing errors.",
+            "2": "Some color relationships are incorrect or unclear; mixing is inconsistent.",
+            "1": "Color wheel is inaccurate; relationships are missing or mislabeled."
+          }
+        },
+        {
+          "code": "Art.FA.CR.3.1.IA",
+          "name": "Refinement",
+          "levels": {
+            "4": "Sheet is highly organized, clean, and intentional throughout.",
+            "3": "Mostly organized with minor inconsistencies.",
+            "2": "Some organization issues; several areas unresolved.",
+            "1": "Little evidence of refinement or organization."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=O2VjGz9iXQw"},
+      {"type": "Color theory reference", "url": "https://www.colormatters.com/color-and-design/basic-color-theory"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char101.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 150},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest102": {
+    "path": ["Painter Path"],
+    "difficulty": 2,
+    "title": "The Golden Hour",
+    "rationale": "<h2>The Golden Hour</h2><p><strong>Why it's important:</strong><br>Light changes everything. The same landscape at dawn, noon, and dusk tells three different emotional stories because color temperature and atmospheric haze shift the entire palette. This quest trains you to see light as a color problem, not just a value problem.</p><p><strong>Skills developed:</strong></p><ul><li>Color temperature control (warm vs. cool light)</li><li>Atmospheric perspective through color</li><li>Value and saturation shifts across times of day</li><li>Compositional consistency across a series</li><li>Planning a multi-panel painting</li></ul><p>This skill transfers directly to landscapes, cityscapes, and any scene where mood depends on light.</p>",
+    "description": "A wandering chronomancer has frozen three moments in time and demands you paint them. You must choose one landscape or scene and paint it three times—dawn, midday, and dusk—on a single page or as a triptych. Each version must feel like the same place breathing under a different sky. The elders will judge not the scenery, but how convincingly the light has changed its mood.",
+    "requirements": [
+      "Paint the same scene three times: dawn, midday, and dusk",
+      "Use warm and cool color shifts to distinguish each time of day",
+      "Show atmospheric perspective through color, not just value",
+      "Keep composition consistent across all three versions",
+      "Present the three versions together as a cohesive set"
+    ],
+    "rubric": {
+      "overall": "The Golden Hour",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Technique Development",
+          "levels": {
+            "4": "Color temperature and atmospheric shifts are masterful and clearly distinguish each time of day.",
+            "3": "Clear color shifts with minor inconsistencies between versions.",
+            "2": "Some color variation but times of day are not clearly differentiated.",
+            "1": "Little to no color temperature change; versions look nearly identical."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Art Interpretation",
+          "levels": {
+            "4": "Each version conveys a distinct mood through color and light with strong interpretive intent.",
+            "3": "Good mood differentiation with minor gaps.",
+            "2": "Partial mood differentiation; some versions feel unresolved.",
+            "1": "Mood is unclear or absent in the versions."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=F8S4Q3nXe5A"},
+      {"type": "Golden hour painting reference", "url": "https://www.google.com/search?q=golden+hour+acrylic+painting&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char102.png",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 225},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+    "quest108": {
+    "path": ["Painter Path"],
+    "difficulty": 1,
+    "title": "The Spring Awakening",
+    "rationale": "<h2>The Spring Awakening</h2><p><strong>Why it's important:</strong><br>Seasonal themes teach mood, symbolism, and color narrative. Spring in particular trains you to use light, fresh color, and emerging forms to suggest renewal and hope.</p><p><strong>Skills developed:</strong></p><ul><li>Color mood and seasonal palette</li><li>Symbolism and storytelling through imagery</li><li>Composition with a clear focal point</li><li>Atmospheric light</li><li>Expressive brushwork</li></ul><p>This quest builds your ability to create emotionally resonant, thematic paintings.</p>",
+    "description": "The Green Wardens celebrate the first thaw of the year, and they ask you to paint an offering for the Festival of Awakening. Your painting must capture the spirit of spring—renewal, growth, warmth returning to the world. It may show flowers, fields, light through leaves, or any image that feels like the season. The wardens will hang it in the grove, where it will greet the first blossoms.",
+    "requirements": [
+      "Create a painting inspired by spring or renewal",
+      "Use a fresh, luminous color palette",
+      "Include at least one clear focal point",
+      "Use light to suggest warmth and atmosphere",
+      "Complete the painting with care and detail"
+    ],
+    "rubric": {
+      "overall": "The Spring Awakening",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Technique Development",
+          "levels": {
+            "4": "Excellent color and brushwork; mood and atmosphere are clearly conveyed.",
+            "3": "Good technique with minor inconsistencies.",
+            "2": "Basic technique; mood is weak or unclear.",
+            "1": "Poor technique; mood is absent."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Art Interpretation",
+          "levels": {
+            "4": "Strong symbolic and emotional connection to spring; painting feels alive.",
+            "3": "Clear thematic interpretation with minor gaps.",
+            "2": "Some thematic connection but imagery is generic.",
+            "1": "No clear thematic connection."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/results?search_query=spring+acrylic+painting"},
+      {"type": "Spring painting reference", "url": "https://www.google.com/search?q=spring+acrylic+painting&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char108.png",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 225},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest109": {
+    "path": ["Painter Path"],
+    "difficulty": 2,
+    "title": "The Lunar New Year",
+    "rationale": "<h2>The Lunar New Year</h2><p><strong>Why it's important:</strong><br>Cultural celebration paintings teach respect, research, and symbolic composition. This quest asks you to engage thoughtfully with a living tradition, using color and imagery to honor rather than appropriate.</p><p><strong>Skills developed:</strong></p><ul><li>Cultural research and visual respect</li><li>Symbolism and iconography</li><li>Strong color choices (red, gold, auspicious hues)</li><li>Composition with traditional motifs</li><li>Storytelling through celebration</li></ul><p>This quest builds awareness of how art participates in culture and celebration.</p>",
+    "description": "As the Lunar New Year approaches, the Lanternkeepers of the Eastern Quarter ask you to paint a celebration piece for the festival. Your painting should honor the traditions of the holiday—whether through a zodiac animal, lanterns, reunion imagery, or symbols of luck and prosperity. Research the tradition first; the keepers will know if your work is shallow. What matters is respect, not replication.",
+    "requirements": [
+      "Create a painting inspired by Lunar New Year traditions",
+      "Research at least one symbol, motif, or custom before painting",
+      "Use a celebratory color palette (red, gold, etc.) with intention",
+      "Include at least one symbolic image or motif",
+      "Present the painting respectfully and with care"
+    ],
+    "rubric": {
+      "overall": "The Lunar New Year",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Technique Development",
+          "levels": {
+            "4": "Excellent control of color and form; imagery is clear and celebratory.",
+            "3": "Good technique with minor inconsistencies.",
+            "2": "Basic technique; some elements are unclear.",
+            "1": "Poor technique; painting is unfinished."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Cultural Interpretation",
+          "levels": {
+            "4": "Deep respect and understanding of the tradition; symbols used accurately and meaningfully.",
+            "3": "Clear understanding with minor inaccuracies.",
+            "2": "Partial understanding; symbols are used superficially.",
+            "1": "Little understanding; imagery is disconnected from tradition."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/results?search_query=lunar+new+year+acrylic+painting"},
+      {"type": "Lunar New Year reference", "url": "https://www.google.com/search?q=lunar+new+year+painting+symbols&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char109.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 300},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest110": {
+    "path": ["Painter Path"],
+    "difficulty": 3,
+    "title": "The Expressive Self (MVP)",
+    "rationale": "<h2>The Expressive Self</h2><p><strong>Why it's important:</strong><br>A self-portrait is the oldest mirror an artist has. But this is not a likeness test—it is an emotional one. You must translate an internal state into color, brushwork, and composition. This is where technical skill becomes voice.</p><p><strong>Skills developed:</strong></p><ul><li>Expressive color and brushwork</li><li>Emotional composition and focal hierarchy</li><li>Self-observation and psychological interpretation</li><li>Intentional distortion and abstraction</li><li>Integrating technique with personal meaning</li></ul><p>This is a summative challenge that proves you can make a painting mean something.</p>",
+    "description": "The Mirror Hall of Artheim has cracked, and every reflection now shows a different version of the person who looks into it. The Hall demands one true portrait—not of your face, but of the self beneath it. You must paint a self-portrait that captures an emotion, a state of mind, or a facet of your identity. Likeness is optional. Honesty is not. The mirror will judge whether the painting feels like a person or a mask.",
+    "requirements": [
+      "Create a self-portrait using acrylic paint",
+      "Focus on conveying a specific emotion or psychological state",
+      "Use expressive color and brushwork intentionally",
+      "Plan composition and focal point through sketches",
+      "Document your process from thumbnail to final work"
+    ],
+    "rubric": {
+      "overall": "The Expressive Self (MVP)",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.1.IA",
+          "name": "Conceptualization",
+          "levels": {
+            "4": "Highly original emotional concept; strong connection between self, symbol, and image.",
+            "3": "Clear emotional concept with thoughtful execution.",
+            "2": "Concept is generic or weakly linked to the self.",
+            "1": "No clear concept; painting lacks emotional intent."
+          }
+        },
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Technique Development",
+          "levels": {
+            "4": "Masterful control of expressive brushwork and color; technique serves emotion.",
+            "3": "Good technical control with clear expressive intent.",
+            "2": "Basic technique; expression is limited or inconsistent.",
+            "1": "Poor technique; expression is absent."
+          }
+        },
+        {
+          "code": "Art.FA.CR.3.1.IA",
+          "name": "Refinement",
+          "levels": {
+            "4": "Highly refined; every brushstroke feels intentional.",
+            "3": "Mostly refined with minor unresolved areas.",
+            "2": "Some refinement; several areas feel unfinished.",
+            "1": "Little refinement or revision."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Art Interpretation",
+          "levels": {
+            "4": "Deep, compelling interpretation of self and emotion; viewer feels the state.",
+            "3": "Clear interpretation with minor gaps.",
+            "2": "Partial interpretation; emotion is unclear.",
+            "1": "No interpretive depth."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=DINlXrnVSCE"},
+      {"type": "Expressive self-portrait reference", "url": "https://www.google.com/search?q=expressive+self+portrait+painting&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char110.gif",
+    "style": "mvp",
+    "prerequisites": ["quest1", "quest2", "quest6", "quest22", "quest24"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest111": {
+    "path": ["Painter Path"],
+    "difficulty": 3,
+    "title": "The Abstract Portrait (MVP)",
+    "rationale": "<h2>The Abstract Portrait</h2><p><strong>Why it's important:</strong><br>Abstract portraiture asks the hardest question in art: what makes a person recognizable when the face is gone? This quest challenges you to translate identity into pure form, color, and composition—without relying on likeness.</p><p><strong>Skills developed:</strong></p><ul><li>Conceptual translation of identity into abstraction</li><li>Color psychology and symbolic palettes</li><li>Compositional balance and emphasis</li><li>Non-representational storytelling</li><li>Intentional use of shape, texture, and scale</li></ul><p>This summative proves you can communicate a person through abstraction alone.</p>",
+    "description": "The Seers of the Veiled Court have lost the ability to see faces. They now recognize people only by the color, shape, and weight of their presence. You are summoned to paint a portrait for one of the Seers—but the face is forbidden. You must capture a person entirely through abstraction: color fields, gesture, shape, texture. When the Seer looks at your painting, they must know exactly who stands before them.",
+    "requirements": [
+      "Create a fully abstract portrait (no recognizable face)",
+      "Translate a real person's identity into color, shape, and composition",
+      "Use color and form with intentional symbolic meaning",
+      "Plan the composition through sketches and color studies",
+      "Write a brief artist statement explaining your abstract choices"
+    ],
+    "rubric": {
+      "overall": "The Abstract Portrait (MVP)",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.1.IA",
+          "name": "Conceptualization",
+          "levels": {
+            "4": "Highly original translation of identity into abstraction; concept is clear and compelling.",
+            "3": "Clear conceptual link between person and abstract form.",
+            "2": "Weak or generic conceptual link; abstraction feels arbitrary.",
+            "1": "No clear concept; abstract choices are random."
+          }
+        },
+        {
+          "code": "Art.FA.CR.2.1.IA",
+          "name": "Organization",
+          "levels": {
+            "4": "Composition is powerful and balanced; color and form create clear emphasis.",
+            "3": "Good composition with minor balance issues.",
+            "2": "Basic composition; emphasis is weak.",
+            "1": "Poor composition; no clear structure."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Art Interpretation",
+          "levels": {
+            "4": "Viewer can sense the person through abstraction; interpretation is rich and convincing.",
+            "3": "Clear interpretive intent; identity is readable through abstraction.",
+            "2": "Partial interpretation; abstraction is unclear.",
+            "1": "No interpretive clarity."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=mQhMxbBje6Y"},
+      {"type": "Abstract portrait reference", "url": "https://www.google.com/search?q=abstract+portrait+painting&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char111.png",
+    "style": "mvp",
+    "prerequisites": ["quest5", "quest13", "quest14", "quest15", "quest36"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
 
   
 
@@ -2384,6 +2726,110 @@
     "timer": {
       "allottedMinutes": 300
     },
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+    "quest103": {
+    "path": ["Watercolor Path"],
+    "difficulty": 2,
+    "title": "The Sky Study",
+    "rationale": "<h2>The Sky Study</h2><p><strong>Why it's important:</strong><br>The sky is the largest and most emotionally powerful element in most landscapes, yet it is also the most forgiving place to practice watercolor control. Painting skies teaches you wet-on-wet blending, timing, and how to let water do the work.</p><p><strong>Skills developed:</strong></p><ul><li>Wet-on-wet gradients and cloud formation</li><li>Timing and water control</li><li>Color temperature in atmospheric scenes</li><li>Value control across large areas</li><li>Recognizing when to stop</li></ul><p>This is foundational for landscapes, seascapes, and any atmospheric painting.</p>",
+    "description": "The Skywardens of the Open Realm keep a ledger of every sky that has ever passed over the world. They ask you to contribute a page: six skies, each one a different mood—dawn, storm, night, fog, clear day, and sunset. You must paint them as watercolor studies, letting the pigment bloom and settle as clouds would. The Skywardens care less about realism than about whether each sky could convince a traveler to look up.",
+    "requirements": [
+      "Paint at least 6 different skies (dawn, storm, night, fog, clear, sunset)",
+      "Use wet-on-wet techniques for cloud and gradient effects",
+      "Show clear differences in mood and color temperature",
+      "Control water so each sky reads cleanly",
+      "Present all studies together as a cohesive page"
+    ],
+    "rubric": {
+      "overall": "The Sky Study",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Wash & Water Control",
+          "levels": {
+            "4": "Excellent wet-on-wet control; skies are smooth, atmospheric, and distinct.",
+            "3": "Good wash control with minor inconsistencies.",
+            "2": "Inconsistent washes; some skies look muddy or overworked.",
+            "1": "Poor water control; skies are flat or uncontrolled."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Art Interpretation",
+          "levels": {
+            "4": "Each sky conveys a clear, distinct mood through color and atmosphere.",
+            "3": "Good mood differentiation with minor gaps.",
+            "2": "Some mood variation but skies are not clearly distinct.",
+            "1": "Little to no mood differentiation."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=3V6qEI8gMyY"},
+      {"type": "Watercolor skies reference", "url": "https://www.google.com/search?q=watercolor+sky+study&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char103.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 175},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest104": {
+    "path": ["Watercolor Path"],
+    "difficulty": 2,
+    "title": "The Urban Sketch",
+    "rationale": "<h2>The Urban Sketch</h2><p><strong>Why it's important:</strong><br>Plein-air sketching forces you to make decisions fast and to simplify complex scenes into readable marks. It builds confidence, speed, and the ability to work outside your comfort zone.</p><p><strong>Skills developed:</strong></p><ul><li>Fast observational drawing</li><li>Simplification of complex scenes</li><li>Watercolor on location (or from a photo in under 30 minutes)</li><li>Composition under time pressure</li><li>Loose, expressive mark-making</li></ul><p>This quest strengthens your ability to capture the essence of a place quickly and confidently.</p>",
+    "description": "The Guild of Wayfarers believes that a painting made on the road is worth ten made in a studio. They challenge you to venture out—or to a window, or to a photograph of a real place—and capture a street, courtyard, market, or corner of your world in a single watercolor sketch. Speed matters. Confidence matters. The sketch must feel like it was made by someone who was actually there.",
+    "requirements": [
+      "Create a watercolor sketch of a real urban or architectural scene",
+      "Work from life or a photograph of a real place",
+      "Complete the sketch in under 30 minutes of active painting",
+      "Simplify the scene into clear shapes and values",
+      "Use loose, expressive brushwork"
+    ],
+    "rubric": {
+      "overall": "The Urban Sketch",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Technique Development",
+          "levels": {
+            "4": "Loose, confident brushwork; clear simplification with excellent water control.",
+            "3": "Good brushwork with minor hesitations; scene is readable.",
+            "2": "Hesitant or overworked; scene is cluttered or unclear.",
+            "1": "Poor technique; scene is unrecognizable."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Composition & Interpretation",
+          "levels": {
+            "4": "Strong composition that captures the essence of the place with confident simplification.",
+            "3": "Good composition with clear interpretation of the scene.",
+            "2": "Basic composition; interpretation is weak or unclear.",
+            "1": "Poor composition; scene lacks clarity or intent."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=WNR1g7KBIzc"},
+      {"type": "Urban sketching reference", "url": "https://www.google.com/search?q=urban+watercolor+sketch&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char104.png",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 75},
     "accepted": false,
     "acceptedAt": null
   },
@@ -3653,7 +4099,7 @@
     "description": "The Grand Architect challenges you to create a single drawing that demonstrates mastery of at least 3 different perspective systems. The composition should be cohesive, not a collection of separate studies.",
     "requirements": [
       "Create a single cohesive drawing",
-      "Demonstrate at least 2 perspective systems in the same drawing",
+      "Demonstrate at least 3 perspective systems",
       "Maintain spatial consistency",
       "Show accurate vanishing points and horizon lines",
       "Finish with clean, confident linework"
@@ -4105,6 +4551,120 @@
   "accepted": false,
   "acceptedAt": null
 },
+
+  "quest107": {
+    "path": ["Sketcher Path"],
+    "difficulty": 1,
+    "title": "The Paper Alchemist",
+    "rationale": "<h2>The Paper Alchemist</h2><p><strong>Why it's important:</strong><br>Collage is the art of juxtaposition. It trains you to see images as materials, to compose without drawing, and to create meaning through unexpected combinations. It is one of the most accessible and expressive media available.</p><p><strong>Skills developed:</strong></p><ul><li>Composition through shape and color</li><li>Juxtaposition and visual meaning-making</li><li>Layering and edge control</li><li>Selecting and editing source material</li><li>Working with found and recycled materials</li></ul><p>This quest builds the compositional instincts that support all two-dimensional work.</p>",
+    "description": "The Alchemists of the Paper Guild believe that discarded images still hold magic. They hand you a stack of old magazines, newspapers, and printed scraps and ask you to create a single collage that tells a story or captures a feeling. Nothing may be drawn—only cut, torn, and arranged. The guild will judge you not on what you found, but on what you made it mean.",
+    "requirements": [
+      "Create a collage using only found paper materials",
+      "Compose with intentional shape, color, and balance",
+      "Use at least 10 distinct cut or torn pieces",
+      "No drawing or painting—only paper and adhesive",
+      "Present the finished collage cleanly"
+    ],
+    "rubric": {
+      "overall": "The Paper Alchemist",
+      "standards": [
+        {
+          "code": "Art.FA.CR.2.1.IA",
+          "name": "Organization & Composition",
+          "levels": {
+            "4": "Composition is compelling and balanced; juxtaposition creates clear meaning.",
+            "3": "Good composition with minor imbalance.",
+            "2": "Basic composition; meaning is unclear or cluttered.",
+            "1": "Poor composition; no clear meaning or structure."
+          }
+        },
+        {
+          "code": "Art.FA.CR.3.1.IA",
+          "name": "Craftsmanship",
+          "levels": {
+            "4": "Clean edges, intentional layering, professional finish.",
+            "3": "Good craftsmanship with minor rough areas.",
+            "2": "Some craftsmanship issues; edges or layering are messy.",
+            "1": "Poor craftsmanship; collage is falling apart."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=QrTz7lV5X4A"},
+      {"type": "Collage reference", "url": "https://www.google.com/search?q=paper+collage+art&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char107.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 150},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+    "quest115": {
+    "path": ["Sketcher Path"],
+    "difficulty": 3,
+    "title": "The Transfer Artist (MVP)",
+    "rationale": "<h2>The Transfer Artist</h2><p><strong>Why it's important:</strong><br>Mixed-media transfer techniques let you build images in layers—photographs, drawings, text, and paint all speaking at once. This quest teaches you to think in layers, to combine media intentionally, and to create work that rewards close looking.</p><p><strong>Skills developed:</strong></p><ul><li>Image transfer techniques (gel medium, tape, solvent, or tracing)</li><li>Layering and composition across media</li><li>Integrating text, image, and paint</li><li>Material experimentation and problem-solving</li><li>Documentation of a complex multi-stage process</li></ul><p>This summative proves you can combine media into a single, coherent artwork.</p>",
+    "description": "The Keepers of the Layered Archive believe that no single medium can hold a whole memory. They challenge you to create a mixed-media artwork that combines transferred images, paint, drawing, and text—layered so that each element remains visible but together they form something new. The piece must feel like a page from an old journal: dense, layered, and alive with meaning.",
+    "requirements": [
+      "Create a mixed-media artwork using at least one image transfer technique",
+      "Layer at least 3 media (transfer + paint + drawing/text/collage)",
+      "Compose intentionally so each layer remains visible",
+      "Include a personal or narrative element (memory, story, theme)",
+      "Document the transfer process and layering stages"
+    ],
+    "rubric": {
+      "overall": "The Transfer Artist (MVP)",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Technique Development",
+          "levels": {
+            "4": "Masterful transfer and layering; media combine seamlessly and intentionally.",
+            "3": "Good technique with minor issues in transfer or layering.",
+            "2": "Basic technique; transfer or layering is inconsistent.",
+            "1": "Poor technique; transfer failed or layers are muddy."
+          }
+        },
+        {
+          "code": "Art.FA.CR.2.1.IA",
+          "name": "Organization & Composition",
+          "levels": {
+            "4": "Composition is layered and compelling; visual hierarchy is clear.",
+            "3": "Good composition with minor hierarchy issues.",
+            "2": "Basic composition; layers are cluttered or unclear.",
+            "1": "Poor composition; no clear organization."
+          }
+        },
+        {
+          "code": "Art.FA.CN.10.1.IA",
+          "name": "Process Documentation",
+          "levels": {
+            "4": "Thorough documentation of transfer tests, layering stages, and decisions.",
+            "3": "Good documentation with minor gaps.",
+            "2": "Basic documentation; missing key stages.",
+            "1": "No process documentation."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Image transfer video", "url": "https://www.youtube.com/watch?v=uAxEIG01Ix8"},
+      {"type": "Mixed media transfer reference", "url": "https://www.google.com/search?q=mixed+media+image+transfer+art&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char115.png",
+    "style": "mvp",
+    "prerequisites": ["quest13", "quest34", "quest37", "quest67", "quest95"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  },
 
 
 
@@ -5502,6 +6062,296 @@
   },
   "accepted": false,
   "acceptedAt": null
-}
+},
+
+  "quest105": {
+    "path": ["3D Path"],
+    "difficulty": 2,
+    "title": "The Cardboard Architect",
+    "rationale": "<h2>The Cardboard Architect</h2><p><strong>Why it's important:</strong><br>Cardboard is the most accessible building material in the world, and it teaches structural thinking without the expense of wood or foam. Every joint, every fold, every load-bearing edge is a lesson in engineering.</p><p><strong>Skills developed:</strong></p><ul><li>Structural thinking and load distribution</li><li>Joining techniques (tabs, slots, layering, glue)</li><li>Scale and proportion</li><li>Planning and measuring</li><li>Translating 2D design into 3D form</li></ul><p>This builds the engineering mindset that underlies all 3D work.</p>",
+    "description": "The Paperwrights of the Eastern Guild have no wood and no stone—only cardboard, glue, and stubbornness. They challenge you to build a structure that stands on its own: a tower, a bridge, a small house, or an abstract form. It must be strong enough to survive a gentle nudge and beautiful enough to earn a place in their gallery of humble materials.",
+    "requirements": [
+      "Build a freestanding cardboard structure",
+      "Use at least two joining techniques (tabs, slots, layering, or glue)",
+      "Show clear structural thinking (load-bearing, balanced)",
+      "Keep scale and proportion intentional",
+      "Finish the surface with paint, paper, or mixed media"
+    ],
+    "rubric": {
+      "overall": "The Cardboard Architect",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Construction & Technique",
+          "levels": {
+            "4": "Excellent joins and structural integrity; clean, intentional craftsmanship.",
+            "3": "Good joins with minor structural weaknesses.",
+            "2": "Basic joins; structure is unstable or messy.",
+            "1": "Poor joins; structure collapses or falls apart."
+          }
+        },
+        {
+          "code": "Art.FA.CR.2.1.IA",
+          "name": "Organization & Form",
+          "levels": {
+            "4": "Strong composition and clear spatial logic; structure reads clearly from all angles.",
+            "3": "Good organization with minor spatial issues.",
+            "2": "Uneven organization; form is unclear in places.",
+            "1": "Poor organization; form is confusing."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=Kfj2-A5rJoQ"},
+      {"type": "Cardboard architecture reference", "url": "https://www.google.com/search?q=cardboard+sculpture+architecture&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char105.gif",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 300},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest106": {
+    "path": ["3D Path"],
+    "difficulty": 1,
+    "title": "The Soap Carving",
+    "rationale": "<h2>The Soap Carving</h2><p><strong>Why it's important:</strong><br>Subtractive sculpture is the opposite of building up. You must remove material to reveal form, which requires planning, patience, and a tolerance for mistakes. Soap is forgiving and cheap—perfect for learning the mindset.</p><p><strong>Skills developed:</strong></p><ul><li>Subtractive carving and planning</li><li>Understanding negative space</li><li>Tool control (knife, spoon, toothpick)</li><li>Form simplification</li><li>Patience and refinement</li></ul><p>This quest introduces the subtractive mindset that underlies plaster, wood, and stone carving.</p>",
+    "description": "The Carvers of the Soft Stone Order believe that all sculpture begins with what you remove. They hand you a bar of soap and a simple tool and ask you to carve a form—an animal, a face, a geometric shape, or anything you can name. The soap will fight you. It will crumble. But if you plan before you cut, you will learn the oldest lesson in sculpture.",
+    "requirements": [
+      "Carve a recognizable form from a bar of soap",
+      "Plan the form before cutting (sketch first)",
+      "Use at least 2 different carving tools",
+      "Show clear form and simplified detail",
+      "Finish the surface smoothly where intended"
+    ],
+    "rubric": {
+      "overall": "The Soap Carving",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Carving Technique",
+          "levels": {
+            "4": "Confident, controlled carving; form is clean and well-defined.",
+            "3": "Good carving with minor rough areas.",
+            "2": "Basic carving; form is unclear or uneven.",
+            "1": "Poor carving; form is unrecognizable."
+          }
+        },
+        {
+          "code": "Art.FA.CR.3.1.IA",
+          "name": "Refinement",
+          "levels": {
+            "4": "Highly refined surface and form; intentional detail throughout.",
+            "3": "Mostly refined with minor unresolved areas.",
+            "2": "Some refinement; several areas look unfinished.",
+            "1": "Little evidence of refinement."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Video sample", "url": "https://www.youtube.com/watch?v=7Q2CqXKqY3U"},
+      {"type": "Soap carving reference", "url": "https://www.google.com/search?q=soap+carving+sculpture&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char106.png",
+    "style": "",
+    "prerequisites": [],
+    "completed": false,
+    "timer": {"allottedMinutes": 75},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+    "quest112": {
+    "path": ["3D Path"],
+    "difficulty": 3,
+    "title": "The Kinetic Sculpture (MVP)",
+    "rationale": "<h2>The Kinetic Sculpture</h2><p><strong>Why it's important:</strong><br>A sculpture that moves is a sculpture that breathes. Kinetic art combines engineering, balance, and aesthetics in a way no static piece can. This quest challenges you to make movement itself the subject.</p><p><strong>Skills developed:</strong></p><ul><li>Balance, counterweight, and motion mechanics</li><li>Structural planning and prototyping</li><li>Composition in motion (viewed from multiple angles)</li><li>Material selection for weight and durability</li><li>Refinement through testing and revision</li></ul><p>This summative proves you can engineer beauty that moves.</p>",
+    "description": "The Windcallers of the Open Sky believe that art should not sit still. They challenge you to build a kinetic sculpture—a mobile, a spinner, a pendulum, a rotating form—that moves gracefully and remains balanced. The piece must be beautiful in motion and at rest. The Windcallers will judge not just the object, but the dance it performs when the air touches it.",
+    "requirements": [
+      "Create a kinetic sculpture that moves freely",
+      "Demonstrate balance and counterweight planning",
+      "Build with durable, appropriate materials (wire, wood, foam, found objects)",
+      "Document prototyping and testing stages",
+      "Refine the piece based on how it moves"
+    ],
+    "rubric": {
+      "overall": "The Kinetic Sculpture (MVP)",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Construction & Technique",
+          "levels": {
+            "4": "Masterful construction; movement is smooth and structurally sound.",
+            "3": "Good construction with minor mechanical issues.",
+            "2": "Basic construction; movement is jerky or unstable.",
+            "1": "Poor construction; sculpture does not move properly."
+          }
+        },
+        {
+          "code": "Art.FA.CR.2.1.IA",
+          "name": "Organization & Balance",
+          "levels": {
+            "4": "Excellent balance and composition; piece is beautiful from all angles.",
+            "3": "Good balance with minor visual or physical issues.",
+            "2": "Uneven balance; composition is weak.",
+            "1": "Poor balance; piece is unstable."
+          }
+        },
+        {
+          "code": "Art.FA.CR.3.1.IA",
+          "name": "Refinement & Revision",
+          "levels": {
+            "4": "Extensive testing and refinement; piece moves beautifully.",
+            "3": "Clear refinement with minor improvements needed.",
+            "2": "Limited refinement; movement feels unpolished.",
+            "1": "No evidence of refinement."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Kinetic sculpture video", "url": "https://www.youtube.com/watch?v=9Yw8gClysNg"},
+      {"type": "Kinetic sculpture reference", "url": "https://www.google.com/search?q=kinetic+sculpture+mobile&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char112.gif",
+    "style": "mvp",
+    "prerequisites": ["quest57", "quest59", "quest60", "quest62", "quest63"],
+    "completed": false,
+    "timer": {"allottedMinutes": 750},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest113": {
+    "path": ["3D Path"],
+    "difficulty": 3,
+    "title": "The Light Sculpture (MVP)",
+    "rationale": "<h2>The Light Sculpture</h2><p><strong>Why it's important:</strong><br>Light transforms sculpture. A form that looks heavy in daylight can become ethereal when lit from within. This quest teaches you to design with light and shadow as active materials, not just illumination.</p><p><strong>Skills developed:</strong></p><ul><li>Working with translucency and opacity</li><li>Shadow as a compositional element</li><li>Integrating light sources into 3D form</li><li>Material experimentation (wire, paper, plastic, fabric)</li><li>Mood and atmosphere through lighting</li></ul><p>This summative proves you can make light itself a sculpture material.</p>",
+    "description": "The Luminary Circle guards a secret: light is not just illumination—it is a material. They challenge you to build a sculpture that incorporates light (LED, candle, string light, or ambient light through translucency). The piece must transform when lit, revealing shadows and layers invisible in the dark. The Circle will judge whether your sculpture feels alive when the light enters it.",
+    "requirements": [
+      "Create a sculpture that incorporates a light source or translucent material",
+      "Design the piece so light and shadow are part of the composition",
+      "Use materials that interact with light (paper, plastic, fabric, wire, glass)",
+      "Test the piece in both lit and unlit conditions",
+      "Document the lighting effect through photographs"
+    ],
+    "rubric": {
+      "overall": "The Light Sculpture (MVP)",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Construction & Technique",
+          "levels": {
+            "4": "Masterful integration of light and structure; the piece transforms dramatically when lit.",
+            "3": "Good integration with clear light effect.",
+            "2": "Basic integration; light effect is weak or unplanned.",
+            "1": "Poor integration; light is an afterthought."
+          }
+        },
+        {
+          "code": "Art.FA.CR.2.1.IA",
+          "name": "Organization & Atmosphere",
+          "levels": {
+            "4": "Composition is powerful in both lit and unlit states; mood is strong.",
+            "3": "Good composition with clear atmosphere.",
+            "2": "Uneven composition; mood is inconsistent.",
+            "1": "Poor composition; no clear atmosphere."
+          }
+        },
+        {
+          "code": "Art.FA.CR.3.1.IA",
+          "name": "Refinement & Testing",
+          "levels": {
+            "4": "Extensive testing; light and shadow are refined to perfection.",
+            "3": "Clear refinement with minor adjustments needed.",
+            "2": "Limited refinement; lighting feels unresolved.",
+            "1": "No refinement or testing evident."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Light sculpture video", "url": "https://www.youtube.com/watch?v=Ff60BS4ms2M"},
+      {"type": "Light sculpture reference", "url": "https://www.google.com/search?q=light+sculpture+led+art&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char113.png",
+    "style": "mvp",
+    "prerequisites": ["quest34", "quest59", "quest60", "quest61", "quest63"],
+    "completed": false,
+    "timer": {"allottedMinutes": 750},
+    "accepted": false,
+    "acceptedAt": null
+  },
+
+  "quest114": {
+    "path": ["3D Path"],
+    "difficulty": 3,
+    "title": "The Miniature World (MVP)",
+    "rationale": "<h2>The Miniature World</h2><p><strong>Why it's important:</strong><br>A diorama is a complete world in miniature. It requires you to think about scale, narrative, environment, and construction all at once—skills that transfer to film sets, game design, and installation art.</p><p><strong>Skills developed:</strong></p><ul><li>Scale and proportion in miniature</li><li>Environmental storytelling</li><li>Mixed-media construction (clay, cardboard, foam, found objects)</li><li>Lighting and atmospheric design</li><li>Planning a complete scene from scratch</li></ul><p>This summative proves you can build a world and tell its story without words.</p>",
+    "description": "The Cartographers of the Shrunken Realm have discovered that whole worlds can be built inside a box. They challenge you to construct a diorama—a miniature scene contained within a shoebox, shadow box, or similar frame. The scene can be a room, a landscape, a fantasy location, a moment from a story, or a place from your imagination. The Cartographers will judge whether your tiny world feels lived in.",
+    "requirements": [
+      "Create a diorama within a box or frame (shoebox, shadow box, etc.)",
+      "Build the environment using mixed media (clay, cardboard, foam, found objects)",
+      "Show clear scale and proportion in the miniature elements",
+      "Include a narrative element (a moment, a story, a character)",
+      "Document the planning and construction process"
+    ],
+    "rubric": {
+      "overall": "The Miniature World (MVP)",
+      "standards": [
+        {
+          "code": "Art.FA.CR.1.2.IA",
+          "name": "Construction & Craftsmanship",
+          "levels": {
+            "4": "Masterful miniature construction; materials are used intentionally and skillfully.",
+            "3": "Good construction with minor craftsmanship issues.",
+            "2": "Basic construction; some elements look unfinished.",
+            "1": "Poor construction; diorama is unstable or incomplete."
+          }
+        },
+        {
+          "code": "Art.FA.CR.2.1.IA",
+          "name": "Organization & Scale",
+          "levels": {
+            "4": "Excellent spatial composition; scale is consistent and convincing.",
+            "3": "Good composition with minor scale issues.",
+            "2": "Uneven composition; scale is inconsistent.",
+            "1": "Poor composition; scale is unclear."
+          }
+        },
+        {
+          "code": "Art.FA.RE.8.1.8A",
+          "name": "Narrative & Interpretation",
+          "levels": {
+            "4": "The miniature world tells a compelling story; atmosphere is rich and believable.",
+            "3": "Clear narrative with good atmosphere.",
+            "2": "Partial narrative; atmosphere is weak.",
+            "1": "No clear narrative or atmosphere."
+          }
+        }
+      ]
+    },
+    "links": [
+      {"type": "Diorama video", "url": "https://www.youtube.com/watch?v=Kfj2-A5rJoQ"},
+      {"type": "Diorama reference", "url": "https://www.google.com/search?q=miniature+diorama+art&udm=2"}
+    ],
+    "reward": "you got money!!!!",
+    "character": "charimage/char114.gif",
+    "style": "mvp",
+    "prerequisites": ["quest48", "quest56", "quest58", "quest59", "quest63"],
+    "completed": false,
+    "timer": {"allottedMinutes": 600},
+    "accepted": false,
+    "acceptedAt": null
+  }
 }
 
