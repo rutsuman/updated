@@ -7,7 +7,7 @@
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-10-22-1";
+const SESSION_VERSION = "2026-11-2-1";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
@@ -2345,6 +2345,7 @@ function showLevelUpNotification(fromLevel, toLevel) {
             <div class="levelup-title">LEVEL UP!</div>
             <div class="levelup-level">LEVEL ${toLevel}</div>
             <div class="levelup-sub">You reached a new rank. Keep creating!</div>
+            <div class="levelup-sub">Get your coin with your teacher!</div>
             <button class="levelup-btn" id="levelup-close-btn">CONTINUE</button>
         </div>
     `;
@@ -3905,7 +3906,7 @@ function buildTreeCompletedModel() {
                 style: quest.style || '',
                 completedAt,
                 perCategoryAvg: avg,
-                perCategoryPercent: (avg / 4) * 100,
+                perCategoryPercent: gradeToPercent(avg) ?? 0,
                 standards: stds
             });
         }
@@ -4292,7 +4293,8 @@ async function handleLoginSubmit() {
 await loadStudentDataFromCloud(true, true); // Force fresh load on login
 TeacherCache.selectedStandards = {};
 invalidateRequiredQuestsCache();
-    invalidateFeaturedQuestsCache();
+
+invalidateFeaturedQuestsCache();
 try {
     await renderFeaturedQuestsPanel();
 } catch (e) {
@@ -11515,6 +11517,62 @@ const WEIGHTED_CATEGORY_CONFIG = {
     }
 };
 
+// ============================================================
+// GRADE → PERCENTAGE CURVE
+// ============================================================
+// The teacher still enters grades on the 1–4 scale (0.5 steps).
+// This curve converts a grade (or a bucket's average grade) to the
+// percentage that is displayed and aggregated everywhere in the app.
+//
+// Non-linear on purpose:
+//   4   → 100%
+//   3.5 → 95%
+//   3   → 90%
+//   2.5 → 80%
+//   2   → 70%
+//   1.5 → 65%
+//   1   → 60%
+//   0.5 → 55%
+//   0   → 50%   (a 0 is treated as 50%, not 0%)
+//
+// Semantics: AVERAGE-THEN-CURVE. Callers first average the raw 1–4
+// grades in a bucket, then pass that average to gradeToPercent().
+// Do not curve individual grades and then average — that produces
+// different (and unintended) results because the curve is non-linear.
+// ============================================================
+
+const GRADE_PERCENT_CURVE = {
+    4:   100,
+    3.5: 95,
+    3:   90,
+    2.5: 80,
+    2:   70,
+    1.5: 65,
+    1:   60,
+    0.5: 55,
+    0:   50
+};
+
+/**
+ * Convert a raw NCAS grade (or an average of raw grades) to a percentage
+ * using GRADE_PERCENT_CURVE.
+ *
+ * - Snaps the input to the nearest 0.5 so float noise (e.g. 2.4999999)
+ *   still lands on a table key.
+ * - Falls back to the old linear formula (grade / 4 * 100) for any
+ *   value that slips through the table (defensive; should never happen
+ *   given the NCAS rubric's 1–4 step-0.5 inputs).
+ *
+ * @param {number|string} grade
+ * @returns {number|null}  percentage 0–100, or null if the input is not numeric
+ */
+function gradeToPercent(grade) {
+    const g = parseFloat(grade);
+    if (isNaN(g)) return null;
+    const key = Math.round(g * 2) / 2;
+    return GRADE_PERCENT_CURVE[key] ?? (g / 4) * 100;
+}
+
 const INDEPENDENT_RESEARCH_STANDARD = 'Art.FA.CN.10.1.IA';
 
 // ----------------------------------------------------------------
@@ -11638,7 +11696,7 @@ function calculateWeightedCategories() {
     for (const [key, cfg] of Object.entries(WEIGHTED_CATEGORY_CONFIG)) {
         const { sum, count } = buckets[key];
         const rawAvg = count > 0 ? (sum / count) : 0;
-        const percent = count > 0 ? (rawAvg / 4) * 100 : 0;
+        const percent = count > 0 ? gradeToPercent(rawAvg) : 0;
         const weighted = percent * (cfg.weight / 100);
 
         result[key] = {
