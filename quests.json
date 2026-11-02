@@ -1891,7 +1891,7 @@
       {"type": "Abstract portrait reference", "url": "https://www.google.com/search?q=abstract+portrait+painting&udm=2"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char111.png",
+    "character": "charimage/char111.gif",
     "style": "mvp",
     "prerequisites": ["quest5", "quest13", "quest14", "quest15", "quest36"],
     "completed": false,
