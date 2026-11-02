@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Quest Map</title>
-    <link rel="stylesheet" href="style.css?v=20261022b"> 
+    <link rel="stylesheet" href="style.css?v=20260211"> 
     <link rel="icon" type="image/png" href="favicon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 </head>
@@ -20,7 +20,7 @@
     <img id="map-image" src="ms-map.jpg" alt="High School Art Map">
 
     <!-- Art Battle Hotspot -->
-    <div class="hotspot debug artbattle-hotspot" data-city="artbattle" style="top:9.1%; left:74.3%;" title="Art Battle Competition"></div>
+    <div class="hotspot debug artbattle-hotspot" data-city="artbattle" style="top:86.5%; left:53.7%;" title="Art Battle Competition"></div>
 
     <!-- ============================================= -->
     <!-- PAINTER'S PATH QUESTS (scrollable list)      -->
@@ -51,8 +51,18 @@
     <div class="hotspot debug" style="top:35.5%; left:96.3%;" data-city="quest64"></div>
     <div class="hotspot debug" style="top:49.2%; left:12.7%;" data-city="quest66"></div> <!--MVP-->
     <div class="hotspot debug" style="top:2.4%; left:86%;" data-city="quest67"></div>
-    <div class="hotspot debug" style="top:33.2%; left:7.4%;" data-city="quest69"></div> <!--MVP-->
-    <div class="hotspot debug" style="top:22.1%; left:60.4%;" data-city="quest80"></div><!--MVP-->
+    <div class="hotspot debug" style="top:33.2%; left:7.4%;" data-city="quest69"></div>
+    <div class="hotspot debug" style="top:22.1%; left:60.4%;" data-city="quest80"></div>
+    <div class="hotspot debug" style="top:69.5%; left:21.5%;" data-city="quest101"></div>
+    <div class="hotspot debug" style="top:69.8%; left:28.5%;" data-city="quest102"></div>
+    <div class="hotspot debug" style="top:55.1%; left:17%;" data-city="quest108"></div>
+    <div class="hotspot debug" style="top:5.3%; left:83%;" data-city="quest109"></div>
+    <div class="hotspot debug" style="top:64.7%; left:32.1%;" data-city="quest110"></div><!--MVP-->
+    <div class="hotspot debug" style="top:73.2%; left:77.1%;" data-city="quest111"></div><!--MVP-->
+    
+
+
+
 
     <!-- ============================================= -->
     <!-- SKETCHER'S PATH QUESTS (scrollable list)     -->
@@ -80,6 +90,8 @@
     <div class="hotspot debug" style="top:44.2%; left:95%;" data-city="quest85"></div>
     <div class="hotspot debug" style="top: 26.5%; left:96%;" data-city="quest89"></div>
     <div class="hotspot debug" style="top:4.2%; left:29.9%;" data-city="quest90"></div>
+    <div class="hotspot debug" style="top:55.8%; left:24.8%;" data-city="quest107"></div>
+    <div class="hotspot debug" style="top:53%; left:31.4%;" data-city="quest115"></div><!--MVP-->
 
     <!-- ============================================= -->
     <!-- WATERCOLOR PATH QUESTS (scrollable list)     -->
@@ -97,6 +109,10 @@
     <div class="hotspot debug" style="top:41.5%; left:41%;" data-city="quest50"></div>
     <div class="hotspot debug" style="top:60.9%; left:3.8%;" data-city="quest65"></div>
     <div class="hotspot debug" style="top:46.1%; left:18.4%;" data-city="quest74"></div>
+    <div class="hotspot debug" style="top:51.7%; left:20.2%;" data-city="quest103"></div>
+    <div class="hotspot debug" style="top:73.6%; left:47.2%;" data-city="quest104"></div>
+
+
 
     <!-- ============================================= -->
     <!-- 3D PATH QUESTS (scrollable list)              -->
@@ -121,6 +137,11 @@
     <div class="hotspot debug" style="top:42.1%; left:73.5%;" data-city="quest83"></div><!--MVP-->
     <div class="hotspot debug" style="top:65%; left:23.5%;" data-city="quest84"></div><!--MVP-->
     <div class="hotspot debug" style="top:50.2%; left:52.4%;" data-city="quest88"></div>
+    <div class="hotspot debug" style="top:68.8%; left:39.2%;" data-city="quest105"></div>
+    <div class="hotspot debug" style="top:76.1%; left:26.5%;" data-city="quest106"></div>
+    <div class="hotspot debug" style="top:43.9%; left:9.8%;" data-city="quest112"></div><!--MVP-->
+    <div class="hotspot debug" style="top:65.8%; left:60.2%;" data-city="quest113"></div><!--MVP-->
+    <div class="hotspot debug" style="top:9.1%; left:74.4%;" data-city="quest114"></div><!--MVP-->
 
     <!-- ============================================= -->
     <!-- RESEARCH QUESTS                               -->
@@ -652,8 +673,7 @@
 <!------------------------------------------- Profile Button ------------------------------------------------------>
 <button id="profile-btn" class="profile-btn">
   <img src="profile.png" alt="Profile" />
-    <img src="charimage/halloween-bat.gif" class="profile-bat" alt="" aria-hidden="true" />  <!--- Only during halloween---> 
-
+  <img src="charimage/halloween-bat.gif" class="profile-bat" alt="" aria-hidden="true" />  <!--- Only during halloween---> 
   <div class="exp-bar-wrap" id="exp-bar-wrap">
     <div class="exp-bar">
         <div class="exp-bar-fill" id="exp-bar-fill"></div>
@@ -887,7 +907,7 @@
     window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     console.log('Supabase initialized:', window.supabase);
 </script>
-<script src="script.js?v=20261022b"></script>
+<script src="script.js?v=20260211"></script>
 </body>
 </html>
 
