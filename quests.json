@@ -1653,7 +1653,7 @@
       {"type": "Golden hour painting reference", "url": "https://www.google.com/search?q=golden+hour+acrylic+painting&udm=2"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char102.png",
+    "character": "charimage/char102.gif",
     "style": "",
     "prerequisites": [],
     "completed": false,
@@ -1705,7 +1705,7 @@
       {"type": "Spring painting reference", "url": "https://www.google.com/search?q=spring+acrylic+painting&udm=2"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char108.png",
+    "character": "charimage/char108.gif",
     "style": "",
     "prerequisites": [],
     "completed": false,
