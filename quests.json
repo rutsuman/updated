@@ -2825,7 +2825,7 @@
       {"type": "Urban sketching reference", "url": "https://www.google.com/search?q=urban+watercolor+sketch&udm=2"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char104.png",
+    "character": "charimage/char104.gif",
     "style": "",
     "prerequisites": [],
     "completed": false,
@@ -4657,7 +4657,7 @@
       {"type": "Mixed media transfer reference", "url": "https://www.google.com/search?q=mixed+media+image+transfer+art&udm=2"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char115.png",
+    "character": "charimage/char115.gif",
     "style": "mvp",
     "prerequisites": ["quest13", "quest34", "quest37", "quest67", "quest95"],
     "completed": false,
@@ -6159,7 +6159,7 @@
       {"type": "Soap carving reference", "url": "https://www.google.com/search?q=soap+carving+sculpture&udm=2"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char106.png",
+    "character": "charimage/char106.gif",
     "style": "",
     "prerequisites": [],
     "completed": false,
@@ -6283,7 +6283,7 @@
       {"type": "Light sculpture reference", "url": "https://www.google.com/search?q=light+sculpture+led+art&udm=2"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char113.png",
+    "character": "charimage/char113.gif",
     "style": "mvp",
     "prerequisites": ["quest34", "quest59", "quest60", "quest61", "quest63"],
     "completed": false,
