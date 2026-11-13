@@ -7,7 +7,7 @@
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-11-2-1";
+const SESSION_VERSION = "2026-11-13-1";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
@@ -9828,7 +9828,8 @@ async function getAllQuestsForStudent(forceRefresh = false) {
             prerequisites: [],
             timer: { allottedMinutes: 75 },
             is_custom: true,
-            teacher_quest: true
+            teacher_quest: true,
+            is_mvp: custom.is_mvp === true
         };
     }
     cachedQuests = allQuests;
@@ -11038,7 +11039,9 @@ function resolveQuestBaseCategory(quest) {
     }
 
     // Fallback: MVP → Resolved Artworks, else Art Study
-    return quest.style === 'mvp' ? 'Resolved Artworks' : 'Art Study';
+    // Fallback: MVP → Resolved Artworks, else Art Study
+    if (quest.style === 'mvp' || quest.is_mvp === true) return 'Resolved Artworks';
+    return 'Art Study';
 }
 
 // ----------------------------------------------------------------
