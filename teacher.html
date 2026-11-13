@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <title>Artheim - Teacher Dashboard</title>
-        <link rel="stylesheet" href="style.css?v=20260211">
+        <link rel="stylesheet" href="style.css?v=20261311">
         <link rel="icon" type="image/png" href="favicon.png">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
@@ -788,6 +788,10 @@
                         <option value="2">2 - Medium</option>
                         <option value="3">3 - Hard</option>
                     </select>
+                    <label class="custom-quest-mvp-label">
+                    <input type="checkbox" id="custom-quest-is-mvp">
+                    <span>MVP</span>
+                </label>
                 </div>
 
                 <div class="form-section">
@@ -1298,6 +1302,6 @@
         const DELETE_USER_FUNCTION_URL = 'https://qzxvwoyigrrpdywvhckk.supabase.co/functions/v1/delete-user';
         window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     </script>
-    <script src="teacher-script.js?v=20260211"></script>
+    <script src="teacher-script.js?v=20261311"></script>
     </body>
 </html>
