@@ -288,6 +288,7 @@ async function getAllQuestsForTeacher(forceRefresh = false) {
             prerequisites: [],
             timer: { allottedMinutes: 75 },
             is_custom: true,
+            is_mvp: custom.is_mvp === true,
             custom_id: custom.id
         };
     }
@@ -5504,7 +5505,8 @@ function resolveQuestBaseCategory(quest) {
     }
 
     // Fallback: MVP → Resolved Artworks, else Art Study
-    return quest.style === 'mvp' ? 'Resolved Artworks' : 'Art Study';
+    if (quest.style === 'mvp' || quest.is_mvp === true) return 'Resolved Artworks';
+    return 'Art Study';
 }
 
 /**
@@ -7451,6 +7453,7 @@ async function openCreateCustomQuestModal() {
     document.getElementById('custom-quest-title').value = '';
     document.getElementById('custom-quest-path').value = 'Painter Path';
     document.getElementById('custom-quest-difficulty').value = '1';
+    document.getElementById('custom-quest-is-mvp').checked = false;
     document.getElementById('custom-quest-rationale').value = '';
     document.getElementById('custom-quest-description').value = '';
 
@@ -7477,6 +7480,7 @@ async function saveCustomQuest() {
     const title = document.getElementById('custom-quest-title').value.trim();
     const path = document.getElementById('custom-quest-path').value;
     const difficulty = parseInt(document.getElementById('custom-quest-difficulty').value);
+    const isMVP = document.getElementById('custom-quest-is-mvp').checked;
     const rationale = document.getElementById('custom-quest-rationale').value.trim();
     const description = document.getElementById('custom-quest-description').value.trim();
 
@@ -7585,6 +7589,7 @@ async function saveCustomQuest() {
                 selected_standards: [],
                 character: customImage,
                 grade_level: isMSQuest ? 'ms' : 'hs',
+                is_mvp: isMVP,  
                 created_at: new Date().toISOString()
             });
 
@@ -8780,37 +8785,61 @@ function meetsGiftThresholdFromGrades(grades, framework) {
     return anyGraded;
 }
 /**
- * After grading, ensure the student's gift_claims row matches
- * their current standing:
+ * After grading, ensure the student's gift_claims row matches their standing.
  *
- *   - If the quest is featured this week for the student's class
- *     AND the grade meets the threshold → create the claim if missing.
- *   - If the threshold is no longer met AND the claim was never revealed
- *     → delete the claim.
- *   - If the claim was already revealed → leave it (they got the gift).
+ * RULES (final):
+ *   - Eligibility is anchored on the student's ACCEPTANCE WEEK for this quest,
+ *     not on "now" and not on the submission week.
+ *   - A claim is created when: the quest was featured for the student's class
+ *     during the acceptance week, the student accepted during that week, and
+ *     the grade meets the threshold.
+ *   - Claims are NEVER revoked. A re-grade downward keeps the claim. A re-grade
+ *     upward creates the claim (if missing) at re-grade time, keyed to the
+ *     original acceptance week.
+ *   - Students who accepted BEFORE the quest was featured are ineligible,
+ *     because their acceptance week won't match any featured week for the quest.
  */
 async function syncGiftClaimAfterGrade(studentId, questId, grades) {
     const auth = await checkTeacherAuth();
     if (!auth) return;
 
-    const { data: profile } = await window.supabase
+    // --- 1. Student's class + acceptance timestamp ---
+    const { data: profile, error: profileErr } = await window.supabase
         .from('profiles')
         .select('class_id, grade_level')
         .eq('id', studentId)
         .maybeSingle();
 
-    const classId = profile?.class_id;
-    if (!classId) return;
+    if (profileErr || !profile?.class_id) return;
+    const classId = profile.class_id;
 
-    const framework = await loadTeacherFramework();
-    const weekKey = _getTeacherISOWeekKey();
+    const { data: progress, error: progressErr } = await window.supabase
+        .from('student_progress')
+        .select('quest_start_times, completed_quests')
+        .eq('user_id', studentId)
+        .maybeSingle();
 
+    if (progressErr) {
+        console.warn("[gift] progress read failed:", progressErr.message);
+        return;
+    }
+
+    const acceptIso = progress?.quest_start_times?.[questId] || null;
+    if (!acceptIso) {
+        // Student never accepted the quest — no gift to consider.
+        return;
+    }
+
+    const acceptWeekKey = getISOWeekKeyFromDate(acceptIso);
+    if (!acceptWeekKey) return;
+
+    // --- 2. Was the quest featured for this class in the ACCEPTANCE week? ---
     const { data: featured, error: fErr } = await window.supabase
         .from('teacher_featured_quests')
-        .select('id, gift_name, gift_image_url')
+        .select('id, gift_name, gift_image_url, week_key')
         .eq('teacher_id', auth.teacher.id)
         .eq('quest_id', questId)
-        .eq('week_key', weekKey)
+        .eq('week_key', acceptWeekKey)          // ← acceptance week, not "now"
         .eq('class_id', classId)
         .maybeSingle();
 
@@ -8819,19 +8848,30 @@ async function syncGiftClaimAfterGrade(studentId, questId, grades) {
         return;
     }
 
-    const { data: existingClaim } = await window.supabase
+    // Not featured in the week the student accepted → no eligibility, ever.
+    if (!featured) return;
+
+    // --- 3. Existing claim for this student/quest/acceptance-week? ---
+    const { data: existingClaim, error: claimErr } = await window.supabase
         .from('gift_claims')
         .select('id, revealed_at')
         .eq('student_id', studentId)
         .eq('quest_id', questId)
-        .eq('week_key', weekKey)
+        .eq('week_key', acceptWeekKey)          // ← keyed to acceptance week
         .maybeSingle();
 
+    if (claimErr) {
+        console.warn("[gift] claim read failed:", claimErr.message);
+        return;
+    }
+
+    // --- 4. Threshold check ---
+    const framework = await loadTeacherFramework();
     const thresholdMet = meetsGiftThresholdFromGrades(grades, framework);
 
-    if (!featured) return;
-
     if (thresholdMet) {
+        // Create the claim if it doesn't exist yet.
+        // This fires on first qualifying grade AND on a later re-grade upward.
         if (!existingClaim) {
             const { error: insertErr } = await window.supabase
                 .from('gift_claims')
@@ -8839,7 +8879,7 @@ async function syncGiftClaimAfterGrade(studentId, questId, grades) {
                     student_id: studentId,
                     teacher_id: auth.teacher.id,
                     quest_id: questId,
-                    week_key: weekKey,
+                    week_key: acceptWeekKey,
                     gift_name: featured.gift_name,
                     gift_image_url: featured.gift_image_url
                 });
@@ -8847,16 +8887,13 @@ async function syncGiftClaimAfterGrade(studentId, questId, grades) {
                 console.warn("[gift] claim insert failed:", insertErr.message);
             }
         }
+        // If a claim already exists, leave it alone — no revocation, no update.
         return;
     }
 
-    if (existingClaim && !existingClaim.revealed_at) {
-        const { error: delErr } = await window.supabase
-            .from('gift_claims')
-            .delete()
-            .eq('id', existingClaim.id);
-        if (delErr) console.warn("[gift] claim delete failed:", delErr.message);
-    }
+    // Threshold not met (or no longer met). RULE: never revoke.
+    // The claim (if any) stays. Nothing to do.
+    return;
 }
 
 /**
