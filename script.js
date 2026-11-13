@@ -7,7 +7,7 @@
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-11-2-1";
+const SESSION_VERSION = "2026-11-13-1";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
@@ -2043,40 +2043,45 @@ async function syncArtBattleSubmissionExp() {
     }
 }
 
-/**
- * Revokes gift EXP for a quest if:
- *   - the quest was previously awarded a gift bonus for some week, AND
- *   - the current grade no longer meets the threshold.
- * Called from reconcileExp and syncExpFromGradedWork (idempotent).
- */
-function reconcileGiftExpForQuest(questId) {
-    // Find any gift key for this quest
-    const prefix = `gift:`;   // we scan all keys and match the suffix
-    for (const key of Object.keys(expLog)) {
-        if (!key.startsWith(prefix)) continue;
-        if (!key.endsWith(`:${questId}`)) continue;
 
-        // We have a gift award for this quest; check if it still qualifies.
-        if (!meetsGiftThreshold(questId)) {
-            delete expLog[key];
-
-        }
-    }
-}
 
 /**
- * Runs the revocation check for every quest that has a gift bonus in expLog.
- * Called from reconcileExp.
+ * Reconciles gift EXP.
+ *
+ * NEW RULE (no revocation): a gift EXP award, once given, is permanent.
+ * We do NOT revoke it because the threshold is no longer met.
+ *
+ * We DO still clean up genuinely invalid keys:
+ *   - the quest no longer exists in `quests`
+ *   - the key's week doesn't match the student's acceptance week for that quest
+ *     (defensive; this shouldn't happen once the acceptance-week anchoring is in)
  */
 function reconcileAllGiftExp() {
     for (const key of Object.keys(expLog)) {
         if (!key.startsWith("gift:")) continue;
-        const questId = key.split(":").slice(2).join(":");  // e.g. "gift:2026-W41:quest55" → "quest55"
-        if (!questId) continue;
-        if (!meetsGiftThreshold(questId)) {
-            delete expLog[key];
 
+        // gift:<week>:<questId>
+        const parts = key.split(":");
+        if (parts.length < 3) continue;
+        const week = parts[1];
+        const questId = parts.slice(2).join(":");
+
+        // Quest gone → revoke (the completion itself is meaningless now).
+        if (!quests[questId]) {
+            delete expLog[key];
+            continue;
         }
+
+        // Week no longer matches the acceptance week → revoke (stale key
+        // from before the fix, or an acceptance-time change via cancel + re-accept).
+        const acceptIso = questStartTimes[questId] || null;
+        const acceptWeek = acceptIso ? getISOWeekKeyFromDate(acceptIso) : null;
+        if (acceptWeek && week !== acceptWeek) {
+            delete expLog[key];
+            continue;
+        }
+
+        // Otherwise: keep. No threshold-based revocation.
     }
 }
 /**
@@ -10366,7 +10371,8 @@ async function getAllQuestsForStudent(forceRefresh = false) {
             prerequisites: [],
             timer: { allottedMinutes: 75 },
             is_custom: true,
-            teacher_quest: true
+            teacher_quest: true,
+            is_mvp: custom.is_mvp === true
         };
     }
     cachedQuests = allQuests;
@@ -11601,7 +11607,9 @@ function resolveQuestBaseCategory(quest) {
     }
 
     // Fallback: MVP → Resolved Artworks, else Art Study
-    return quest.style === 'mvp' ? 'Resolved Artworks' : 'Art Study';
+    // Fallback: MVP → Resolved Artworks, else Art Study
+    if (quest.style === 'mvp' || quest.is_mvp === true) return 'Resolved Artworks';
+    return 'Art Study';
 }
 
 // ----------------------------------------------------------------
