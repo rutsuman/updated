@@ -7,7 +7,7 @@
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-11-13-1";
+const SESSION_VERSION = "2026-11-23-1";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
@@ -6016,7 +6016,7 @@ function openAchievementsOverlay() {
             }
         }, true);
     }
-
+    invalidateResourcesCache();
     renderAchievementsList();
 }
 
@@ -6078,6 +6078,140 @@ function renderAchievementsList() {
             expandBtn.innerText = div.classList.contains("expanded") ? "−" : "+";
         });
     });
+}
+
+// ==============================================
+// SECTION 31B: STUDENT RESOURCES TAB
+// ==============================================
+
+const RESOURCE_BUCKET_STUDENT = 'teacher-resources';
+
+let _resourcesStudentCache = null;
+let _resourcesStudentCacheTime = 0;
+const RESOURCES_STUDENT_CACHE_MS = 60000;   // 60s TTL, like other student caches
+
+function invalidateResourcesCache() {
+    _resourcesStudentCache = null;
+    _resourcesStudentCacheTime = 0;
+}
+
+async function loadResourcesForStudent(forceRefresh = false) {
+    if (!forceRefresh && _resourcesStudentCache && (Date.now() - _resourcesStudentCacheTime) < RESOURCES_STUDENT_CACHE_MS) {
+        return _resourcesStudentCache;
+    }
+
+    const profile = loadStudentProfile();
+    if (!profile?.class_id) {
+        _resourcesStudentCache = [];
+        _resourcesStudentCacheTime = Date.now();
+        return [];
+    }
+
+    const { data, error } = await guardAuth(() =>
+        window.supabase
+            .from('resources')
+            .select(`
+                id, title, description, resource_type,
+                file_url, file_name, file_mime,
+                link_url, created_at,
+                resource_classes!inner(class_id)
+            `)
+            .eq('resource_classes.class_id', profile.class_id)
+            .order('created_at', { ascending: false })
+    );
+
+    if (error) {
+        console.warn('[resources] student load failed:', error);
+        return [];
+    }
+
+    _resourcesStudentCache = data || [];
+    _resourcesStudentCacheTime = Date.now();
+    return _resourcesStudentCache;
+}
+
+function _resourceStudentIcon(r) {
+    if (r.resource_type === 'link') return '🔗';
+    const mime = r.file_mime || '';
+    if (mime === 'application/pdf') return '📕';
+    if (mime.startsWith('image/')) return '🖼️';
+    return '📄';
+}
+
+function _resourceStudentMetaText(r) {
+    if (r.resource_type === 'link') return 'Link';
+    const parts = [];
+    if (r.file_name) parts.push(r.file_name);
+    return parts.join(' · ');
+}
+
+async function renderResourcesTab(forceRefresh = false) {
+    const list = document.getElementById('resources-student-list');
+    if (!list) return;
+
+    list.innerHTML = '<div class="resources-student-empty">Loading…</div>';
+
+    const resources = await loadResourcesForStudent(forceRefresh);
+
+    if (!resources || resources.length === 0) {
+        list.innerHTML = '<div class="resources-student-empty">No resources shared yet. Check back later!</div>';
+        return;
+    }
+
+    list.innerHTML = '';
+
+    for (const r of resources) {
+        const card = document.createElement('a');
+        card.className = 'resources-student-card';
+
+        if (r.resource_type === 'link') {
+            card.href = r.link_url;
+            card.target = '_blank';
+            card.rel = 'noopener noreferrer';
+        } else {
+            card.href = r.file_url;
+            card.download = r.file_name || '';
+            card.target = '_blank';           // fallback if download is ignored
+            card.rel = 'noopener noreferrer';
+        }
+
+        const icon = document.createElement('div');
+        icon.className = 'resources-student-icon';
+        icon.textContent = _resourceStudentIcon(r);
+        card.appendChild(icon);
+
+        const body = document.createElement('div');
+        body.className = 'resources-student-body';
+
+        const title = document.createElement('div');
+        title.className = 'resources-student-title';
+        title.textContent = r.title;
+        body.appendChild(title);
+
+        if (r.description) {
+            const desc = document.createElement('div');
+            desc.className = 'resources-student-desc';
+            desc.textContent = r.description;
+            body.appendChild(desc);
+        }
+
+        const metaText = _resourceStudentMetaText(r);
+        if (metaText) {
+            const meta = document.createElement('div');
+            meta.className = 'resources-student-meta';
+            meta.textContent = metaText;
+            body.appendChild(meta);
+        }
+
+        card.appendChild(body);
+
+        const arrow = document.createElement('div');
+        arrow.className = 'resources-student-arrow';
+        arrow.textContent = r.resource_type === 'link' ? '↗' : '⬇';
+        card.appendChild(arrow);
+
+        list.appendChild(card);
+    }
 }
 
 // ==============================================
@@ -12636,6 +12770,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else if (tab === "pathfinder") {
                     if (!pathfinderQuestions && typeof initializePathfinder === 'function') {
                         initializePathfinder();
+                    }
+                    } else if (tab === "resources") {
+                    if (typeof renderResourcesTab === 'function') {
+                        renderResourcesTab();
                     }
                 } else if (tab === "mysterygift") {
                     if (typeof renderMysteryGiftList === 'function') {
