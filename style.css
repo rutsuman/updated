@@ -831,7 +831,30 @@ select:focus {
                     0 0 90px rgb(255, 1, 1);
     }
 }
+
 /* ==========================================================
+ ART BATTLE HOTSPOT
+ ========================================================== */
+ .artbattle-hotspot {
+    box-shadow: 10px 10px 10px rgba(0, 0, 0, 0.9);
+    border-radius: 0%;
+    animation: artbattleGlow 0.5s infinite alternate;
+}
+
+@keyframes artbattleGlow {
+    from {
+        box-shadow: 0 0 10px rgba(180, 80, 255, 0.5),
+                    0 0 20px rgba(140, 60, 220, 0.3),
+                    0 0 30px rgb(90, 20, 160);
+    }
+    to {
+        box-shadow: 0 0 30px rgba(180, 80, 255, 1),
+                    0 0 60px rgba(140, 60, 220, 0.9),
+                    0 0 90px rgb(90, 20, 160);
+    }
+
+}
+        /* ==========================================================
    ROW 2 HEIGHT + FONT NORMALIZATION
    ========================================================== */
 
@@ -967,7 +990,6 @@ select:focus {
   will-change: transform, opacity;
 
   padding: 80px 60px;
-  box-shadow: 0 25px 60px rgba(0,0,0,0.7);
   animation: float 5s ease-in-out infinite;
 }
 /* Body content */
@@ -1908,6 +1930,95 @@ select:focus {
 
 
 /* ============================================================
+   PROFILE POPUP — EAR TABS (top-right, above the popup)
+   ============================================================ */
+
+/* Popup is the positioning context. Do NOT make it display:flex. */
+#profile-popup.profile-popup-with-tabs {
+    position: relative;
+    /* keep your existing width/height from .popup — don't override them */
+}
+
+/* Make sure the popup doesn't clip the tabs sticking out above */
+#profile-popup.profile-popup-with-tabs {
+    overflow: visible;
+}
+
+/* Ear tabs: side by side, hanging above the popup's top-right corner */
+.profile-side-tabs {
+    position: absolute;
+    right: 0;
+    bottom: 100%;                 /* sits ABOVE the popup */
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    padding: 0 12px;
+    background: transparent;
+    border: none;
+    min-width: 0;
+}
+
+/* Single ear tab */
+.profile-side-tab {
+    background: rgba(0, 30, 90, 0.6);
+    border-bottom: none;              /* merges into the popup below */
+    border-radius: 8px 8px 0 0;       /* rounded top = ear */
+    color: #cfe0ff;
+    padding: 8px 16px;
+    font-size: 14px;
+    text-align: center;
+    cursor: pointer;
+    outline: none;
+    transform: translateY(1px);       /* hides the seam */
+    transition: background 0.15s, color 0.15s;
+}
+
+.profile-side-tab:hover {
+    color: #fff;
+}
+
+.profile-side-tab.active {
+    font-weight: 600;
+    border-color: rgba(180, 220, 255, 0.5);
+}
+
+/* Accessible focus cue, not a full box */
+.profile-side-tab:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.35);
+    outline-offset: -2px;
+}
+
+/* ============================================================
+   PROFILE TAB PANES
+   ============================================================ */
+
+.profile-tab-panes {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.profile-tab-pane {
+    display: none;
+    height: 100%;
+    overflow-y: auhidden;
+    padding: 8px 16px 16px 16px;
+}
+
+.profile-tab-pane.active {
+    display: block;
+}
+
+/* Completed Quests pane */
+#profile-tab-completed {
+    padding: 8px 12px 12px 12px;
+}
+
+#profile-tab-completed .tree-completed-panel {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+/* ============================================================
    REWARDS OVERLAY — EXP BREAKDOWN
    ============================================================ */
 
@@ -2101,6 +2212,7 @@ select:focus {
 .weighted-categories-row {
     grid-column: 1 / -1;            /* full width of profile grid */
     margin-top: 18px;
+    margin-right: 10px;
     padding: 0;
     background: rgba(0, 0, 0, 0.28);
     border: 1px solid #00c3ff;
@@ -2862,6 +2974,75 @@ select:focus {
 }
 .mystery-gift-tooltip.show {
     opacity: 1;
+}
+
+
+
+/* ---- Student resources tab ------------------------------------------------------------------------------------------------------------- */
+.resources-student-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.resources-student-empty {
+    color: #6f86a8;
+    font-size: 13px;
+    font-style: italic;
+    padding: 24px;
+    text-align: center;
+}
+
+.resources-student-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(30, 79, 138, 0.18);
+    border: 1px solid rgba(122, 184, 255, 0.3);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition: background 120ms ease-out, border-color 120ms ease-out;
+    text-decoration: none;
+    color: inherit;
+}
+.resources-student-card:hover {
+    background: rgba(30, 79, 138, 0.32);
+    border-color: rgba(122, 184, 255, 0.6);
+}
+
+.resources-student-icon {
+    font-size: 26px;
+    width: 34px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.resources-student-body {
+    flex: 1;
+    min-width: 0;
+}
+.resources-student-title {
+    font-weight: 700;
+    color: #ffffff;
+    font-size: 14px;
+    word-break: break-word;
+}
+.resources-student-desc {
+    font-size: 12px;
+    color: #a9c2e6;
+    margin-top: 2px;
+    word-break: break-word;
+}
+.resources-student-meta {
+    font-size: 11px;
+    color: #7a90b3;
+    margin-top: 4px;
+}
+.resources-student-arrow {
+    font-size: 16px;
+    color: #7ab8ff;
+    flex-shrink: 0;
 }
 
 
@@ -5855,12 +6036,21 @@ input:focus,
 #terms-modal .close-btn:hover {
     color: #ffd700;
 }
+#teacher-login-container {
+    background-image:
+        linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
+        url('ms-map.jpg');
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
 .teacher-container {
     max-width: 1400px;
     margin: 0 auto;
     padding: 20px;
     min-height: 100vh;
-    background: url('ms-map.jpg') no-repeat center center fixed;
+    background: url('ms-map.jpg');
     background-size: cover;
 }
 /* === HEADER === */
@@ -6858,6 +7048,358 @@ input:focus,
                                          END OF QUEST TAB STYLES
    ============================================================================================================== */
 
+/* ==============================================================================================================
+                                       RESOURCES OVERLAY (teacher)
+============================================================================================================== */
+.resources-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 21000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.resources-panel {
+    background: linear-gradient(160deg, rgba(12, 24, 52, 0.96), rgba(6, 14, 32, 0.96));
+    border: 2px solid #1e4f8a;
+    border-radius: 14px;
+    padding: 22px 26px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    color: #e6eefc;
+    box-shadow: 0 8px 40px rgba(30, 79, 138, 0.45);
+}
+
+.resources-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+.resources-header h2 {
+    margin: 0;
+    color: #7ab8ff;
+    font-size: 22px;
+}
+.resources-close-btn {
+    background: none;
+    border: none;
+    color: #7ab8ff;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+.resources-close-btn:hover { background: rgba(122, 184, 255, 0.15); }
+
+.resources-description {
+    font-size: 13px;
+    color: #a9c2e6;
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.resources-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 22px;
+    min-height: 60px;
+}
+
+.resources-empty-state {
+    color: #6f86a8;
+    font-size: 13px;
+    font-style: italic;
+    padding: 18px;
+}
+
+.resources-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(30, 79, 138, 0.18);
+    border: 1px solid rgba(122, 184, 255, 0.3);
+    border-radius: 10px;
+    padding: 12px 14px;
+    position: relative;
+}
+
+.resources-card-icon {
+    font-size: 26px;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 34px;
+    text-align: center;
+}
+
+.resources-card-body {
+    flex: 1;
+    min-width: 0;
+}
+.resources-card-title {
+    font-weight: 700;
+    color: #ffffff;
+    font-size: 14px;
+    word-break: break-word;
+}
+.resources-card-desc {
+    font-size: 12px;
+    color: #a9c2e6;
+    margin-top: 2px;
+    word-break: break-word;
+}
+.resources-card-meta {
+    font-size: 11px;
+    color: #7a90b3;
+    margin-top: 4px;
+}
+
+.resources-card-delete {
+    background: rgba(0, 0, 0, 0.35);
+    border: none;
+    border-radius: 6px;
+    color: #ff8888;
+    cursor: pointer;
+    padding: 5px 9px;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.resources-card-delete:hover { background: rgba(255, 0, 0, 0.25); }
+
+.resources-add-section {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(122, 184, 255, 0.15);
+}
+
+.resources-add-btn {
+    background: linear-gradient(180deg, #1e4f8a, #123258);
+    color: #e6eefc;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 14px;
+}
+.resources-add-btn:hover { filter: brightness(1.15); }
+
+.resources-add-flow {
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 10px;
+    border: 1px solid rgba(122, 184, 255, 0.25);
+}
+
+.resources-add-flow-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    font-weight: 700;
+    color: #7ab8ff;
+}
+.resources-add-cancel {
+    background: none;
+    border: none;
+    color: #7ab8ff;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.resources-step { margin-bottom: 16px; }
+.resources-step-title {
+    font-weight: 700;
+    color: #7ab8ff;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.resources-input {
+    width: 100%;
+    padding: 9px 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(122, 184, 255, 0.3);
+    border-radius: 6px;
+    color: #e6eefc;
+    font-size: 14px;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+.resources-type-toggle {
+    display: inline-flex;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+}
+.resources-type-btn {
+    background: none;
+    border: none;
+    color: #a9c2e6;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+.resources-type-btn.active {
+    background: rgba(122, 184, 255, 0.18);
+    color: #7ab8ff;
+}
+
+.resources-image-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.resources-secondary-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(122, 184, 255, 0.35);
+    color: #e6eefc;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.resources-secondary-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.resources-file-status { font-size: 12px; color: #8ba4c9; }
+
+.resources-classes-actions { margin-bottom: 10px; }
+.resources-check-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #7ab8ff;
+}
+.resources-class-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.resources-class-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.resources-class-item input { cursor: pointer; }
+
+.resources-save-message {
+    min-height: 18px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #ffa726;
+}
+
+.resources-add-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+.resources-primary-btn {
+    background: linear-gradient(180deg, #7ab8ff, #1e4f8a);
+    border: none;
+    color: #061022;
+    font-weight: 800;
+    padding: 10px 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.resources-primary-btn:hover { filter: brightness(1.1); }
+.resources-primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ============================================================
+   QUEST RESOURCE REMINDER POPUP (student)
+   ============================================================ */
+#quest-resource-reminder-popup {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 25000;                 /* above quest/rubric overlays */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.resource-reminder-box {
+    background: linear-gradient(160deg, rgba(12, 24, 52, 0.98), rgba(6, 14, 32, 0.98));
+    border: 2px solid #1e4f8a;
+    border-radius: 14px;
+    padding: 22px 26px;
+    max-width: 480px;
+    width: 100%;
+    color: #e6eefc;
+    box-shadow: 0 8px 40px rgba(30, 79, 138, 0.5);
+    text-align: center;
+}
+
+.resource-reminder-box h3 {
+    margin: 0 0 12px 0;
+    color: #7ab8ff;
+    font-size: 20px;
+}
+
+.resource-reminder-box p {
+    font-size: 14px;
+    line-height: 1.55;
+    color: #cfdcf0;
+    margin: 0 0 18px 0;
+}
+
+.resource-reminder-box p strong {
+    color: #7ab8ff;
+}
+
+.resource-reminder-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.resource-reminder-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(122, 184, 255, 0.35);
+    color: #e6eefc;
+    padding: 9px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+.resource-reminder-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+.resource-reminder-btn.primary {
+    background: linear-gradient(180deg, #7ab8ff, #1e4f8a);
+    border: none;
+    color: #061022;
+    font-weight: 800;
+}
+.resource-reminder-btn.primary:hover {
+    filter: brightness(1.1);
+}
+/* ==============================================================================================================
+                                       END OF RESOURCES OVERLAY (teacher)
+============================================================================================================== */
+
+
 
 /* ==============================================================================================================
                                        MYSTERY QUESTS OVERLAY (teacher)
@@ -7749,7 +8291,7 @@ input:focus,
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.8);
-    z-index: 20000;
+    z-index: 30000;
     display: none;
     justify-content: center;
     align-items: center;
@@ -11681,7 +12223,7 @@ input:focus,
     width: 100% !important;
     height: 100% !important;
     background-color: rgba(0, 0, 0, 0.85) !important;
-    z-index: 20000 !important;
+    z-index: 30000 !important;
     display: none;
     align-items: center !important;
     justify-content: center !important;
@@ -12368,14 +12910,16 @@ input:focus,
 }
 
 /* ============================================================
-   TREE OVERLAY — COMPLETED QUESTS PANEL
+   COMPLETED QUESTS PANEL
+   (un-scoped from #quest-tree-overlay so it works in the
+    profile overlay's Completed Quests side tab)
    ============================================================ */
 
-#quest-tree-overlay .tree-completed-panel {
+.tree-completed-panel {
     padding: 8px 4px 24px;
 }
 
-#quest-tree-overlay .tree-completed-heading {
+.tree-completed-heading {
     font-size: 18px;
     font-weight: bold;
     color: #fff;
@@ -12384,7 +12928,7 @@ input:focus,
     letter-spacing: 0.5px;
 }
 
-#quest-tree-overlay .tree-completed-empty {
+.tree-completed-empty {
     text-align: center;
     padding: 40px 20px;
     opacity: 0.7;
@@ -12394,7 +12938,7 @@ input:focus,
 
 /* ---------- Category accordion ---------- */
 
-#quest-tree-overlay .tree-completed-category {
+.tree-completed-category {
     margin-bottom: 10px;
     border: 2px solid rgba(150, 200, 255, 0.35);
     border-radius: 8px;
@@ -12402,7 +12946,7 @@ input:focus,
     overflow: hidden;
 }
 
-#quest-tree-overlay .tree-completed-category-header {
+.tree-completed-category-header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -12413,17 +12957,17 @@ input:focus,
     color: #cfe0ff;
 }
 
-#quest-tree-overlay .tree-completed-category-header:hover {
+.tree-completed-category-header:hover {
     background: rgba(0, 50, 140, 0.4);
 }
 
-#quest-tree-overlay .tree-completed-category.expanded .tree-completed-category-header {
+.tree-completed-category.expanded .tree-completed-category-header {
     background: rgba(30, 90, 180, 0.55);
     border-bottom: 2px solid rgba(180, 220, 255, 0.35);
     color: #fff;
 }
 
-#quest-tree-overlay .tree-completed-cat-arrow {
+.tree-completed-cat-arrow {
     font-size: 12px;
     width: 14px;
     text-align: center;
@@ -12431,18 +12975,18 @@ input:focus,
     color: #cfe0ff;
 }
 
-#quest-tree-overlay .tree-completed-cat-label {
+.tree-completed-cat-label {
     font-weight: bold;
     font-size: 15px;
     flex: 1 1 auto;
 }
 
-#quest-tree-overlay .tree-completed-cat-count {
+.tree-completed-cat-count {
     font-size: 12px;
     opacity: 0.7;
 }
 
-#quest-tree-overlay .tree-completed-cat-weight {
+.tree-completed-cat-weight {
     font-size: 12px;
     padding: 2px 8px;
     border-radius: 10px;
@@ -12452,17 +12996,17 @@ input:focus,
 
 /* ---------- Category body ---------- */
 
-#quest-tree-overlay .tree-completed-category-body {
+.tree-completed-category-body {
     display: none;
     padding: 12px;
     background: rgba(0, 20, 70, 0.35);
 }
 
-#quest-tree-overlay .tree-completed-category.expanded .tree-completed-category-body {
+.tree-completed-category.expanded .tree-completed-category-body {
     display: block;
 }
 
-#quest-tree-overlay .tree-completed-cat-empty {
+.tree-completed-cat-empty {
     text-align: center;
     padding: 20px;
     opacity: 0.55;
@@ -12472,7 +13016,7 @@ input:focus,
 
 /* ---------- One quest row ---------- */
 
-#quest-tree-overlay .tree-completed-quest {
+.tree-completed-quest {
     margin-bottom: 16px;
     border: 1px solid rgba(150, 200, 255, 0.25);
     border-radius: 6px;
@@ -12480,11 +13024,11 @@ input:focus,
     padding: 10px;
 }
 
-#quest-tree-overlay .tree-completed-quest:last-child {
+.tree-completed-quest:last-child {
     margin-bottom: 0;
 }
 
-#quest-tree-overlay .tree-completed-quest-title-line {
+.tree-completed-quest-title-line {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
@@ -12494,13 +13038,13 @@ input:focus,
     margin-bottom: 8px;
 }
 
-#quest-tree-overlay .tree-completed-quest-title {
+.tree-completed-quest-title {
     font-weight: bold;
     font-size: 14px;
     color: #fff;
 }
 
-#quest-tree-overlay .tree-completed-quest-share {
+.tree-completed-quest-share {
     font-size: 12px;
     color: #cfe0ff;
     opacity: 0.85;
@@ -12509,17 +13053,17 @@ input:focus,
 
 /* ---------- Per-quest grid ---------- */
 
-#quest-tree-overlay .tree-completed-quest-grid {
+.tree-completed-quest-grid {
     display: grid;
     gap: 6px;
 }
 
-#quest-tree-overlay .tree-completed-cell {
+.tree-completed-cell {
     padding: 6px 8px;
     border-radius: 4px;
 }
 
-#quest-tree-overlay .tree-completed-cell-header {
+.tree-completed-cell-header {
     background: rgba(30, 70, 160, 0.5);
     color: #cfe0ff;
     font-size: 11px;
@@ -12531,7 +13075,7 @@ input:focus,
     min-height: 44px;
 }
 
-#quest-tree-overlay .tree-completed-std-code {
+.tree-completed-std-code {
     font-weight: bold;
     font-size: 11px;
     line-height: 1.15;
@@ -12539,7 +13083,7 @@ input:focus,
     text-align: center;
 }
 
-#quest-tree-overlay .tree-completed-std-name {
+.tree-completed-std-name {
     font-size: 10px;
     opacity: 0.8;
     margin-top: 2px;
@@ -12547,7 +13091,7 @@ input:focus,
     text-align: center;
 }
 
-#quest-tree-overlay .tree-completed-cell-value {
+.tree-completed-cell-value {
     background: rgba(0, 20, 70, 0.5);
     color: #fff;
     font-size: 13px;
@@ -12558,7 +13102,7 @@ input:focus,
     min-height: 34px;
 }
 
-#quest-tree-overlay .tree-completed-cell-avg {
+.tree-completed-cell-avg {
     font-weight: bold;
     color: #ffd700;
     background: rgba(255, 215, 0, 0.12);
@@ -12568,49 +13112,49 @@ input:focus,
 /* ---------- Narrow screens: stack columns vertically ---------- */
 
 @media (max-width: 700px) {
-    #quest-tree-overlay .tree-completed-quest-grid {
+    .tree-completed-quest-grid {
         grid-template-columns: 1fr !important;
     }
 
-    #quest-tree-overlay .tree-completed-cell-header {
+    .tree-completed-cell-header {
         flex-direction: row;
         gap: 6px;
         justify-content: flex-start;
         min-height: auto;
     }
 
-    #quest-tree-overlay .tree-completed-std-code,
-    #quest-tree-overlay .tree-completed-std-name {
+    .tree-completed-std-code,
+    .tree-completed-std-name {
         text-align: left;
     }
 
-    #quest-tree-overlay .tree-completed-cell-value {
+    .tree-completed-cell-value {
         justify-content: flex-end;
         padding-right: 12px;
     }
 
-    #quest-tree-overlay .tree-completed-quest-title-line {
+    .tree-completed-quest-title-line {
         flex-direction: column;
         align-items: flex-start;
         gap: 4px;
     }
 
-    #quest-tree-overlay .tree-completed-quest-share {
+    .tree-completed-quest-share {
         white-space: normal;
     }
 }
 
 /* ============================================================
-   TREE OVERLAY — QUEST CHARACTER (overlaps left border)
+   QUEST CHARACTER (overlaps left border)
    ============================================================ */
 
-#quest-tree-overlay .tree-completed-quest {
+.tree-completed-quest {
     position: relative;          /* anchor for the character */
     padding-left: 78px;          /* reserve space so grid doesn't collide */
 }
 
 /* Character wrapper — overlaps the left edge of the row */
-#quest-tree-overlay .tree-completed-quest-char {
+.tree-completed-quest-char {
     position: absolute;
     left: -12px;                 /* sticks out ~half the width */
     top: 50%;
@@ -12625,7 +13169,7 @@ input:focus,
     overflow: visible;
 }
 
-#quest-tree-overlay .tree-completed-quest-char img {
+.tree-completed-quest-char img {
     width: 100%;
     height: 100%;
     object-fit: contain;
@@ -12634,18 +13178,18 @@ input:focus,
     user-select: none;
     -webkit-user-drag: none;
 }
+
 /* Mobile: shrink the character */
 @media (max-width: 700px) {
-    #quest-tree-overlay .tree-completed-quest {
+    .tree-completed-quest {
         padding-left: 62px;
     }
-    #quest-tree-overlay .tree-completed-quest-char {
+    .tree-completed-quest-char {
         width: 60px;
         height: 60px;
         left: -8px;
     }
 }
-
 /* ===========================================================================================================================================
    FLOATING ACTION CLUSTER  —  bottom-center of viewport
    ========================================================================================================================================== */
@@ -13401,3 +13945,54 @@ input:focus,
 
 
 
+/* ========================================= */
+/* FALLING SNOW EFFECT                       */
+/* ========================================= */
+.snow {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* lets clicks pass through to the map */
+    z-index: 9999;        /* sits above the map but below modals if needed */
+    overflow: hidden;
+}
+
+.snow::before,
+.snow::after {
+    content: '';
+    position: absolute;
+    top: -100vh;
+    left: 0;
+    width: 100%;
+    height: 200vh;
+    background-image:
+        radial-gradient(circle, rgba(255,255,255,0.9) 1.5px, transparent 2px),
+        radial-gradient(circle, rgba(255,255,255,0.7) 1px, transparent 1.5px),
+        radial-gradient(circle, rgba(255,255,255,0.8) 2px, transparent 2.5px);
+    background-size: 180px 180px, 120px 120px, 250px 250px;
+    background-position: 0 0, 60px 80px, 120px 40px;
+    animation: snow-fall 12s linear infinite;
+}
+
+.snow::after {
+    background-size: 220px 220px, 150px 150px, 300px 300px;
+    background-position: 30px 50px, 90px 20px, 10px 100px;
+    animation-duration: 18s;
+    animation-delay: -6s;
+    opacity: 0.7;
+}
+
+@keyframes snow-fall {
+    from { transform: translateY(-50vh); }
+    to   { transform: translateY(100vh); }
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .snow::before,
+    .snow::after {
+        animation: none;
+    }
+}
