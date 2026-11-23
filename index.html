@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>Quest Map</title>
-    <link rel="stylesheet" href="style.css?v=20260211"> 
+    <link rel="stylesheet" href="style.css?v=20262311"> 
     <link rel="icon" type="image/png" href="favicon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 </head>
 <body>
+    <div class="snow" aria-hidden="true"></div>
     <!------------------------ Active Quest Timer Button  --------------------------------------------------------->
 <div id="floating-active-quest" title="Active Quest" style="display: none;">
     ⏱️ <span id="active-quest-timer">--:--</span>
@@ -169,7 +170,7 @@
     </button>
 
     <button type="button" class="cluster-btn cluster-expand-left" id="cluster-achievements" title="Achievements">
-        <span class="cluster-label">Achievements</span>
+        <span class="cluster-label"> Resources and Achievements</span>
         <span class="cluster-icon">🏆</span>
     </button>
 
@@ -453,7 +454,7 @@
     </div>
   </div>
 </div>
-<!-- ========================================= TREE OVERLAY-----======================================== -->
+<!-- ========================================= TREE OVERLAY ======================================== -->
 <div id="quest-tree-overlay">
     <div id="quest-tree-panel">
 
@@ -463,40 +464,23 @@
                 <button class="tree-tab-btn active" data-tree-tab="quest-tree" role="tab" aria-selected="true">
                     Quest Progress Tree
                 </button>
-                <button class="tree-tab-btn" data-tree-tab="completed" role="tab" aria-selected="false">
-                    Completed Quests
-                </button>
             </div>
             <button id="close-quest-tree" class="tree-close-btn" aria-label="Close">✕</button>
         </div>
-            <img id="tree-student-avatar"
-                class="tree-student-avatar"
-                src="profile.png"
-                alt="Student avatar">
+        <img id="tree-student-avatar"
+             class="tree-student-avatar"
+             src="profile.png"
+             alt="Student avatar">
 
         <!-- Scrollable body -->
         <div class="tree-body">
-
-            <!-- Tab: Quest Progress Tree (existing content, untouched) -->
             <div class="tree-tab-content" id="tree-tab-quest-tree">
-                <div id="tree-grid" class="tree-grid">
-                    <!-- Filled by JS in step 4 -->
-                </div>
+                <div id="tree-grid" class="tree-grid"><!-- Filled by JS --></div>
                 <div id="tree-free-strip" class="tree-free-strip">
                     <div class="tree-free-title">Free Assignments</div>
-                    <div id="tree-free-list" class="tree-free-list">
-                        <!-- Filled by JS in step 5 -->
-                    </div>
+                    <div id="tree-free-list" class="tree-free-list"><!-- Filled by JS --></div>
                 </div>
             </div>
-
-            <!-- Tab: Completed Quests (placeholder — filled in Step 3) -->
-            <div class="tree-tab-content" id="tree-tab-completed" style="display:none;">
-                <div id="tree-completed-panel" class="tree-completed-panel">
-                    <div class="tree-completed-empty">Loading…</div>
-                </div>
-            </div>
-
         </div>
    </div>
 </div>
@@ -606,6 +590,7 @@
     <span id="close-achievements" class="close-btn">✖</span>
     <div class="achievements-tabs">
         <button class="tab-button active" data-tab="achievements">Achievements</button>
+        <button class="tab-button" data-tab="resources">Resources</button>
         <button class="tab-button" data-tab="mysterygift">Mystery Gift</button>
         <button class="tab-button" data-tab="questlist">Quest List</button>
         <button class="tab-button" data-tab="pathfinder">Pathfinder</button>
@@ -613,6 +598,11 @@
     <div class="tab-content" id="tab-achievements">
       <div id="achievements-list"> 
       </div>
+    </div>
+    <div class="tab-content" id="tab-resources" style="display:none;">
+        <div id="resources-student-list" class="resources-student-list">
+            <div class="resources-student-empty">Loading…</div>
+        </div>
     </div>
     <div class="tab-content" id="tab-mysterygift" style="display:none;">
         <div id="mystery-gift-list" class="mystery-gift-list">
@@ -673,7 +663,7 @@
 <!------------------------------------------- Profile Button ------------------------------------------------------>
 <button id="profile-btn" class="profile-btn">
   <img src="profile.png" alt="Profile" />
-  <img src="charimage/halloween-bat.gif" class="profile-bat" alt="" aria-hidden="true" />  <!--- Only during halloween---> 
+<!--  <img src="charimage/halloween-bat.gif" class="profile-bat" alt="" aria-hidden="true" />  <!--- Only during halloween---> 
   <div class="exp-bar-wrap" id="exp-bar-wrap">
     <div class="exp-bar">
         <div class="exp-bar-fill" id="exp-bar-fill"></div>
@@ -683,57 +673,80 @@
 </button>
 <!--------------------------------------------PROFILE OVERLAY------------------------------------------------------>
 <div id="profile-overlay" class="overlay" style="display:none;">
-    <div id="profile-popup" class="popup">
-        <h2 class="profile-title">Student's Profile</h2>
+    <div id="profile-popup" class="popup profile-popup-with-tabs">
         <button id="profile-close" class="close-btn">×</button>
-        <div class="profile-grid">
-          <!-- LEFT COLUMN -->
-            <div class="profile-left">
-                <div class="avatar-wrapper">
-                  <img id="student-avatar" src="profile.png" alt="avatar">
-                  <button id="change-avatar-btn" class="avatar-gear">⚙️</button>
-                </div>
-                <div id="student-name" class="student-name"></div>
-                                <div class="profile-teacher-name">
-                    Teacher: <span id="profile-teacher-name">—</span>
+
+        <!-- Vertical side tabs -->
+        <div class="profile-side-tabs" role="tablist">
+            <button class="profile-side-tab active" data-profile-tab="profile" role="tab" aria-selected="true">
+                Profile
+            </button>
+            <button class="profile-side-tab" data-profile-tab="completed" role="tab" aria-selected="false">
+                Completed Quests
+            </button>
+        </div>
+
+        <!-- Tab panes -->
+        <div class="profile-tab-panes">
+
+            <!-- Pane: Profile (existing content, unchanged) -->
+            <div class="profile-tab-pane active" id="profile-tab-profile">
+                <h2 class="profile-title" id="profile-title">Student's Profile</h2>
+                <div class="profile-grid">
+                    <!-- LEFT COLUMN -->
+                    <div class="profile-left">
+                        <div class="avatar-wrapper">
+                            <img id="student-avatar" src="profile.png" alt="avatar">
+                            <button id="change-avatar-btn" class="avatar-gear">⚙️</button>
+                        </div>
+                        <div id="student-name" class="student-name"></div>
+                        <div class="profile-teacher-name">
+                            Teacher: <span id="profile-teacher-name">—</span>
+                        </div>
+                        <div class="profile-left">
+                            <div class="profile-action-buttons">
+                                <button id="logout-profile-btn" class="profile-btn-small logout-btn">🚪 Logout</button>
+                            </div>
+                        </div>
+                        <div class="profile-exp-block" id="profile-exp-block">
+                            <div class="profile-exp-label">Experience</div>
+                            <div class="profile-exp-bar-wrap" id="profile-exp-bar-wrap">
+                                <div class="profile-exp-level" id="profile-exp-level">Lv 0</div>
+                                <div class="profile-exp-bar-track">
+                                    <div class="profile-exp-bar-fill" id="profile-exp-bar-fill"></div>
                                 </div>
-                <div class="profile-left">  
-                 <div class="profile-action-buttons">
-                  <button id="logout-profile-btn" class="profile-btn-small logout-btn">🚪 Logout</button>
-                 </div>
+                                <div class="profile-exp-numbers" id="profile-exp-numbers">0 / 100</div>
+                            </div>
+                            <div class="profile-exp-total" id="profile-exp-total">0 EXP total</div>
+                        </div>
+                    </div>
+                    <!-- CENTER COLUMN -->
+                    <div class="profile-center" id="radar-chart-container">
+                        <canvas id="radar-chart"></canvas>
+                        <div id="radar-tooltip" class="radar-tooltip"></div>
+                    </div>
+                    <!-- RIGHT COLUMN — Badges -->
+                    <div class="profile-right">
+                        <div class="badge-title">
+                            <span class="filigree-left">⚜—————✧—————⚜</span>
+                            <span class="badge-title-text" id="badge-title">Artheim Art Badges</span>
+                            <span class="filigree-right">⚜—————✧—————⚜</span>
+                        </div>
+                        <div class="badge-container" id="badge-container"></div>
+                    </div>
                 </div>
-                <div class="profile-exp-block" id="profile-exp-block">
-    <div class="profile-exp-label">Experience</div>
-    <div class="profile-exp-bar-wrap" id="profile-exp-bar-wrap">
-        <div class="profile-exp-level" id="profile-exp-level">Lv 0</div>
-        <div class="profile-exp-bar-track">
-            <div class="profile-exp-bar-fill" id="profile-exp-bar-fill"></div>
-        </div>
-        <div class="profile-exp-numbers" id="profile-exp-numbers">0 / 100</div>
-    </div>
-    <div class="profile-exp-total" id="profile-exp-total">0 EXP total</div>
-</div>
             </div>
-          <!-- CENTER COLUMN -->
-            <div class="profile-center" id="radar-chart-container">
-             <canvas id="radar-chart"></canvas>
-             <div id="radar-tooltip" class="radar-tooltip"></div>
+
+            <!-- Pane: Completed Quests (moved from tree overlay) -->
+            <div class="profile-tab-pane" id="profile-tab-completed">
+                <div id="tree-completed-panel" class="tree-completed-panel">
+                    <div class="tree-completed-empty">Loading…</div>
+                </div>
             </div>
-          <!-- RIGHT COLUMN — Badges -->
-            <div class="profile-right">
-            <div class="badge-title">
-                <span class="filigree-left">⚜—————✧—————⚜</span>
-                <span class="badge-title-text" id="badge-title">Artheim Art Badges</span>
-                <span class="filigree-right">⚜—————✧—————⚜</span>
-            </div>
-            <div class="badge-container" id="badge-container">
-            </div>
-            </div>
+
         </div>
     </div>
-</div>
-<!------------------------------------- Exp Breakdown Overlay ----------------------------------------------->
-<!-- XX-REWARDS-EDIT-TEST-XX -->
+</div><!------------------------------------- Exp Breakdown Overlay ----------------------------------------------->
 <div id="rewards-overlay" style="display:none;">
   <div class="exp-breakdown-box">
     <span id="close-rewards" class="close-btn">✖</span>
@@ -767,6 +780,21 @@
         <h3>⚠️ You must accept the quest to proceed ⚠️</h3>
         <p id="accept-quest-restriction-message"></p>
         <button class="restriction-close" onclick="closeAcceptQuestRestrictionPopup()">OK</button>
+    </div>
+</div>
+<!--------------------------------------------Resources Popup ------------------------------------------------------>
+<div id="quest-resource-reminder-popup" style="display:none;">
+    <div class="resource-reminder-box">
+        <h3>📚 Resource Reminder</h3>
+        <p>
+            This quest includes the <strong>Independent Art Research</strong> standard.
+            Don't forget to check the <strong>Resources</strong> tab in your Achievements
+            overlay — your teacher may have shared reference material that can help you.
+        </p>
+        <div class="resource-reminder-actions">
+            <button id="quest-resource-reminder-dismiss" class="resource-reminder-btn">Got it</button>
+            <button id="quest-resource-reminder-open" class="resource-reminder-btn primary">Open Resources</button>
+        </div>
     </div>
 </div>
 <!--------------------------------------- Student Calendar Modal ------------------------------------------------->
@@ -907,7 +935,7 @@
     window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     console.log('Supabase initialized:', window.supabase);
 </script>
-<script src="script.js?v=20260211"></script>
+<script src="script.js?v=20262311"></script>
 </body>
 </html>
 
