@@ -7,7 +7,7 @@
 // ---- Force re-login on version bump ----
 // Bump this string to log out every student on their next page load.
 // Format: any unique string; I like "<release-date>-<n>".
-const SESSION_VERSION = "2026-11-13-1";
+const SESSION_VERSION = "2026-11-23-1";
 (function enforceSessionVersion() {
     try {
         const stored = localStorage.getItem("appSessionVersion");
@@ -6348,7 +6348,7 @@ function openAchievementsOverlay() {
             }
         }, true);
     }
-
+    invalidateResourcesCache();
     renderAchievementsList();
 }
 
@@ -6410,6 +6410,141 @@ function renderAchievementsList() {
             expandBtn.innerText = div.classList.contains("expanded") ? "−" : "+";
         });
     });
+}
+
+
+// ==============================================
+// SECTION 30B: STUDENT RESOURCES TAB
+// ==============================================
+
+const RESOURCE_BUCKET_STUDENT = 'teacher-resources';
+
+let _resourcesStudentCache = null;
+let _resourcesStudentCacheTime = 0;
+const RESOURCES_STUDENT_CACHE_MS = 60000;   // 60s TTL, like other student caches
+
+function invalidateResourcesCache() {
+    _resourcesStudentCache = null;
+    _resourcesStudentCacheTime = 0;
+}
+
+async function loadResourcesForStudent(forceRefresh = false) {
+    if (!forceRefresh && _resourcesStudentCache && (Date.now() - _resourcesStudentCacheTime) < RESOURCES_STUDENT_CACHE_MS) {
+        return _resourcesStudentCache;
+    }
+
+    const profile = loadStudentProfile();
+    if (!profile?.class_id) {
+        _resourcesStudentCache = [];
+        _resourcesStudentCacheTime = Date.now();
+        return [];
+    }
+
+    const { data, error } = await guardAuth(() =>
+        window.supabase
+            .from('resources')
+            .select(`
+                id, title, description, resource_type,
+                file_url, file_name, file_mime,
+                link_url, created_at,
+                resource_classes!inner(class_id)
+            `)
+            .eq('resource_classes.class_id', profile.class_id)
+            .order('created_at', { ascending: false })
+    );
+
+    if (error) {
+        console.warn('[resources] student load failed:', error);
+        return [];
+    }
+
+    _resourcesStudentCache = data || [];
+    _resourcesStudentCacheTime = Date.now();
+    return _resourcesStudentCache;
+}
+
+function _resourceStudentIcon(r) {
+    if (r.resource_type === 'link') return '🔗';
+    const mime = r.file_mime || '';
+    if (mime === 'application/pdf') return '📕';
+    if (mime.startsWith('image/')) return '🖼️';
+    return '📄';
+}
+
+function _resourceStudentMetaText(r) {
+    if (r.resource_type === 'link') return 'Link';
+    const parts = [];
+    if (r.file_name) parts.push(r.file_name);
+    return parts.join(' · ');
+}
+
+async function renderResourcesTab(forceRefresh = false) {
+    const list = document.getElementById('resources-student-list');
+    if (!list) return;
+
+    list.innerHTML = '<div class="resources-student-empty">Loading…</div>';
+
+    const resources = await loadResourcesForStudent(forceRefresh);
+
+    if (!resources || resources.length === 0) {
+        list.innerHTML = '<div class="resources-student-empty">No resources shared yet. Check back later!</div>';
+        return;
+    }
+
+    list.innerHTML = '';
+
+    for (const r of resources) {
+        const card = document.createElement('a');
+        card.className = 'resources-student-card';
+
+        if (r.resource_type === 'link') {
+            card.href = r.link_url;
+            card.target = '_blank';
+            card.rel = 'noopener noreferrer';
+        } else {
+            card.href = r.file_url;
+            card.download = r.file_name || '';
+            card.target = '_blank';           // fallback if download is ignored
+            card.rel = 'noopener noreferrer';
+        }
+
+        const icon = document.createElement('div');
+        icon.className = 'resources-student-icon';
+        icon.textContent = _resourceStudentIcon(r);
+        card.appendChild(icon);
+
+        const body = document.createElement('div');
+        body.className = 'resources-student-body';
+
+        const title = document.createElement('div');
+        title.className = 'resources-student-title';
+        title.textContent = r.title;
+        body.appendChild(title);
+
+        if (r.description) {
+            const desc = document.createElement('div');
+            desc.className = 'resources-student-desc';
+            desc.textContent = r.description;
+            body.appendChild(desc);
+        }
+
+        const metaText = _resourceStudentMetaText(r);
+        if (metaText) {
+            const meta = document.createElement('div');
+            meta.className = 'resources-student-meta';
+            meta.textContent = metaText;
+            body.appendChild(meta);
+        }
+
+        card.appendChild(body);
+
+        const arrow = document.createElement('div');
+        arrow.className = 'resources-student-arrow';
+        arrow.textContent = r.resource_type === 'link' ? '↗' : '⬇';
+        card.appendChild(arrow);
+
+        list.appendChild(card);
+    }
 }
 
 // ==============================================
@@ -7681,12 +7816,21 @@ function initializeProfileSystem() {
     const profileOverlay = document.getElementById("profile-overlay");
     const profileClose = document.getElementById("profile-close");
     if (!profileBtn || !profileOverlay || !profileClose) return;
+
+    initializeProfileSideTabs();   // <-- NEW
+
     const newProfileBtn = profileBtn.cloneNode(true);
     profileBtn.parentNode.replaceChild(newProfileBtn, profileBtn);
-        newProfileBtn.addEventListener("click", async () => {
+    newProfileBtn.addEventListener("click", async () => {
         await loadStudentDataFromCloud();
         await loadTeacherNameForProfile();
         profileOverlay.style.display = "flex";
+
+        // Reset to Profile tab each time it opens
+        if (typeof window.__activateProfileTab === 'function') {
+            window.__activateProfileTab('profile');
+        }
+
         updateProfileStandardsTable();
         renderRadarChart();
         updateProfileUI();
@@ -7695,16 +7839,64 @@ function initializeProfileSystem() {
         if (typeof renderWeightedCategories === 'function') renderWeightedCategories();
         if (typeof renderProfileExpBar === 'function') renderProfileExpBar();
     });
+
     const newProfileClose = profileClose.cloneNode(true);
     profileClose.parentNode.replaceChild(newProfileClose, profileClose);
     newProfileClose.addEventListener("click", () => {
         profileOverlay.style.display = "none";
     });
+
     profileOverlay.addEventListener("click", (e) => {
         if (e.target === profileOverlay) {
             profileOverlay.style.display = "none";
         }
     });
+}
+// ==============================================
+// SECTION 37b: PROFILE SIDE TABS
+// ==============================================
+
+function initializeProfileSideTabs() {
+    const tabs = document.querySelectorAll('.profile-side-tab');
+    const panes = {
+        profile:   document.getElementById('profile-tab-profile'),
+        completed: document.getElementById('profile-tab-completed')
+    };
+    const titleEl = document.getElementById('profile-title');
+
+    function activate(tabKey) {
+        tabs.forEach(btn => {
+            const isActive = btn.dataset.profileTab === tabKey;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        Object.entries(panes).forEach(([key, pane]) => {
+            if (pane) pane.classList.toggle('active', key === tabKey);
+        });
+
+        // Title swaps with the tab (keeps the header meaningful)
+        if (titleEl) {
+            titleEl.textContent = (tabKey === 'completed')
+                ? 'Completed Quests'
+                : "Student's Profile";
+        }
+
+        if (tabKey === 'completed') {
+            // Render fresh (function has a 3s cache; invalidate so it's current)
+            if (typeof invalidateTreeCompletedCache === 'function') invalidateTreeCompletedCache();
+            if (typeof renderTreeCompletedPanel === 'function') renderTreeCompletedPanel();
+        }
+    }
+
+    tabs.forEach(btn => {
+        // Clone-and-replace to avoid duplicate listeners on re-init
+        const fresh = btn.cloneNode(true);
+        btn.parentNode.replaceChild(fresh, btn);
+        fresh.addEventListener('click', () => activate(fresh.dataset.profileTab));
+    });
+
+    // Expose so the profile-open handler can reset to the Profile tab
+    window.__activateProfileTab = activate;
 }
 
 // ==============================================
@@ -8833,6 +9025,14 @@ function acceptQuest(questId) {
         updateTimerDisplay(questId);
         // Invalidate cache after accepting
         invalidateStudentDataCache();
+
+        // ── NEW: Resource reminder ──────────────────────────────
+        // Fires only when the quest's own rubric includes the
+        // Independent Art Research standard (CN.10.1.IA).
+        if (questHasResearchStandard(quest)) {
+            showResourceReminderPopup();
+        }
+        // ────────────────────────────────────────────────────────
     }
 }
 
@@ -8904,6 +9104,7 @@ function setupTimerControls(questId) {
     }
 }
 
+
 // ==============================================
 // SECTION 44b: SYNCHRONOUS TIMER CONTROLS (for instant quest open)
 // ==============================================
@@ -8953,6 +9154,71 @@ function setupTimerControlsSync(questId) {
         acceptCell.style.display = "none";
         const questBox = document.getElementById("quest-box");
         if (questBox) questBox.classList.add("no-timer");
+    }
+}
+
+// ==============================================
+// SECTION 44c: QUEST RESOURCE REMINDER
+// ==============================================
+
+const RESOURCE_REMINDER_STANDARD = 'Art.FA.CN.10.1.IA';
+
+function questHasResearchStandard(quest) {
+    const standards = quest?.rubric?.standards;
+    if (!Array.isArray(standards)) return false;
+    return standards.some(s => s.code === RESOURCE_REMINDER_STANDARD);
+}
+
+function showResourceReminderPopup() {
+    const popup = document.getElementById('quest-resource-reminder-popup');
+    if (!popup) return;
+
+    popup.style.display = 'flex';
+
+    const dismissBtn = document.getElementById('quest-resource-reminder-dismiss');
+    const openBtn    = document.getElementById('quest-resource-reminder-open');
+
+    const close = () => { popup.style.display = 'none'; };
+
+    // Clone to strip stale listeners (popup can fire many times)
+    if (dismissBtn) {
+        const fresh = dismissBtn.cloneNode(true);
+        dismissBtn.parentNode.replaceChild(fresh, dismissBtn);
+        fresh.addEventListener('click', close);
+    }
+
+    if (openBtn) {
+        const fresh = openBtn.cloneNode(true);
+        openBtn.parentNode.replaceChild(fresh, openBtn);
+        fresh.addEventListener('click', () => {
+            close();
+            if (typeof openAchievementsOverlay === 'function') {
+                openAchievementsOverlay();
+                // Let the overlay render, then switch to the Resources tab
+                setTimeout(() => {
+                    const tabBtn = document.querySelector('.tab-button[data-tab="resources"]');
+                    if (tabBtn) tabBtn.click();
+                }, 60);
+            }
+        });
+    }
+
+    // Backdrop click closes
+    if (!popup.dataset.backdropWired) {
+        popup.dataset.backdropWired = '1';
+        popup.addEventListener('click', (e) => {
+            if (e.target === popup) popup.style.display = 'none';
+        });
+    }
+
+    // ESC closes
+    if (!popup.dataset.escWired) {
+        popup.dataset.escWired = '1';
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            const p = document.getElementById('quest-resource-reminder-popup');
+            if (p && p.style.display === 'flex') p.style.display = 'none';
+        });
     }
 }
 
@@ -13216,6 +13482,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (!pathfinderQuestions && typeof initializePathfinder === 'function') {
                         initializePathfinder();
                     }
+                } else if (tab === "resources") {
+                if (typeof renderResourcesTab === 'function') {
+                    renderResourcesTab();
+                }
                 } else if (tab === "mysterygift") {
                     if (typeof renderMysteryGiftList === 'function') {
                         renderMysteryGiftList();
