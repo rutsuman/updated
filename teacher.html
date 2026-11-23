@@ -76,6 +76,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h2 style="margin: 0;">All Quests</h2>
                         <button id="create-custom-quest-btn" class="create-custom-quest-btn">➕ Create Quest</button>
+                        <button id="resources-btn" class="create-custom-quest-btn resources-btn"> 📚 Add Resources</button>
                         <button id="mystery-quests-btn" class="create-custom-quest-btn" style="background: #6a2f8a; margin-left: 10px;"> 🎁 Mystery Quests</button>
                         <button id="create-contest-btn" class="create-custom-quest-btn" style="background: #5a3829c3; margin-left: 10px;"> ⚔️Create Art Battle</button>
                     </div>
@@ -842,6 +843,86 @@
             </form>
 
             <div id="custom-quest-message" class="settings-message"></div>
+        </div>
+    </div>
+
+    <!-- ---- Resources Overlay ---- -->
+    <div id="resources-overlay" class="resources-overlay" style="display: none;">
+        <div class="resources-panel">
+            <div class="resources-header">
+                <h2>📚 Resources</h2>
+                <button id="close-resources-overlay" class="resources-close-btn" title="Close">✖</button>
+            </div>
+
+            <p class="resources-description">
+                Upload files or share links with your classes. Students in the selected
+                classes will see them in their Resources tab.
+            </p>
+
+            <div id="resources-list" class="resources-list">
+                <!-- Rendered by renderResourcesList() -->
+            </div>
+
+            <div class="resources-add-section">
+                <button id="resources-add-btn" class="resources-add-btn">➕ Add Resource</button>
+
+                <div id="resources-add-flow" class="resources-add-flow" style="display: none;">
+                    <div class="resources-add-flow-header">
+                        <span>Add Resource</span>
+                        <button id="resources-add-cancel" class="resources-add-cancel" title="Cancel">✖</button>
+                    </div>
+
+                    <!-- Step 1 -->
+                    <div class="resources-step">
+                        <div class="resources-step-title">Step 1 — Resource details</div>
+
+                        <div class="resources-type-toggle" id="resources-type-toggle">
+                            <button type="button" class="resources-type-btn active" data-type="file">📄 Upload file</button>
+                            <button type="button" class="resources-type-btn" data-type="link">🔗 Paste link</button>
+                        </div>
+
+                        <input type="text" id="resources-title" class="resources-input" placeholder="Title (required)" maxlength="120" style="margin-top:10px;">
+
+                        <div id="resources-file-wrap" class="resources-file-wrap" style="margin-top:10px;">
+                            <div class="resources-image-row">
+                                <button id="resources-file-pick-btn" class="resources-secondary-btn" type="button">📎 Choose file</button>
+                                <input type="file" id="resources-file-input" accept=".pdf,.doc,.docx,.jpg,.jpeg,.gif" style="display: none;">
+                                <span id="resources-file-status" class="resources-file-status">No file chosen</span>
+                            </div>
+                        </div>
+
+                        <div id="resources-link-wrap" class="resources-link-wrap" style="margin-top:10px; display:none;">
+                            <input type="url" id="resources-link-url" class="resources-input" placeholder="https://example.com/resource">
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="resources-step">
+                        <div class="resources-step-title">Step 2 — Description (optional)</div>
+                        <textarea id="resources-description" class="resources-input" rows="3" placeholder="Short description for students…"></textarea>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="resources-step">
+                        <div class="resources-step-title">Step 3 — Which classes?</div>
+                        <div class="resources-classes-actions">
+                            <label class="resources-check-all-label">
+                                <input type="checkbox" id="resources-check-all">
+                                <span>Check all classes</span>
+                            </label>
+                        </div>
+                        <div id="resources-class-list" class="resources-class-list">
+                            <!-- Rendered by renderResourcesClassCheckboxes() -->
+                        </div>
+                    </div>
+
+                    <div id="resources-save-message" class="resources-save-message"></div>
+
+                    <div class="resources-add-actions">
+                        <button id="resources-save-btn" class="resources-primary-btn">Save Resource</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
