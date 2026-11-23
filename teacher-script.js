@@ -9592,6 +9592,17 @@ function _weekKeyToDateRange(weekKey) {
 document.addEventListener('DOMContentLoaded', () => {
     // Basic buttons
     document.getElementById('teacher-login-btn')?.addEventListener('click', handleTeacherLogin);
+    // Enter key in email or password → trigger login
+    ['teacher-email', 'teacher-password'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleTeacherLogin();
+            }
+        });
+    });
     document.getElementById('teacher-logout-btn')?.addEventListener('click', teacherLogout);
     document.getElementById('close-details-btn')?.addEventListener('click', () => {
         document.getElementById('student-details-panel').style.display = 'none';
@@ -9720,6 +9731,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Click outside #student-details-panel → close it
+document.addEventListener('click', (e) => {
+    const panel = document.getElementById('student-details-panel');
+    if (!panel || panel.style.display !== 'block') return;
+
+    // Clicks inside the panel are fine
+    if (panel.contains(e.target)) return;
+
+    // Anything that opens a student profile — don't close first
+    if (e.target.closest('.student-card')) return;
+    if (e.target.closest('.class-student-card')) return;
+    if (e.target.closest('.quest-student-card')) return;      // Active Students tab
+    if (e.target.closest('.student-name-link')) return;       // Analytics table
+    if (e.target.closest('#close-details-btn')) return;       // explicit close
+
+    panel.style.display = 'none';
+});
     // Quest search
     setupQuestSearch();
 
@@ -9738,6 +9766,23 @@ document.addEventListener('DOMContentLoaded', () => {
     initResetPasswordModal();
     initializeMysteryQuests();
     setupQuestAnalyticsAccordion();
+
+        // Resources
+    document.getElementById('resources-btn')?.addEventListener('click', openResourcesOverlay);
+    document.getElementById('close-resources-overlay')?.addEventListener('click', closeResourcesOverlay);
+    document.getElementById('resources-add-btn')?.addEventListener('click', _openResourcesAddFlow);
+    document.getElementById('resources-add-cancel')?.addEventListener('click', _resetResourcesAddFlow);
+    const _resOverlay = document.getElementById('resources-overlay');
+    if (_resOverlay) {
+        _resOverlay.addEventListener('click', (e) => {
+            if (e.target === _resOverlay) closeResourcesOverlay();
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const ov = document.getElementById('resources-overlay');
+        if (ov && ov.style.display === 'flex') closeResourcesOverlay();
+    });
 
     // Schedule range buttons
     document.getElementById('add-range-btn')?.addEventListener('click', addDateRange);
@@ -10858,6 +10903,442 @@ async function confirmAssignQuest() {
         }
     }, 1500);
 }
+
+
+
+
+// ==========================================================
+// 24. RESOURCES (teacher)
+// ==========================================================
+
+const RESOURCE_ALLOWED_MIMES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/jpeg',
+    'image/gif'
+];
+const RESOURCE_ALLOWED_EXTS = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'gif'];
+const RESOURCE_MAX_BYTES = 5 * 1024 * 1024;
+const RESOURCE_BUCKET = 'teacher-resources';
+
+let _resourcesState = {
+    resourceType: 'file',            // 'file' | 'link'
+    file: null,                      // File object
+    selectedClasses: new Set()       // class ids
+};
+let _resourcesListCache = null;
+let _resourcesListCacheTime = 0;
+const RESOURCES_CACHE_MS = 30000;
+
+function _resourcesInvalidateCache() {
+    _resourcesListCache = null;
+    _resourcesListCacheTime = 0;
+}
+
+function _resourceExt(name) {
+    const i = (name || '').lastIndexOf('.');
+    return i >= 0 ? name.slice(i + 1).toLowerCase() : '';
+}
+
+function _resourceFileIcon(resource) {
+    if (resource.resource_type === 'link') return '🔗';
+    const mime = resource.file_mime || '';
+    if (mime === 'application/pdf') return '📕';
+    if (mime.startsWith('image/')) return '🖼️';
+    return '📄';
+}
+
+function _normalizeLink(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    if (/^javascript:/i.test(s)) return null;
+    if (/^https?:\/\//i.test(s)) {
+        try { new URL(s); return s; } catch { return null; }
+    }
+    // bare domain or path → try https
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(s) || s.startsWith('/')) {
+        try { new URL('https://' + s.replace(/^\/+/, '')); return 'https://' + s.replace(/^\/+/, ''); }
+        catch { return null; }
+    }
+    return null;
+}
+
+async function openResourcesOverlay() {
+    _resetResourcesAddFlow();
+    const overlay = document.getElementById('resources-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    await renderResourcesList();
+}
+
+function closeResourcesOverlay() {
+    const overlay = document.getElementById('resources-overlay');
+    if (overlay) overlay.style.display = 'none';
+    _resetResourcesAddFlow();
+}
+
+function _resetResourcesAddFlow() {
+    _resourcesState = { resourceType: 'file', file: null, selectedClasses: new Set() };
+    const flow = document.getElementById('resources-add-flow');
+    if (flow) flow.style.display = 'none';
+    const addBtn = document.getElementById('resources-add-btn');
+    if (addBtn) addBtn.style.display = '';
+    const title = document.getElementById('resources-title');
+    if (title) title.value = '';
+    const desc = document.getElementById('resources-description');
+    if (desc) desc.value = '';
+    const link = document.getElementById('resources-link-url');
+    if (link) link.value = '';
+    const fileInput = document.getElementById('resources-file-input');
+    if (fileInput) fileInput.value = '';
+    const fileStatus = document.getElementById('resources-file-status');
+    if (fileStatus) fileStatus.textContent = 'No file chosen';
+    const checkAll = document.getElementById('resources-check-all');
+    if (checkAll) checkAll.checked = false;
+    const msg = document.getElementById('resources-save-message');
+    if (msg) msg.textContent = '';
+    _setResourceType('file');
+}
+
+function _setResourceType(type) {
+    _resourcesState.resourceType = type;
+    document.querySelectorAll('#resources-type-toggle .resources-type-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.type === type);
+    });
+    const fw = document.getElementById('resources-file-wrap');
+    const lw = document.getElementById('resources-link-wrap');
+    if (fw) fw.style.display = type === 'file' ? '' : 'none';
+    if (lw) lw.style.display = type === 'link' ? '' : 'none';
+}
+
+async function renderResourcesList() {
+    const list = document.getElementById('resources-list');
+    if (!list) return;
+
+    const auth = await checkTeacherAuth();
+    if (!auth) return;
+
+    if (_resourcesListCache && (Date.now() - _resourcesListCacheTime) < RESOURCES_CACHE_MS) {
+        _renderResourcesListFrom(_resourcesListCache);
+        return;
+    }
+
+    list.innerHTML = '<div class="resources-empty-state">Loading…</div>';
+
+    const { data: resources, error } = await window.supabase
+        .from('resources')
+        .select('id, title, description, resource_type, file_url, file_name, file_mime, file_size_bytes, storage_path, link_url, created_at, resource_classes(class_id)')
+        .eq('teacher_id', auth.teacher.id)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[resources] load failed:', error);
+        list.innerHTML = '<div class="resources-empty-state">Error loading resources.</div>';
+        return;
+    }
+
+    _resourcesListCache = resources || [];
+    _resourcesListCacheTime = Date.now();
+    _renderResourcesListFrom(_resourcesListCache);
+}
+
+function _renderResourcesListFrom(resources) {
+    const list = document.getElementById('resources-list');
+    if (!list) return;
+
+    if (!resources || resources.length === 0) {
+        list.innerHTML = '<div class="resources-empty-state">No resources yet. Click "Add Resource" below.</div>';
+        return;
+    }
+
+    const classMap = new Map((teacherClasses || []).map(c => [c.id, c.name]));
+    list.innerHTML = '';
+
+    for (const r of resources) {
+        const card = document.createElement('div');
+        card.className = 'resources-card';
+
+        const icon = document.createElement('div');
+        icon.className = 'resources-card-icon';
+        icon.textContent = _resourceFileIcon(r);
+
+        const body = document.createElement('div');
+        body.className = 'resources-card-body';
+
+        const title = document.createElement('div');
+        title.className = 'resources-card-title';
+        title.textContent = r.title;
+        body.appendChild(title);
+
+        if (r.description) {
+            const desc = document.createElement('div');
+            desc.className = 'resources-card-desc';
+            desc.textContent = r.description;
+            body.appendChild(desc);
+        }
+
+        const classNames = (r.resource_classes || [])
+            .map(rc => classMap.get(rc.class_id) || 'Unknown')
+            .sort();
+
+        const meta = document.createElement('div');
+        meta.className = 'resources-card-meta';
+        let metaText = r.resource_type === 'link'
+            ? 'Link'
+            : (r.file_name || 'File');
+        if (classNames.length > 0) metaText += ` · ${classNames.join(', ')}`;
+        meta.textContent = metaText;
+        body.appendChild(meta);
+
+        const del = document.createElement('button');
+        del.className = 'resources-card-delete';
+        del.title = 'Delete resource';
+        del.textContent = '🗑️';
+        del.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await handleResourceDelete(r);
+        });
+
+        card.appendChild(icon);
+        card.appendChild(body);
+        card.appendChild(del);
+        list.appendChild(card);
+    }
+}
+
+function renderResourcesClassCheckboxes() {
+    const list = document.getElementById('resources-class-list');
+    if (!list) return;
+
+    const visible = (teacherClasses || []).filter(cls => {
+        const lvl = cls.grade_level || 'hs';
+        return lvl === currentGradeLevel;
+    });
+
+    if (visible.length === 0) {
+        list.innerHTML = `<div class="resources-empty-state">No ${currentGradeLevel.toUpperCase()} classes yet.</div>`;
+        return;
+    }
+
+    list.innerHTML = '';
+    for (const cls of visible) {
+        const label = document.createElement('label');
+        label.className = 'resources-class-item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = cls.id;
+        cb.dataset.classId = cls.id;
+        cb.addEventListener('change', () => {
+            if (cb.checked) _resourcesState.selectedClasses.add(cls.id);
+            else _resourcesState.selectedClasses.delete(cls.id);
+            _syncResourcesCheckAll();
+        });
+        label.appendChild(cb);
+        const span = document.createElement('span');
+        span.textContent = cls.name;
+        label.appendChild(span);
+        list.appendChild(label);
+    }
+}
+
+function _syncResourcesCheckAll() {
+    const checkAll = document.getElementById('resources-check-all');
+    const boxes = document.querySelectorAll('#resources-class-list input[type=checkbox]');
+    if (!checkAll || boxes.length === 0) return;
+    const allChecked = Array.from(boxes).every(b => b.checked);
+    const anyChecked = Array.from(boxes).some(b => b.checked);
+    checkAll.checked = allChecked;
+    checkAll.indeterminate = anyChecked && !allChecked;
+}
+
+function _openResourcesAddFlow() {
+    _resetResourcesAddFlow();
+    const flow = document.getElementById('resources-add-flow');
+    const addBtn = document.getElementById('resources-add-btn');
+    if (flow) flow.style.display = 'block';
+    if (addBtn) addBtn.style.display = 'none';
+    renderResourcesClassCheckboxes();
+    _wireResourcesAddFlow();
+}
+
+let _resourcesWired = false;
+function _wireResourcesAddFlow() {
+    if (_resourcesWired) return;
+    _resourcesWired = true;
+
+    document.getElementById('resources-type-toggle')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.resources-type-btn');
+        if (!btn) return;
+        _setResourceType(btn.dataset.type);
+    });
+
+    document.getElementById('resources-file-pick-btn')?.addEventListener('click', () => {
+        document.getElementById('resources-file-input')?.click();
+    });
+
+    document.getElementById('resources-file-input')?.addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        const status = document.getElementById('resources-file-status');
+        if (!f) { _resourcesState.file = null; if (status) status.textContent = 'No file chosen'; return; }
+
+        const ext = _resourceExt(f.name);
+        if (!RESOURCE_ALLOWED_EXTS.includes(ext)) {
+            alert('Unsupported file type. Allowed: PDF, DOC, DOCX, JPG, JPEG, GIF.');
+            e.target.value = '';
+            _resourcesState.file = null;
+            if (status) status.textContent = 'No file chosen';
+            return;
+        }
+        if (f.type && f.type !== 'application/octet-stream' && !RESOURCE_ALLOWED_MIMES.includes(f.type)) {
+            alert('Unsupported file type. Allowed: PDF, DOC, DOCX, JPG, JPEG, GIF.');
+            e.target.value = '';
+            _resourcesState.file = null;
+            if (status) status.textContent = 'No file chosen';
+            return;
+        }
+        if (f.size > RESOURCE_MAX_BYTES) {
+            alert('File is too large (max 5 MB). Please reduce the file or share a link instead.');
+            e.target.value = '';
+            _resourcesState.file = null;
+            if (status) status.textContent = 'No file chosen';
+            return;
+        }
+
+        _resourcesState.file = f;
+        if (status) status.textContent = f.name;
+    });
+
+    document.getElementById('resources-check-all')?.addEventListener('change', (e) => {
+        const boxes = document.querySelectorAll('#resources-class-list input[type=checkbox]');
+        boxes.forEach(b => {
+            b.checked = e.target.checked;
+            if (e.target.checked) _resourcesState.selectedClasses.add(b.dataset.classId);
+            else _resourcesState.selectedClasses.delete(b.dataset.classId);
+        });
+        _syncResourcesCheckAll();
+    });
+
+    document.getElementById('resources-save-btn')?.addEventListener('click', handleResourceSave);
+}
+
+async function handleResourceSave() {
+    const msg = document.getElementById('resources-save-message');
+    const saveBtn = document.getElementById('resources-save-btn');
+
+    const auth = await checkTeacherAuth();
+    if (!auth) return;
+
+    const title = (document.getElementById('resources-title')?.value || '').trim();
+    const description = (document.getElementById('resources-description')?.value || '').trim();
+    const type = _resourcesState.resourceType;
+    const classIds = Array.from(_resourcesState.selectedClasses);
+
+    if (!title) { if (msg) msg.textContent = 'Please enter a title.'; return; }
+    if (classIds.length === 0) { if (msg) msg.textContent = 'Select at least one class.'; return; }
+
+    let linkUrl = null;
+    if (type === 'link') {
+        const raw = document.getElementById('resources-link-url')?.value || '';
+        linkUrl = _normalizeLink(raw);
+        if (!linkUrl) { if (msg) msg.textContent = 'Please enter a valid http(s) link.'; return; }
+    } else {
+        if (!_resourcesState.file) { if (msg) msg.textContent = 'Please choose a file.'; return; }
+    }
+
+    if (msg) msg.textContent = '';
+
+    const original = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    try {
+        let payload = {
+            teacher_id: auth.teacher.id,
+            title,
+            description: description || null,
+            resource_type: type
+        };
+
+        if (type === 'file') {
+            const f = _resourcesState.file;
+            const ext = _resourceExt(f.name);
+            const path = `${auth.teacher.id}/${Date.now()}.${ext}`;
+
+            if (msg) msg.textContent = 'Uploading file…';
+            const { error: upErr } = await window.supabase.storage
+                .from(RESOURCE_BUCKET)
+                .upload(path, f, { cacheControl: '31536000', upsert: false, contentType: f.type || 'application/octet-stream' });
+            if (upErr) throw upErr;
+
+            const { data: urlData } = window.supabase.storage.from(RESOURCE_BUCKET).getPublicUrl(path);
+
+            payload.file_url = urlData.publicUrl;
+            payload.file_name = f.name;
+            payload.file_mime = f.type || 'application/octet-stream';
+            payload.file_size_bytes = f.size;
+            payload.storage_path = path;
+        } else {
+            payload.link_url = linkUrl;
+        }
+
+        if (msg) msg.textContent = 'Saving…';
+        const { data: inserted, error: insErr } = await window.supabase
+            .from('resources')
+            .insert(payload)
+            .select('id')
+            .single();
+        if (insErr) throw insErr;
+
+        const resourceId = inserted.id;
+        const linkRows = classIds.map(cid => ({ resource_id: resourceId, class_id: cid }));
+        const { error: linkErr } = await window.supabase
+            .from('resource_classes')
+            .insert(linkRows);
+        if (linkErr) throw linkErr;
+
+        _resourcesInvalidateCache();
+        _resetResourcesAddFlow();
+        await renderResourcesList();
+    } catch (e) {
+        console.error('[resources] save failed:', e);
+        if (msg) msg.textContent = 'Failed to save: ' + (e.message || 'unknown error');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = original;
+    }
+}
+
+async function handleResourceDelete(resource) {
+    if (!confirm(`Delete "${resource.title}"?\n\nIt will be removed for every class it was shared with.`)) return;
+
+    const passwordValid = await verifyTeacherPassword();
+    if (!passwordValid) { alert('Password verification failed. Resource not deleted.'); return; }
+
+    try {
+        // storage first
+        if (resource.resource_type === 'file' && resource.storage_path) {
+            const { error: stErr } = await window.supabase.storage
+                .from(RESOURCE_BUCKET)
+                .remove([resource.storage_path]);
+            if (stErr) console.warn('[resources] storage delete failed (continuing):', stErr);
+        }
+        // db row (cascades resource_classes)
+        const { error: dbErr } = await window.supabase
+            .from('resources')
+            .delete()
+            .eq('id', resource.id);
+        if (dbErr) throw dbErr;
+
+        _resourcesInvalidateCache();
+        await renderResourcesList();
+    } catch (e) {
+        console.error('[resources] delete failed:', e);
+        alert('Failed to delete resource: ' + (e.message || 'unknown error'));
+    }
+}
+
+
+
 
 
 // ==========================================================
