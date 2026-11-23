@@ -257,7 +257,7 @@
       {"type": "video sample", "url": "https://m.youtube.com/watch?v=bqu1VQh7ZLw"}
     ],
     "reward": " you got money!!!!",
-    "character": "charimage/char5.png",
+    "character": "charimage/char5.gif",
     "style": "",
     "prerequisites": [],
     "completed": false,
@@ -1557,7 +1557,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
     "quest101": {
     "path": ["Painter Path"],
     "difficulty": 1,
@@ -1609,7 +1608,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
   "quest102": {
     "path": ["Painter Path"],
     "difficulty": 2,
@@ -1661,7 +1659,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
     "quest108": {
     "path": ["Painter Path"],
     "difficulty": 1,
@@ -1713,7 +1710,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
   "quest109": {
     "path": ["Painter Path"],
     "difficulty": 2,
@@ -1765,7 +1761,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
   "quest110": {
     "path": ["Painter Path"],
     "difficulty": 3,
@@ -1837,7 +1832,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
   "quest111": {
     "path": ["Painter Path"],
     "difficulty": 3,
@@ -1900,6 +1894,175 @@
     "acceptedAt": null
   },
 
+  "quest116": {
+  "path": ["Painter Path", "Sketcher Path"],
+  "difficulty": 3,
+  "title": "The Masquerade of Feeling",
+  "rationale": "<h2>The Masquerade of Feeling</h2><p><strong>Why it's important:</strong><br>Every painting is an argument about how the world feels. Emotion is not decoration—it is the reason people stop and look. This quest asks you to translate an interior state into color, value, shape, and composition, then justify every choice. It is the bridge between technical control and artistic voice.</p><p><strong>Skills developed:</strong></p><ul><li>Emotional color theory (warm/cool, saturation, contrast)</li><li>Composition as emotional architecture</li><li>Brushwork as expression</li><li>Intentional abstraction and distortion</li><li>Written and visual justification of artistic decisions</li></ul><p>This summative proves you can make a viewer feel something on purpose.</p>",
+  "description": "The Masked Court of Artheim has lost the ability to feel. Its nobles wear porcelain masks that hide nothing but emptiness, and the halls have grown cold. The Court Jester—the only one who remembers laughter—offers you a bargain: paint one true emotion so vividly that a single mask cracks. Choose an emotion (joy, grief, rage, longing, fear, serenity, or one you name). It may be shown through a figure, a landscape, an object, an abstraction, or a scene—but the feeling must be unmistakable. When the Court looks at your painting, they must remember what it is to feel.",
+  "requirements": [
+    "Select one specific emotion and name it in a short artist statement (1 paragraph) explaining why you chose it",
+    "Create a painted color study (minimum 5 swatches) that defines the palette and temperature logic for the emotion",
+    "Produce at least 3 thumbnail composition sketches and annotate how each one would direct the viewer's emotional response",
+    "Create the final acrylic painting using at least 3 different brushwork approaches (e.g., smooth blend, dry brush, impasto) that reinforce the emotion",
+    "Use color temperature and value contrast intentionally to build an emotional focal point, and document these choices",
+    "Present the final work with the color study, thumbnails, and artist statement as a single submission"
+  ],
+  "rubric": {
+    "overall": "The Masquerade of Feeling",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Documentation & Intentional Process",
+        "levels": {
+          "4": "Documentation is thorough and revealing: emotion statement, color study, 3+ annotated thumbnails, media test, 2-3 process photos, and final reflections clearly show a deliberate journey from idea to painting, with evidence of revision and justification of choices.",
+          "3": "Documentation shows the key stages (statement, color study, thumbnails, final) with clear annotations and mostly complete reflection.",
+          "2": "Documentation is incomplete or superficial; some stages are missing and choices are not explained.",
+          "1": "Little or no documentation; process cannot be reconstructed from what is submitted."
+        }
+      },
+      {
+        "code": "Art.FA.CR.1.1.IA",
+        "name": "Conceptualization",
+        "levels": {
+          "4": "Emotion is translated into a highly original and specific visual concept; every choice feels necessary.",
+          "3": "Clear, original emotional concept with a readable link between idea and image.",
+          "2": "Concept is generic or the connection between emotion and imagery is weak.",
+          "1": "No clear emotional concept; painting could mean anything."
+        }
+      },
+      {
+        "code": "Art.FA.CR.1.2.IA",
+        "name": "Technique Development",
+        "levels": {
+          "4": "Masterful control of color, value, and varied brushwork; technique amplifies the emotion throughout.",
+          "3": "Good technical control with clear expressive intent and at least 3 distinct brushwork approaches.",
+          "2": "Basic technique; brushwork and color choices are inconsistent or only partially support the emotion.",
+          "1": "Poor technique; expression is absent or accidental."
+        }
+      },
+      {
+        "code": "Art.FA.CR.2.1.IA",
+        "name": "Organization & Emotional Composition",
+        "levels": {
+          "4": "Composition is a powerful emotional architecture; focal point, contrast, and flow guide the viewer's feeling precisely.",
+          "3": "Strong composition with a clear emotional focal point and minor imbalances.",
+          "2": "Composition is basic or uneven; emotional focus is unclear.",
+          "1": "Composition is disorganized and does not support the emotion."
+        }
+      },
+      {
+        "code": "Art.FA.RE.8.1.8A",
+        "name": "Art Interpretation",
+        "levels": {
+          "4": "Viewer immediately feels the intended emotion; interpretation is rich, convincing, and layered.",
+          "3": "Emotion is clearly readable to most viewers; interpretation is sound.",
+          "2": "Emotion is only partially readable; some elements contradict the intent.",
+          "1": "Emotion is unclear or absent; painting communicates nothing specific."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "Color and emotion in painting", "url": "https://www.youtube.com/results?search_query=color+emotion+painting"},
+    {"type": "Expressive brushwork techniques", "url": "https://www.youtube.com/results?search_query=expressive+brushwork+acrylic"},
+    {"type": "Composition for emotional impact", "url": "https://www.youtube.com/results?search_query=composition+emotional+impact+art"},
+    {"type": "Color emotion reference", "url": "https://www.google.com/search?q=color+emotion+chart+art&udm=2"}
+  ],
+  "reward": "you got money!!!!",
+  "character": "charimage/char63.gif",
+  "style": "mvp",
+  "prerequisites": ["quest1", "quest5", "quest6", "quest14", "quest36"],
+  "completed": false,
+  "timer": {"allottedMinutes": 600},
+  "accepted": false,
+  "acceptedAt": null
+},
+
+"quest117": {
+  "path": ["Painter Path", "Sketcher Path"],
+  "difficulty": 3,
+  "title": "The Song Made Visible",
+  "rationale": "<h2>The Song Made Visible</h2><p><strong>Why it's important:</strong><br>Music and painting share a hidden grammar: rhythm, harmony, tension, resolution, silence. Translating sound into image forces you to listen analytically and then invent a visual language for something you cannot see. This is synesthetic thinking—one of the most demanding and rewarding creative acts.</p><p><strong>Skills developed:</strong></p><ul><li>Analytical listening (structure, dynamics, tempo, timbre)</li><li>Abstract visual vocabulary (rhythm, repetition, contrast)</li><li>Color-to-sound mapping and personal synesthesia</li><li>Composition as time made still</li><li>Articulating a translation process in words and images</li></ul><p>This summative proves you can turn one art form into another without losing either.</p>",
+  "description": "In the Silent Hall of the Muses, a cursed instrument plays a song no one can hear—and whoever can see the music may break the curse. The Muses challenge you to choose one piece of music (instrumental preferred, any genre) and paint what it means: not its lyrics, not its cover art, but its structure, its feeling, its movement. You must listen repeatedly, map the music's parts to visual decisions, and build a painting that lets a viewer 'hear' the song with their eyes. The Muses will judge whether your painting has rhythm, whether it rises and falls, whether it ends where the music ends.",
+  "requirements": [
+    "Choose one piece of music and submit a short listening map (timeline) identifying at least 4 sections (e.g., intro, build, climax, resolution) with timestamps",
+    "Create a color-and-shape study that assigns specific colors, line types, or textures to the music's dynamics or instruments, and explain the mapping",
+    "Produce at least 3 thumbnail compositions and annotate which musical structure each one represents",
+    "Create the final acrylic painting so that its composition mirrors the music's structure (repetition, contrast, crescendo, silence) rather than illustrating lyrics",
+    "Include at least one visual element that represents rhythm or repetition and one that represents resolution or silence, and document these choices",
+    "Present the final painting with the listening map, color-shape study, thumbnails, and a short artist statement explaining the translation from sound to image"
+  ],
+  "rubric": {
+    "overall": "The Song Made Visible",
+    "standards": [
+      {
+        "code": "Art.FA.CN.10.1.IA",
+        "name": "Documentation & Intentional Process",
+        "levels": {
+          "4": "Documentation is thorough: color/shape mapping study, 3+ annotated thumbnails, and an artist statement that clearly explains the sound-to-image translation and any revisions.",
+          "3": "Documentation shows the key stages with clear annotations and a mostly complete explanation of the translation.",
+          "2": "Documentation is incomplete or superficial; mapping and thumbnails are missing or unexplained.",
+          "1": "Little or no documentation; the connection between music and painting cannot be traced."
+        }
+      },
+      {
+        "code": "Art.FA.CR.1.1.IA",
+        "name": "Conceptualization",
+        "levels": {
+          "4": "Highly original and coherent visual language for the music; the mapping is inventive, specific, and consistently applied.",
+          "3": "Clear concept with a readable and consistent sound-to-image mapping.",
+          "2": "Concept is generic or the mapping is inconsistent or arbitrary.",
+          "1": "No clear concept; painting is unrelated to the music's structure."
+        }
+      },
+      {
+        "code": "Art.FA.CR.1.2.IA",
+        "name": "Technique Development",
+        "levels": {
+          "4": "Masterful control of color, value, and mark-making; technique makes rhythm, dynamics, and silence visible.",
+          "3": "Good technical control with clear expressive intent that supports the musical translation.",
+          "2": "Basic technique; visual language only partially communicates the music.",
+          "1": "Poor technique; translation is not visible in the paint."
+        }
+      },
+      {
+        "code": "Art.FA.CR.2.1.IA",
+        "name": "Organization & Compositional Rhythm",
+        "levels": {
+          "4": "Composition is a powerful visual rhythm; repetition, contrast, crescendo, and resolution are clear and intentional.",
+          "3": "Strong composition with clear rhythm and minor imbalances.",
+          "2": "Composition is basic or uneven; rhythm is weak or inconsistent.",
+          "1": "Composition is disorganized and has no readable rhythm."
+        }
+      },
+      {
+        "code": "Art.FA.RE.8.1.8A",
+        "name": "Art Interpretation",
+        "levels": {
+          "4": "Viewer can sense the music's structure and mood through the painting; interpretation is rich, convincing, and layered.",
+          "3": "Music's structure and mood are clearly readable; interpretation is sound.",
+          "2": "Only partially readable; some visual elements contradict the music's structure.",
+          "1": "Painting does not communicate the music; interpretation is absent."
+        }
+      }
+    ]
+  },
+  "links": [
+    {"type": "Synesthesia and art", "url": "https://www.youtube.com/results?search_query=synesthesia+art+music+painting"},
+    {"type": "Painting music: abstract translation", "url": "https://www.youtube.com/results?search_query=painting+music+abstract+art"},
+    {"type": "Rhythm and repetition in art", "url": "https://www.youtube.com/results?search_query=rhythm+repetition+composition+art"},
+    {"type": "Color and sound mapping reference", "url": "https://www.google.com/search?q=color+sound+mapping+synesthesia&udm=2"}
+  ],
+  "reward": "you got money!!!!",
+  "character": "charimage/char82.gif",
+  "style": "mvp",
+  "prerequisites": ["quest1", "quest5", "quest13", "quest15", "quest36"],
+  "completed": false,
+  "timer": {"allottedMinutes": 600},
+  "accepted": false,
+  "acceptedAt": null
+},
 
   
 
@@ -2208,7 +2371,7 @@
       {"type": "Video sample", "url": "https://www.youtube.com/watch?v=wbGrvTIOoqU"}
     ],
     "reward": "you got money!!!!",
-    "character": "charimage/char23.png",
+    "character": "charimage/char23.gif",
     "style": "",
     "prerequisites": [],
     "completed": false,
@@ -2729,7 +2892,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
     "quest103": {
     "path": ["Watercolor Path"],
     "difficulty": 2,
@@ -2781,7 +2943,6 @@
     "accepted": false,
     "acceptedAt": null
   },
-
   "quest104": {
     "path": ["Watercolor Path"],
     "difficulty": 2,
