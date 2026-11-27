@@ -245,10 +245,11 @@ async function getPendingWorksCached(forceRefresh = false) {
     }
 
     const ids = students.map(s => s.id);
-    const { data } = await window.supabase
+        const { data } = await window.supabase
         .from('student_works')
         .select('user_id')
         .eq('grading_status', 'pending')
+        .not('image_url', 'is', null)
         .in('user_id', ids);
 
     _cachedPendingSet = new Set((data || []).map(w => w.user_id));
@@ -2685,8 +2686,14 @@ async function loadStudentDetails(userId, studentName) {
     document.getElementById('selected-student-name').textContent = studentName;
     document.getElementById('student-details-panel').style.display = 'block';
 
-    const profileTab = document.querySelector('#student-details-panel .tab-btn[data-tab="profile"]');
-    if (profileTab) profileTab.click();
+        // Only force the Profile tab the first time this student is opened.
+    const panel = document.getElementById('student-details-panel');
+    const isFirstOpenForThisStudent = panel.dataset.lastStudentId !== userId;
+    panel.dataset.lastStudentId = userId;
+    if (isFirstOpenForThisStudent) {
+        const profileTab = panel.querySelector('.tab-btn[data-tab="profile"]');
+        if (profileTab) profileTab.click();
+    }
 
     try {
         // Fire all independent queries in parallel
@@ -3371,17 +3378,44 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
 
     const completedQuestList = Object.keys(completedQuests).filter(qid => completedQuests[qid] === true);
 
+    // Classify quests into:
+    //   activeQuestList    — accepted, no uploaded image yet
+    //   submittedQuestList — accepted + image uploaded, not yet graded
+    //   pendingQuestList   — uploaded image, no acceptance flag (orphan works row)
+    //   completedQuestList — teacher marked complete (graded)
     const activeQuestList = [];
+    const submittedQuestList = [];
+
     for (const [questId, isAccepted] of Object.entries(questAccepted)) {
-        if (isAccepted === true && !completedQuests[questId]) activeQuestList.push(questId);
+        if (isAccepted !== true) continue;
+        if (completedQuests[questId] === true) continue; // handled by completed list
+
+        const workInfo = savedWorksMap.get(questId);
+        const hasImage = !!(workInfo && workInfo.hasImage);
+
+        if (hasImage) submittedQuestList.push(questId);
+        else activeQuestList.push(questId);
     }
 
+    // Orphan works rows (image uploaded, no acceptance flag) — treat as submitted too
     const pendingQuestList = [];
-    for (const [questId] of savedWorksMap) {
-        if (!completedQuestList.includes(questId) && !activeQuestList.includes(questId)) pendingQuestList.push(questId);
+    for (const [questId, info] of savedWorksMap) {
+        if (completedQuestList.includes(questId)) continue;
+        if (activeQuestList.includes(questId))      continue;
+        if (submittedQuestList.includes(questId))   continue;
+        if (!info.hasImage) continue;               // ignore accept-time placeholder rows
+        pendingQuestList.push(questId);
     }
 
-    const allDisplayQuests = [...new Set([...completedQuestList, ...activeQuestList, ...pendingQuestList])];
+    // Declare this BEFORE the sort that reads it (temporal-dead-zone fix)
+    const activeSectionIds = new Set([...activeQuestList, ...submittedQuestList, ...pendingQuestList]);
+
+    const allDisplayQuests = [...new Set([
+        ...completedQuestList,
+        ...activeQuestList,
+        ...submittedQuestList,
+        ...pendingQuestList
+    ])];
 
     if (allDisplayQuests.length === 0) {
         container.innerHTML = '<div class="no-data">No quests with saved work or completed quests yet</div>';
@@ -3389,8 +3423,8 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
     }
 
     const sortedQuests = allDisplayQuests.sort((a, b) => {
-        const aIsActive = activeQuestList.includes(a);
-        const bIsActive = activeQuestList.includes(b);
+        const aIsActive = activeSectionIds.has(a);
+        const bIsActive = activeSectionIds.has(b);
         const aIsCompleted = completedQuestList.includes(a);
         const bIsCompleted = completedQuestList.includes(b);
         if (aIsActive && !bIsActive) return -1;
@@ -3402,7 +3436,7 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
 
     container.innerHTML = '';
 
-    if (activeQuestList.length > 0) {
+    if (activeSectionIds.size > 0) {
         const activeHeader = document.createElement('div');
         activeHeader.className = 'quest-section-header';
         activeHeader.innerHTML = '<h3>🟢 Active Quests</h3><hr>';
@@ -3410,8 +3444,7 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
     }
 
     const template = document.getElementById('quest-item-template');
-    let lastWasActive = true;
-    let activeSectionEnded = false;
+    let completedHeaderEmitted = false;
 
     for (const questId of sortedQuests) {
         const quest = allQuests[questId];
@@ -3419,32 +3452,23 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
 
         const isActive = activeQuestList.includes(questId);
         const isCompleted = completedQuestList.includes(questId);
-        const hasSavedWork = savedWorksMap.has(questId);
         const workInfo = savedWorksMap.get(questId);
 
-        if (!isActive && !activeSectionEnded && !isCompleted) {
-            const pendingHeader = document.createElement('div');
-            pendingHeader.className = 'quest-section-header';
-            pendingHeader.innerHTML = '<h3>⏳ Pending Grading</h3><hr>';
-            container.appendChild(pendingHeader);
-            activeSectionEnded = true;
-            lastWasActive = false;
-        }
-
-        if (isCompleted && (lastWasActive || !activeSectionEnded)) {
+        // Emit the "Completed & Graded" header once, the first time we hit a
+        // completed quest in the sorted list.
+        if (isCompleted && !completedHeaderEmitted) {
             const completedHeader = document.createElement('div');
             completedHeader.className = 'quest-section-header';
             completedHeader.innerHTML = '<h3>✅ Completed & Graded</h3><hr>';
             container.appendChild(completedHeader);
-            activeSectionEnded = true;
-            lastWasActive = false;
+            completedHeaderEmitted = true;
         }
 
         const clone = template.content.cloneNode(true);
         const questDiv = clone.querySelector('.teacher-quest-item');
         questDiv.dataset.questId = questId;
 
-                const titleSpan = clone.querySelector('.teacher-quest-title');
+        const titleSpan = clone.querySelector('.teacher-quest-title');
         titleSpan.textContent = quest.title || questId;
 
         // Add 🎁 if this quest is featured as a mystery for the student's class
@@ -3455,7 +3479,6 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
             badge.title = 'Mystery quest this week';
             titleSpan.insertAdjacentElement('afterend', badge);
         }
-        
 
         const column = quest.style === 'mvp' ? 'mvpGrade' : 'grade';
 
@@ -3479,13 +3502,20 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
         const grades = questGrades[questId]?.[column] || {};
         const hasGrades = Object.keys(grades).length > 0;
 
+        const isSubmitted = submittedQuestList.includes(questId) || pendingQuestList.includes(questId);
+
         let statusText = '', statusClass = '', showRedDot = false;
-        if (isActive) { statusText = '🟢 Active'; statusClass = 'active'; }
-        else if (hasGrades) { statusText = '✓ Graded'; statusClass = 'graded'; }
-        else if (hasSavedWork && workInfo?.grading_status === 'pending') { statusText = '⚠ Pending Grading'; statusClass = 'pending'; showRedDot = true; }
-        else if (isCompleted) { statusText = '⚠ Not Graded'; statusClass = 'ungraded'; showRedDot = true; }
-        else if (hasSavedWork) { statusText = '⚠ Pending Grading'; statusClass = 'pending'; showRedDot = true; }
-        else { statusText = 'Not Started'; statusClass = 'not-started'; }
+        if (hasGrades) {
+            statusText = '✓ Graded'; statusClass = 'graded';
+        } else if (isSubmitted) {
+            statusText = '⚠ Completed – Pending Grading'; statusClass = 'pending'; showRedDot = true;
+        } else if (isActive) {
+            statusText = '🟢 Active'; statusClass = 'active';
+        } else if (isCompleted) {
+            statusText = '⚠ Not Graded'; statusClass = 'ungraded'; showRedDot = true;
+        } else {
+            statusText = 'Not Started'; statusClass = 'not-started';
+        }
 
         const statusSpan = clone.querySelector('.teacher-quest-status');
         statusSpan.textContent = statusText;
@@ -3501,15 +3531,30 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
             statusSpan.appendChild(redDot);
         }
 
+        const headerRow = clone.querySelector('.teacher-quest-header');
         const expandBtn = clone.querySelector('.teacher-expand-btn');
         const detailsDiv = clone.querySelector('.teacher-quest-details');
 
-        expandBtn.addEventListener('click', () => {
+        const toggleDetails = () => {
             const isVisible = detailsDiv.style.display === 'block';
             detailsDiv.style.display = isVisible ? 'none' : 'block';
             expandBtn.textContent = isVisible ? '▼' : '▲';
             if (!isVisible) loadRubricForQuest(questId, quest, questGrades, detailsDiv, userId, progress);
+        };
+
+        // Whole header row is clickable.
+        headerRow.addEventListener('click', (e) => {
+            // Ignore clicks on any interactive element inside the header
+            // (buttons, links, inputs) other than the expand button —
+            // the expand button click is handled by the header handler too,
+            // so we don't need a separate listener on it.
+            const interactive = e.target.closest('button, a, input, select, textarea');
+            if (interactive && !interactive.classList.contains('teacher-expand-btn')) return;
+            toggleDetails();
         });
+
+        // Make it obvious the row is clickable.
+        headerRow.style.cursor = 'pointer';
 
         const viewWorkBtn = clone.querySelector('.teacher-view-work-btn');
         viewWorkBtn.addEventListener('click', () => viewStudentWork(userId, questId));
@@ -3541,7 +3586,6 @@ function renderStudentProgressData(userId, progress, works, allQuests, mysteryQu
         }
 
         container.appendChild(clone);
-        lastWasActive = isActive;
     }
 }
 
@@ -3806,109 +3850,170 @@ async function loadRubricForQuest(questId, quest, questGrades, detailsDiv, userI
 }
 
 async function saveTeacherGrades(questId, quest, userId, detailsDiv) {
-    const inputs = detailsDiv.querySelectorAll('.teacher-grade-input');
-    const grades = {};
+    // --- Re-entry guard ---
+    if (saveTeacherGrades._inFlight) return;
+    saveTeacherGrades._inFlight = true;
 
-    const isIB = quest.rubric && quest.rubric.criteria && Array.isArray(quest.rubric.criteria);
-    const isIGCSE = quest.rubric && quest.rubric.assessment_objectives && Array.isArray(quest.rubric.assessment_objectives);
+    // --- Visual "saving" state ---
+    const saveBtn = detailsDiv.querySelector('.teacher-save-grades-btn');
+    const originalBtnText = saveBtn ? saveBtn.textContent : '';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = '⏳ Saving…';
+        saveBtn.style.opacity = '0.6';
+        saveBtn.style.cursor = 'wait';
+    }
+    _showSavingToast('Saving grades…');        // ← remove if no toast
 
-    let maxGrade = 4;
-    if (isIB) maxGrade = 8;
-    if (isIGCSE) maxGrade = 8;
-
-    inputs.forEach(input => {
-        const standard = input.dataset.standard;
-        const value = input.value;
-
-        if (isIGCSE) {
-            const numValue = convertLetterGradeToNumber(value);
-            if (numValue !== null) grades[standard] = numValue;
-        } else {
-            const numValue = parseFloat(value);
-            if (!isNaN(numValue) && numValue >= 1 && numValue <= maxGrade) grades[standard] = numValue;
+    const _restoreSaveBtn = () => {
+        saveTeacherGrades._inFlight = false;
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalBtnText;
+            saveBtn.style.opacity = '';
+            saveBtn.style.cursor = '';
         }
-    });
+        _hideSavingToast();                     // ← remove if no toast
+    };
 
-    const commentInput = detailsDiv.querySelector('.teacher-comment-input');
-    if (commentInput) grades.teacher_comment = commentInput.value.trim();
-
-    grades.completed_at = new Date().toISOString();
-    const column = quest.style === "mvp" ? "mvpGrade" : "grade";
-
-    const { data: progress } = await window.supabase
-        .from('student_progress')
-        .select('quest_grades, completed_quests, earned_badges, quest_accepted, quest_start_times')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    const questGrades = progress?.quest_grades || {};
-    const completedQuests = progress?.completed_quests || {};
-    const existingBadges = progress?.earned_badges || {};
-    const questAccepted = progress?.quest_accepted || {};
-    const questStartTimes = progress?.quest_start_times || {};
-
-    if (!questGrades[questId]) questGrades[questId] = {};
-    questGrades[questId][column] = grades;
-    completedQuests[questId] = true;
-
-    const { error } = await window.supabase
-        .from('student_progress')
-        .upsert({
-            user_id: userId,
-            quest_grades: questGrades,
-            completed_quests: completedQuests,
-            earned_badges: existingBadges,
-            quest_accepted: questAccepted,
-            quest_start_times: questStartTimes,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-
-    if (error) {
-        alert('Error saving grades: ' + error.message);
-        return;
-    }
-
-        await window.supabase
-        .from('student_works')
-        .update({ grading_status: 'graded' })
-        .eq('user_id', userId)
-        .eq('quest_id', questId);
-
-    // --- Gift claim sync (before the alert, so it always runs) ---
     try {
-        await syncGiftClaimAfterGrade(userId, questId, grades);
-        console.log("[gift UI] sync returned");
-    } catch (e) {
-        console.warn("[gift] sync after grade failed:", e);
+        const inputs = detailsDiv.querySelectorAll('.teacher-grade-input');
+        const grades = {};
+
+        const isIB = quest.rubric && quest.rubric.criteria && Array.isArray(quest.rubric.criteria);
+        const isIGCSE = quest.rubric && quest.rubric.assessment_objectives && Array.isArray(quest.rubric.assessment_objectives);
+
+        let maxGrade = 4;
+        if (isIB) maxGrade = 8;
+        if (isIGCSE) maxGrade = 8;
+
+        inputs.forEach(input => {
+            const standard = input.dataset.standard;
+            const value = input.value;
+
+            if (isIGCSE) {
+                const numValue = convertLetterGradeToNumber(value);
+                if (numValue !== null) grades[standard] = numValue;
+            } else {
+                const numValue = parseFloat(value);
+                if (!isNaN(numValue) && numValue >= 1 && numValue <= maxGrade) grades[standard] = numValue;
+            }
+        });
+
+        const commentInput = detailsDiv.querySelector('.teacher-comment-input');
+        if (commentInput) grades.teacher_comment = commentInput.value.trim();
+
+        grades.completed_at = new Date().toISOString();
+        const column = quest.style === "mvp" ? "mvpGrade" : "grade";
+
+        const { data: progress } = await window.supabase
+            .from('student_progress')
+            .select('quest_grades, completed_quests, earned_badges, quest_accepted, quest_start_times')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        const questGrades = progress?.quest_grades || {};
+        const completedQuests = progress?.completed_quests || {};
+        const existingBadges = progress?.earned_badges || {};
+        const questAccepted = progress?.quest_accepted || {};
+        const questStartTimes = progress?.quest_start_times || {};
+
+        if (!questGrades[questId]) questGrades[questId] = {};
+        questGrades[questId][column] = grades;
+        completedQuests[questId] = true;
+
+        const { error } = await window.supabase
+            .from('student_progress')
+            .upsert({
+                user_id: userId,
+                quest_grades: questGrades,
+                completed_quests: completedQuests,
+                earned_badges: existingBadges,
+                quest_accepted: questAccepted,
+                quest_start_times: questStartTimes,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
+
+        if (error) {
+            alert('Error saving grades: ' + error.message);
+            return;
+        }
+
+        const { error: worksError, count: worksCount } = await window.supabase
+            .from('student_works')
+            .update({ grading_status: 'graded' })
+            .eq('user_id', userId)
+            .eq('quest_id', questId)
+            .select('id', { count: 'exact' });
+
+        if (worksError) {
+            console.error('[grading] student_works update failed:', worksError);
+            alert(
+                "⚠️ Grades were saved, but the submission could not be marked as graded.\n\n" +
+                "Error: " + worksError.message + "\n\n" +
+                "The red pending dot may stay on this student until the issue is fixed."
+            );
+        } else if (worksCount === 0) {
+            console.warn('[grading] no student_works row matched for', userId, questId);
+        }
+
+        // --- Gift claim sync (before the alert, so it always runs) ---
+        try {
+            await syncGiftClaimAfterGrade(userId, questId, grades);
+            console.log("[gift UI] sync returned");
+        } catch (e) {
+            console.warn("[gift] sync after grade failed:", e);
+        }
+
+        alert('Grades saved and quest marked as complete!');
+
+        const statusSpan = detailsDiv.closest('.teacher-quest-item').querySelector('.teacher-quest-status');
+        if (statusSpan) {
+            statusSpan.textContent = '✓ Graded';
+            statusSpan.classList.remove('ungraded', 'pending');
+            statusSpan.classList.add('graded');
+            const redDot = statusSpan.querySelector('.quest-pending-dot');
+            if (redDot) redDot.remove();
+        }
+
+        await updateStudentCardPendingCount(userId);
+
+        invalidateStudentsCache();
+        invalidateTabCache('students');
+        invalidateTabCache('analytics');
+        invalidateTabCache('quests');
+        await renderClassAccordion();
+        await loadAllStudents();
+        await loadStudentDetails(userId, document.getElementById('selected-student-name').textContent);
+        await syncStudentBadges(userId);
+    } finally {
+        _restoreSaveBtn();
     }
+}
 
-    alert('Grades saved and quest marked as complete!');
-
-
-    const statusSpan = detailsDiv.closest('.teacher-quest-item').querySelector('.teacher-quest-status');
-    if (statusSpan) {
-        statusSpan.textContent = '✓ Graded';
-        statusSpan.classList.remove('ungraded', 'pending');
-        statusSpan.classList.add('graded');
-        const redDot = statusSpan.querySelector('.quest-pending-dot');
-        if (redDot) redDot.remove();
+// --- Saving-toast helpers ---
+function _showSavingToast(text = 'Saving…') {
+    let el = document.getElementById('_saving-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_saving-toast';
+        el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a2e;color:#ffd700;padding:16px 24px;border-radius:8px;border:1px solid rgba(255,215,0,0.4);font-size:16px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.4);';        document.body.appendChild(el);
     }
-
-    await updateStudentCardPendingCount(userId);
-    invalidateStudentsCache();
-    invalidateTabCache('students');
-    invalidateTabCache('analytics');
-    invalidateTabCache('quests');
-    await loadStudentDetails(userId, document.getElementById('selected-student-name').textContent);
-    await syncStudentBadges(userId);
+    el.textContent = text;
+    el.style.display = 'block';
+}
+function _hideSavingToast() {
+    const el = document.getElementById('_saving-toast');
+    if (el) el.style.display = 'none';
 }
 
 async function updateStudentCardPendingCount(userId) {
-    const { data: pendingWorks } = await window.supabase
+        const { data: pendingWorks } = await window.supabase
         .from('student_works')
         .select('id')
         .eq('user_id', userId)
-        .eq('grading_status', 'pending');
+        .eq('grading_status', 'pending')
+        .not('image_url', 'is', null);
 
     const pendingCount = pendingWorks?.length || 0;
     const studentCard = document.querySelector(`.student-card[data-user-id="${userId}"]`);
@@ -8349,45 +8454,165 @@ function initWorkModal() {
     };
 }
 
-function setupModalEscapeHandling() {
-    document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
+// ==========================================================
+// 20. MODALS & ESCAPE HANDLING (cascade-aware)
+// ==========================================================
 
-        const modals = [
-            'teacher-work-modal',
-            'contest-management-overlay',
-            'create-class-modal',
-            'password-verify-modal',
-            'restriction-popup',
-            'prerequisite-popup',
-            'accept-quest-restriction-popup'
-        ];
+/**
+ * Ordered TOP → BOTTOM. The first entry that is currently open
+ * is the one that closes first.
+ *
+ * `backdrop: 'self'`  → clicking the element itself (the overlay
+ *                       background) closes it.
+ * `backdrop: 'none'`  → backdrop clicks do nothing (e.g. password
+ *                       verify modal that must be answered).
+ *
+ * `closeSelector` (optional) → a CSS selector inside the overlay
+ * that, when clicked, closes it (the ✕ button).
+ */
+const OVERLAY_STACK = [
+    { id: 'password-verify-modal',        backdrop: 'none' },
+    { id: 'terms-modal',                  backdrop: 'self', closeSelector: '#close-terms-modal, #accept-terms-btn' },
+    { id: 'reset-password-modal',         backdrop: 'none', closeSelector: '#cancel-reset-password-btn, .teacher-work-close' },
+    { id: 'reject-modal',                 backdrop: 'self', closeSelector: '#cancel-reject' },
+    { id: 'date-modal',                   backdrop: 'self', closeSelector: '#modal-cancel-btn, .teacher-work-close' },
+    { id: 'edit-contest-modal',           backdrop: 'self', closeSelector: '#cancel-edit-contest-btn, .teacher-work-close' },
+    { id: 'create-contest-overlay',       backdrop: 'self', closeSelector: '#close-contest-overlay, #cancel-contest-btn' },
+    { id: 'create-custom-quest-modal',    backdrop: 'self', closeSelector: '#cancel-custom-quest-btn, .teacher-work-close' },
+    { id: 'create-class-modal',           backdrop: 'self', closeSelector: '.teacher-work-close' },
+    { id: 'invite-modal',                 backdrop: 'self', closeSelector: '#cancel-invite-btn, .teacher-work-close' },
+    { id: 'resources-overlay',            backdrop: 'self', closeSelector: '#close-resources-overlay' },
+    { id: 'mystery-quests-overlay',       backdrop: 'self', closeSelector: '#close-mystery-overlay' },
+    { id: 'contest-management-overlay',   backdrop: 'self', closeSelector: '#close-contest-management' },
+    { id: 'assign-quest-overlay',         backdrop: 'self', closeSelector: '#assign-quest-cancel, #assign-quest-close' },
+    { id: 'teacher-work-modal',           backdrop: 'self', closeSelector: '.teacher-work-close' },
+    { id: 'quest-details-panel',          backdrop: 'none', closeSelector: '#close-quest-details-btn' },
+    { id: 'student-details-panel',        backdrop: 'none', closeSelector: '#close-details-btn' }
+];
 
-        for (const modalId of modals) {
-            const modal = document.getElementById(modalId);
-            if (modal && (modal.style.display === 'flex' || modal.style.display === 'block')) {
-                modal.style.display = 'none';
-                e.preventDefault();
-                return;
-            }
-        }
-
-        const questDetailsPanel = document.getElementById('quest-details-panel');
-        if (questDetailsPanel && questDetailsPanel.style.display === 'block') {
-            questDetailsPanel.style.display = 'none';
-            e.preventDefault();
-            return;
-        }
-
-        const detailsPanel = document.getElementById('student-details-panel');
-        if (detailsPanel && detailsPanel.style.display === 'block') {
-            detailsPanel.style.display = 'none';
-            e.preventDefault();
-            return;
-        }
-    });
+/**
+ * Is this overlay element currently open?
+ *  - create-class-modal uses class `open` instead of inline display
+ *  - everything else uses display: flex | block
+ */
+function _isOverlayOpen(el) {
+    if (!el) return false;
+    if (el.id === 'create-class-modal') {
+        return el.classList.contains('open') || el.style.display === 'flex';
+    }
+    const d = el.style.display;
+    return d === 'flex' || d === 'block';
 }
 
+/** Close a single overlay without running any of its business logic. */
+function _closeOverlayEntry(entry) {
+    const el = document.getElementById(entry.id);
+    if (!el) return false;
+    if (entry.id === 'create-class-modal') {
+        el.classList.remove('open');
+        el.style.display = 'none';
+    } else {
+        el.style.display = 'none';
+    }
+    return true;
+}
+
+/**
+ * Close the topmost open overlay in OVERLAY_STACK.
+ * Returns true if something was closed, false if nothing was open.
+ */
+function closeTopmostOverlay() {
+    for (const entry of OVERLAY_STACK) {
+        const el = document.getElementById(entry.id);
+        if (_isOverlayOpen(el)) {
+            return _closeOverlayEntry(entry);
+        }
+    }
+    return false;
+}
+
+function setupOverlayCascade() {
+    // ---- Esc ----
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (closeTopmostOverlay()) e.preventDefault();
+    });
+
+    // ---- Side-panel outside clicks (student & quest panels) ----
+    // Bubble phase. The capture-phase backdrop handler below has already
+    // run by the time this fires, so if an overlay was on top it's already
+    // closed and we must not also close the panel.
+    document.addEventListener('click', (e) => {
+        // Bail out if any overlay is currently stacked on top.
+        for (const entry of OVERLAY_STACK) {
+            const el = document.getElementById(entry.id);
+            if (!_isOverlayOpen(el)) continue;
+            if (entry.id !== 'student-details-panel' && entry.id !== 'quest-details-panel') return;
+            break; // topmost open is one of the panels → fall through
+        }
+
+        const studentPanel = document.getElementById('student-details-panel');
+        const questPanel   = document.getElementById('quest-details-panel');
+
+        const studentOpen = studentPanel && studentPanel.style.display === 'block';
+        const questOpen   = questPanel   && questPanel.style.display   === 'block';
+        if (!studentOpen && !questOpen) return;
+
+        // Clicks that OPEN a panel are not "outside" clicks.
+        if (e.target.closest('.student-card'))       return;
+        if (e.target.closest('.class-student-card')) return;
+        if (e.target.closest('.quest-student-card')) return;
+        if (e.target.closest('.student-name-link'))  return;
+        if (e.target.closest('.quest-link-item'))    return;
+        if (e.target.closest('.quest-name-link'))    return;
+
+        // Clicks inside either panel are fine.
+        if (studentPanel && studentPanel.contains(e.target)) return;
+        if (questPanel   && questPanel.contains(e.target))   return;
+
+        // Explicit close buttons are handled by their own listeners.
+        if (e.target.closest('#close-details-btn'))       return;
+        if (e.target.closest('#close-quest-details-btn')) return;
+
+        // --- Close the topmost open panel ---
+        // Quest panel sits above student panel in OVERLAY_STACK.
+        if (questOpen) {
+            questPanel.style.display = 'none';
+            return;
+        }
+        if (studentOpen) {
+            studentPanel.style.display = 'none';
+        }
+    });
+
+    // ---- Backdrop clicks ----
+    // Capture phase → runs before the bubble handler above.
+    // Only the topmost open overlay reacts to a given click.
+    document.addEventListener('click', (e) => {
+        for (const entry of OVERLAY_STACK) {
+            const el = document.getElementById(entry.id);
+            if (!_isOverlayOpen(el)) continue;
+
+            // This is the topmost open overlay.
+
+            // ✕ button (or explicit close control) → close it.
+            if (entry.closeSelector && e.target.closest(entry.closeSelector) &&
+                el.contains(e.target.closest(entry.closeSelector))) {
+                _closeOverlayEntry(entry);
+                return;
+            }
+
+            // Click inside the overlay content → do nothing.
+            if (el.contains(e.target)) return;
+
+            // Click outside the topmost overlay → close it (if backdrop: 'self').
+            if (entry.backdrop === 'self') {
+                _closeOverlayEntry(entry);
+            }
+            return;
+        }
+    }, true);
+}
 
 // ==========================================================
 // 21. TABS SETUP
@@ -9731,31 +9956,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Click outside #student-details-panel → close it
-document.addEventListener('click', (e) => {
-    const panel = document.getElementById('student-details-panel');
-    if (!panel || panel.style.display !== 'block') return;
-
-    // Clicks inside the panel are fine
-    if (panel.contains(e.target)) return;
-
-    // Anything that opens a student profile — don't close first
-    if (e.target.closest('.student-card')) return;
-    if (e.target.closest('.class-student-card')) return;
-    if (e.target.closest('.quest-student-card')) return;      // Active Students tab
-    if (e.target.closest('.student-name-link')) return;       // Analytics table
-    if (e.target.closest('#close-details-btn')) return;       // explicit close
-
-    panel.style.display = 'none';
-});
-    // Quest search
-    setupQuestSearch();
-
     // Init subsystems
+    setupQuestSearch();
     initTermsModal();
     setupMainTabs();
     initWorkModal();
-    setupModalEscapeHandling();
+    setupOverlayCascade();
     setupQuestDetailsTabs();
     setupQuestDetailsClose();
     setupICSImport();
